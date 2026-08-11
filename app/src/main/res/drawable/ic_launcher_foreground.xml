@@ -4,10 +4,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 白色「¥」符号（描边绘制） -->
+    <!-- 沅满 logo：圆环（满）+ 波浪水面（沅）。水面线在圆的约 2/3 处，取「将满未满」之意 -->
+    <group>
+        <clip-path android:pathData="M27,54 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0" />
+        <path
+            android:fillColor="#B9E4FB"
+            android:pathData="M20,58 C30,50 40,66 54,58 C68,50 78,66 88,58 L88,88 L20,88 Z" />
+    </group>
     <path
-        android:pathData="M40,32 L54,50 L68,32 M54,50 L54,78 M42,58 L66,58 M42,66 L66,66"
+        android:pathData="M27,54 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0"
+        android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:strokeWidth="6" />
+        android:strokeWidth="4" />
 </vector>

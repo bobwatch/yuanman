@@ -1,5 +1,7 @@
 # Yuanman
 
+<p align="center"><img src="docs/logo.png" width="120" alt="Yuanman logo"></p>
+
 > Yuanman — Money, Habits & Mood. Three everyday things, one calm app.
 > 中文简介：沅满 —— 记账 · 打卡 · 心情，一个 App 管好三件事。
 

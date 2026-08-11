@@ -1,5 +1,7 @@
 # 沅满 Yuanman
 
+<p align="center"><img src="docs/logo.png" width="120" alt="沅满 logo"></p>
+
 > 沅满 —— 记账 · 打卡 · 心情，一个 App 管好三件事。
 
 **[English README](README.md)** | 免费开源，无服务器、无账号，数据不出局域网。
