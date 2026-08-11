@@ -122,7 +122,13 @@ class MainActivity : ComponentActivity() {
 
                     Box(Modifier.fillMaxSize()) {
                         Scaffold(
-                            snackbarHost = { SnackbarHost(snackbarHostState) },
+                            snackbarHost = {
+                                // 避开底部导航 / FAB 区域
+                                SnackbarHost(
+                                    snackbarHostState,
+                                    modifier = Modifier.padding(bottom = 80.dp)
+                                )
+                            },
                             bottomBar = {
                                 NavigationBar {
                                     val backStackEntry by navController

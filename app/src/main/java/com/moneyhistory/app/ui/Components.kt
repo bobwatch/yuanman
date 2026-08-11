@@ -57,7 +57,8 @@ fun MonthSelector(
     month: YearMonth,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    nextEnabled: Boolean = true
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -92,7 +93,7 @@ fun MonthSelector(
                 fontWeight = FontWeight.Bold
             )
         }
-        IconButton(onClick = onNext) {
+        IconButton(onClick = onNext, enabled = nextEnabled) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.month_next)

@@ -324,4 +324,12 @@
     <!-- widget -->
     <string name="widget_today">Today %1$s</string>
     <string name="widget_month">This month %1$s</string>
+
+    <!-- v0.0.2 polish -->
+    <string name="record_saved">Saved</string>
+    <string name="discard_title">Discard changes?</string>
+    <string name="discard_message">You have unsaved input. Closing will discard it.</string>
+    <string name="discard_confirm">Discard</string>
+    <string name="discard_keep">Keep editing</string>
+    <string name="pad_amount_exceeds">Exceeds available balance</string>
 </resources>

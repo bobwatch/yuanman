@@ -26,6 +26,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -128,7 +131,7 @@ fun HabitScreen(viewModel: MainViewModel) {
                     today = today,
                     onCheckin = { viewModel.toggleCheckin(habit.id) },
                     onReset = { resetTarget = habit },
-                    onLongPress = { deleteTarget = habit }
+                    onDelete = { deleteTarget = habit }
                 )
             }
             item(key = "add") {
@@ -263,15 +266,20 @@ private fun HabitCard(
     today: String,
     onCheckin: () -> Unit,
     onReset: () -> Unit,
-    onLongPress: () -> Unit
+    onDelete: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .combinedClickable(onClick = {}, onLongClick = onLongPress)
-    ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .combinedClickable(
+                    onClick = { menuOpen = true },
+                    onLongClick = { menuOpen = true }
+                )
+        ) {
         if (habit.type == Habit.Type.BUILD) {
             val streak = habit.buildStreak(today)
             val checked = habit.checkedOn(today)
@@ -366,6 +374,20 @@ private fun HabitCard(
                 }
             }
         }
+        }
+        // 单击/长按卡片弹出操作菜单
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.habit_delete_title)) },
+                onClick = {
+                    menuOpen = false
+                    onDelete()
+                }
+            )
+        }
     }
 }
 
@@ -376,10 +398,10 @@ private fun HabitCreateSheet(
     onDismiss: () -> Unit,
     onCreate: (name: String, emoji: String, type: Habit.Type) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var nameError by remember { mutableStateOf(false) }
-    var emoji by remember { mutableStateOf(habitEmojiCandidates.first()) }
-    var type by remember { mutableStateOf(Habit.Type.BUILD) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var nameError by rememberSaveable { mutableStateOf(false) }
+    var emoji by rememberSaveable { mutableStateOf(habitEmojiCandidates.first()) }
+    var type by rememberSaveable { mutableStateOf(Habit.Type.BUILD) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

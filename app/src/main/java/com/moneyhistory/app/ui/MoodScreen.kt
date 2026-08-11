@@ -51,6 +51,7 @@ import com.moneyhistory.app.R
 import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.consecutiveNonAngryDays
 import java.util.Calendar
+import java.util.Locale
 
 /** 心情名称文案。 */
 @Composable
@@ -359,7 +360,7 @@ private fun MoodGrid(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             week.forEach { day ->
-                val key = "%s-%02d".format(monthPrefix, day)
+                val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
                 val entry = moods[key]
                 Box(
                     Modifier

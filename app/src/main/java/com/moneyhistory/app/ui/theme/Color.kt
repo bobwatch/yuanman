@@ -5,6 +5,9 @@ import androidx.compose.ui.graphics.Color
 // 沅满蓝：设计体系主色
 val YuanmanBlue = Color(0xFF2AABEE)
 val YuanmanBlueDark = Color(0xFF517DA2)
+// Light 主题压暗变体（白字对比度达标）；dark 主色上的深色文字
+val YuanmanBlueDeep = Color(0xFF1B8FCC)
+val OnYuanmanBlueDark = Color(0xFF06283D)
 
 // Light：页面背景微灰，卡片纯白「浮」在上面
 val LightBackground = Color(0xFFF5F7FA)

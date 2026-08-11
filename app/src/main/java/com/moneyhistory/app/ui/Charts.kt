@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import java.util.Locale
 
 /** 图表分类配色（10 色，循环使用）。 */
@@ -108,13 +109,14 @@ fun TrendBarChart(
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
             color = labelColor.toArgb()
-            textSize = 26f
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
         }
     }
     Canvas(modifier) {
         if (points.isEmpty()) return@Canvas
+        // 按 density 换算，适配不同屏幕文字密度
+        textPaint.textSize = 10.sp.toPx()
         val max = points.maxOf { it.amountCents }.coerceAtLeast(1L)
         val topLabelHeight = 34f
         val bottomLabelHeight = 34f
@@ -159,13 +161,14 @@ fun DailyLineChart(
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
             color = labelColor.toArgb()
-            textSize = 24f
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
         }
     }
     Canvas(modifier) {
         if (dailyCents.isEmpty()) return@Canvas
+        // 按 density 换算，适配不同屏幕文字密度
+        textPaint.textSize = 9.sp.toPx()
         val max = (dailyCents.maxOrNull() ?: 0L).coerceAtLeast(1L)
         val labelHeight = 32f
         val chartHeight = (size.height - labelHeight).coerceAtLeast(1f)

@@ -44,6 +44,7 @@ import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.Transaction
+import com.moneyhistory.app.YearMonth
 import com.moneyhistory.app.ofMonth
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
@@ -58,7 +59,31 @@ fun StatsScreen(
     onBack: () -> Unit
 ) {
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
-    val month by viewModel.month.collectAsStateWithLifecycle()
+    // 月份为统计页本地状态（不与首页共享，返回首页月份不受影响）
+    var month by remember {
+        mutableStateOf(
+            Calendar.getInstance().let {
+                YearMonth(it.get(Calendar.YEAR), it.get(Calendar.MONTH) + 1)
+            }
+        )
+    }
+    val isAtCurrentMonth = remember(month) {
+        val c = Calendar.getInstance()
+        month.year * 12 + month.month >=
+            c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) + 1
+    }
+
+    fun shiftMonth(delta: Int) {
+        val cur = Calendar.getInstance()
+        val curValue = cur.get(Calendar.YEAR) * 12 + cur.get(Calendar.MONTH) + 1
+        val nextValue = month.year * 12 + month.month + delta
+        if (nextValue > curValue) return
+        month = if (nextValue % 12 == 0) {
+            YearMonth(nextValue / 12 - 1, 12)
+        } else {
+            YearMonth(nextValue / 12, nextValue % 12)
+        }
+    }
 
     var tab by remember { mutableIntStateOf(0) } // 0 支出 1 收入
     val currentType =
@@ -159,8 +184,9 @@ fun StatsScreen(
         ) {
             MonthSelector(
                 month = month,
-                onPrev = viewModel::prevMonth,
-                onNext = viewModel::nextMonth
+                onPrev = { shiftMonth(-1) },
+                onNext = { shiftMonth(1) },
+                nextEnabled = !isAtCurrentMonth
             )
 
             TabRow(selectedTabIndex = tab) {

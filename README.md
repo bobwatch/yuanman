@@ -53,6 +53,10 @@
 - No server, no sign-up, no tracking; JSON files in app-private storage with atomic writes and automatic backups
 - Export JSON + CSV; import with merge or overwrite mode
 - Chinese / English UI follows the system language
+- v0.0.2 polish pass: form state survives process death (rememberSaveable),
+  unsaved-input discard confirmation, tappable overview card, back-closes-search,
+  snackbars no longer cover the FAB, withdrawal overdraft guard, density-aware
+  chart labels, refined contrast for light/dark themes
 
 ## Screenshots
 

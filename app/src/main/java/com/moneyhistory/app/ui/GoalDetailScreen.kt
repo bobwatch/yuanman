@@ -277,7 +277,9 @@ fun GoalDetailScreen(
             onConfirm = { cents ->
                 viewModel.deposit(goalId, cents, isWithdraw = true, recordExpense = false)
                 showWithdrawDialog = false
-            }
+            },
+            // 取出不得超过已存金额（SavingsStore 的 clamp 作兜底）
+            maxCents = goal?.savedCents ?: 0L
         )
     }
 

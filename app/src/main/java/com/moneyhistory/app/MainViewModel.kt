@@ -131,7 +131,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun prevMonth() = shiftMonth(-1)
 
-    fun nextMonth() = shiftMonth(1)
+    /** 切到下个月；已是当前月时不允许查看未来月份。 */
+    fun nextMonth() {
+        val cur = currentYearMonth()
+        val m = _month.value
+        if (m.year * 12 + m.month >= cur.year * 12 + cur.month) return
+        shiftMonth(1)
+    }
 
     private fun shiftMonth(delta: Int) {
         val m = _month.value

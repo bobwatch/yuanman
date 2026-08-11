@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,21 +120,31 @@ fun HomeScreen(
     val summaryDismissed by viewModel.settings.summaryDismissedMonth
         .collectAsStateWithLifecycle()
 
-    // 记账/编辑 BottomSheet：editing 为编辑，duplicating 为「再记一笔」预填
-    var sheetOpen by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<Transaction?>(null) }
-    var duplicating by remember { mutableStateOf<Transaction?>(null) }
-    var showGoalSheet by remember { mutableStateOf(false) }
+    // 记账/编辑 BottomSheet：editingId 为编辑，duplicatingId 为「再记一笔」预填
+    // （rememberSaveable + id 引用，进程重建不丢输入现场）
+    var sheetOpen by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var duplicatingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showGoalSheet by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    var searchActive by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var showBudgetDialog by remember { mutableStateOf(false) }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
+
+    val editing = transactions.firstOrNull { it.id == editingId }
+    val duplicating = transactions.firstOrNull { it.id == duplicatingId }
+
+    // 搜索开启时，返回键先关搜索
+    BackHandler(enabled = searchActive) {
+        searchActive = false
+        searchQuery = ""
+    }
 
     // 桌面快捷方式 / Widget「记一笔」直达
     LaunchedEffect(openAddRequest) {
         if (openAddRequest) {
-            editing = null
-            duplicating = null
+            editingId = null
+            duplicatingId = null
             sheetOpen = true
             onAddRequestHandled()
         }
@@ -194,10 +207,24 @@ fun HomeScreen(
 
     val deletedText = stringResource(R.string.home_deleted)
     val undoText = stringResource(R.string.home_undo)
+    val savedText = stringResource(R.string.record_saved)
+
+    // 下月按钮到达当前月后禁用
+    val isAtCurrentMonth = remember(month) {
+        val c = Calendar.getInstance()
+        month.year * 12 + month.month >=
+            c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) + 1
+    }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = {
+                // 避开 FAB 区域，与顶层宿主统一处理
+                SnackbarHost(
+                    snackbarHostState,
+                    modifier = Modifier.padding(bottom = 80.dp)
+                )
+            },
             topBar = {
                 TopAppBar(
                     title = { Text(stringResource(R.string.app_name)) },
@@ -245,8 +272,8 @@ fun HomeScreen(
                 )
                 FloatingActionButton(
                     onClick = {
-                        editing = null
-                        duplicating = null
+                        editingId = null
+                        duplicatingId = null
                         sheetOpen = true
                     },
                     modifier = Modifier.scale(fabScale),
@@ -292,79 +319,101 @@ fun HomeScreen(
                     )
                 }
 
-                // 上月小结卡
-                if (summaryDismissed != summaryKey && lastMonthTransactions.isNotEmpty()) {
-                    MonthSummaryCard(
-                        list = lastMonthTransactions,
-                        onClose = { viewModel.settings.dismissSummary(summaryKey) }
-                    )
-                }
-
-                MonthSelector(
-                    month = month,
-                    onPrev = viewModel::prevMonth,
-                    onNext = viewModel::nextMonth
-                )
-
-                OverviewCard(
-                    expense = monthExpense,
-                    income = monthIncome,
-                    count = monthTransactions.size,
-                    todayExpense = todayStats.first,
-                    todayCount = todayStats.second,
-                    budgetCents = budgetCents,
-                    streak = streak,
-                    onSetBudget = { showBudgetDialog = true }
-                )
-
-                // 攒钱目标区
-                if (goals.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.home_goals_guide),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showGoalSheet = true }
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    )
-                } else {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // 头部（小结卡/月份切换/概览卡/目标区）并入列表，随列表滚动
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 88.dp)
+                ) {
+                    if (summaryDismissed != summaryKey &&
+                        lastMonthTransactions.isNotEmpty()
                     ) {
-                        items(goals, key = { it.id }) { goal ->
-                            GoalCard(goal = goal, onClick = { onNavigateToGoal(goal.id) })
-                        }
-                        item(key = "add_goal") {
-                            AddGoalCard(onClick = { showGoalSheet = true })
+                        item(key = "summary") {
+                            MonthSummaryCard(
+                                list = lastMonthTransactions,
+                                onClose = {
+                                    viewModel.settings.dismissSummary(summaryKey)
+                                }
+                            )
                         }
                     }
-                }
-                Spacer(Modifier.height(4.dp))
 
-                if (filteredTransactions.isEmpty()) {
-                    Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (searchQuery.isNotBlank()) {
-                                stringResource(R.string.home_search_empty, searchQuery)
-                            } else {
-                                stringResource(R.string.home_empty)
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
+                    item(key = "month_selector") {
+                        MonthSelector(
+                            month = month,
+                            onPrev = viewModel::prevMonth,
+                            onNext = viewModel::nextMonth,
+                            nextEnabled = !isAtCurrentMonth
                         )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 88.dp)
-                    ) {
+
+                    item(key = "overview") {
+                        OverviewCard(
+                            expense = monthExpense,
+                            income = monthIncome,
+                            count = monthTransactions.size,
+                            todayExpense = todayStats.first,
+                            todayCount = todayStats.second,
+                            budgetCents = budgetCents,
+                            streak = streak,
+                            onSetBudget = { showBudgetDialog = true },
+                            onClick = onNavigateToStats
+                        )
+                    }
+
+                    item(key = "goals") {
+                        if (goals.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.home_goals_guide),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showGoalSheet = true }
+                                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                            )
+                        } else {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(goals, key = { it.id }) { goal ->
+                                    GoalCard(
+                                        goal = goal,
+                                        onClick = { onNavigateToGoal(goal.id) }
+                                    )
+                                }
+                                item(key = "add_goal") {
+                                    AddGoalCard(onClick = { showGoalSheet = true })
+                                }
+                            }
+                        }
+                    }
+
+                    if (filteredTransactions.isEmpty()) {
+                        item(key = "empty") {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 64.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (searchQuery.isNotBlank()) {
+                                        stringResource(
+                                            R.string.home_search_empty,
+                                            searchQuery
+                                        )
+                                    } else {
+                                        stringResource(R.string.home_empty)
+                                    },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
                         grouped.forEach { (dayKey, dayList) ->
                             item(key = "header_$dayKey") {
                                 DayHeader(dayKey = dayKey, list = dayList)
@@ -387,13 +436,13 @@ fun HomeScreen(
                                             }
                                         },
                                         onClick = {
-                                            editing = t
-                                            duplicating = null
+                                            editingId = t.id
+                                            duplicatingId = null
                                             sheetOpen = true
                                         },
                                         onDuplicate = {
-                                            editing = null
-                                            duplicating = t
+                                            editingId = null
+                                            duplicatingId = t.id
                                             sheetOpen = true
                                         }
                                     )
@@ -414,6 +463,7 @@ fun HomeScreen(
                     onSave = { t ->
                         if (editing == null) viewModel.add(t) else viewModel.update(t)
                         viewModel.onTransactionSaved(t)
+                        viewModel.postMessage(savedText)
                         sheetOpen = false
                     },
                     onAddRecurring = { viewModel.addRecurring(it) }
@@ -514,8 +564,8 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
     }
 }
 
-/** 本月概览卡：支出大数字主视觉 + 收入/笔数 + 今日支出 + 预算进度 + 连续天数。 */
-@OptIn(ExperimentalAnimationApi::class)
+/** 本月概览卡：支出大数字主视觉 + 收入/笔数 + 今日支出 + 预算进度 + 连续天数。整卡可点击进统计页。 */
+@OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun OverviewCard(
     expense: Long,
@@ -525,20 +575,33 @@ private fun OverviewCard(
     todayCount: Int,
     budgetCents: Long,
     streak: Int,
-    onSetBudget: () -> Unit
+    onSetBudget: () -> Unit,
+    onClick: () -> Unit
 ) {
     Card(
+        onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(
-                text = stringResource(R.string.home_overview_expense),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.home_overview_expense),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             AnimatedContent(targetState = expense, label = "expense") { value ->
                 Text(
                     text = MoneyUtils.formatCents(value),

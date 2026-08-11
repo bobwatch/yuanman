@@ -324,4 +324,12 @@
     <!-- widget -->
     <string name="widget_today">今日 %1$s</string>
     <string name="widget_month">本月 %1$s</string>
+
+    <!-- v0.0.2 polish -->
+    <string name="record_saved">已保存</string>
+    <string name="discard_title">放弃当前输入？</string>
+    <string name="discard_message">已输入内容尚未保存，关闭将丢弃。</string>
+    <string name="discard_confirm">放弃</string>
+    <string name="discard_keep">继续编辑</string>
+    <string name="pad_amount_exceeds">超出可取出金额</string>
 </resources>

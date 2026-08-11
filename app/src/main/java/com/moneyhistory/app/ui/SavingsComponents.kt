@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -231,13 +232,13 @@ fun GoalCreateSheet(
     onDismiss: () -> Unit,
     onCreate: (Goal) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var amountError by remember { mutableStateOf(false) }
-    var nameError by remember { mutableStateOf(false) }
-    var emoji by remember { mutableStateOf(goalEmojiCandidates.first()) }
-    var deadlineEnabled by remember { mutableStateOf(false) }
-    var deadlineMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var amount by rememberSaveable { mutableStateOf("") }
+    var amountError by rememberSaveable { mutableStateOf(false) }
+    var nameError by rememberSaveable { mutableStateOf(false) }
+    var emoji by rememberSaveable { mutableStateOf(goalEmojiCandidates.first()) }
+    var deadlineEnabled by rememberSaveable { mutableStateOf(false) }
+    var deadlineMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -366,14 +367,15 @@ fun AmountPadDialog(
     title: String,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit,
+    maxCents: Long? = null,
     extraContent: @Composable () -> Unit = {}
 ) {
-    var segments by remember { mutableStateOf(listOf("")) }
-    var error by remember { mutableStateOf(false) }
+    var segments by rememberSaveable { mutableStateOf(listOf("")) }
+    var errorRes by remember { mutableStateOf<Int?>(null) }
     val liveCents = segments.mapNotNull { MoneyUtils.parseToCents(it) }.sum()
 
     fun onNumKey(key: String) {
-        error = false
+        errorRes = null
         val list = segments.toMutableList()
         val last = list.last()
         when (key) {
@@ -423,10 +425,10 @@ fun AmountPadDialog(
                 extraContent()
                 Spacer(Modifier.height(8.dp))
                 NumPad(onKey = { onNumKey(it) })
-                if (error) {
+                errorRes?.let {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.sheet_amount_error),
+                        text = stringResource(it),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -435,7 +437,12 @@ fun AmountPadDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                if (liveCents <= 0) error = true else onConfirm(liveCents)
+                when {
+                    liveCents <= 0 -> errorRes = R.string.sheet_amount_error
+                    maxCents != null && liveCents > maxCents ->
+                        errorRes = R.string.pad_amount_exceeds
+                    else -> onConfirm(liveCents)
+                }
             }) {
                 Text(stringResource(R.string.common_confirm))
             }
