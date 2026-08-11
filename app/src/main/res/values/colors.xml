@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 窗口底色（Compose 启动/转场期间可见），与 LightBackground 一致 -->
+    <color name="window_background">#FFFFFF</color>
+    <!-- 桌面 Widget 配色（沅满蓝） -->
+    <color name="widget_primary">#2AABEE</color>
+    <color name="widget_background">#FFFFFF</color>
+    <color name="widget_text">#1C2733</color>
+    <color name="widget_text_secondary">#6B7A8A</color>
+</resources>

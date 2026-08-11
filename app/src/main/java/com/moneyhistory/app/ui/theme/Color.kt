@@ -1,0 +1,26 @@
+package com.moneyhistory.app.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// 沅满蓝：设计体系主色
+val YuanmanBlue = Color(0xFF2AABEE)
+val YuanmanBlueDark = Color(0xFF517DA2)
+
+// Light：页面背景微灰，卡片纯白「浮」在上面
+val LightBackground = Color(0xFFF5F7FA)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceVariant = Color(0xFFE4EAF0)
+val LightOnSurface = Color(0xFF1C2733)
+val LightOnSurfaceVariant = Color(0xFF6B7A8A)
+
+// Dark：深灰蓝
+val DarkBackground = Color(0xFF0E1621)
+val DarkSurface = Color(0xFF17212B)
+val DarkSurfaceVariant = Color(0xFF232E3C)
+val DarkOnSurface = Color(0xFFF1F4F8)
+val DarkOnSurfaceVariant = Color(0xFF8FA1B3)
+
+// 语义色：支出红 / 收入绿 / 预算警示橙
+val ExpenseRed = Color(0xFFE53935)
+val IncomeGreen = Color(0xFF34A853)
+val WarningOrange = Color(0xFFFF9800)

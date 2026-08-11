@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_transaction"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_add"
+        android:shortcutLongLabel="@string/shortcut_add">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.moneyhistory.app"
+            android:targetClass="com.moneyhistory.app.MainActivity">
+            <extra
+                android:name="action"
+                android:value="add" />
+        </intent>
+        <categories android:category="android.shortcut.DEFAULT" />
+    </shortcut>
+</shortcuts>

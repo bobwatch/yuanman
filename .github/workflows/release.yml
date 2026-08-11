@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APK_NAME="yuanman-v${VERSION}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "${APK_NAME}"
+          echo "APK_FILE=${APK_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_FILE }}
+          generate_release_notes: true
+          body: |
+            Yuanman ${{ github.ref_name }} — Money, Habits & Mood
+
+            - Two-step recording: keypad amount → tap a category to save
+            - Habits: build/quit tracking with streaks and days-clean counters
+            - Mood: one-tap daily check-in, monthly donut, mood × spending insight
+            - 12 badges with confetti celebrations and a badge wall
+            - Savings goals, home-screen widget, LAN family sync, hand-drawn charts
+            - Bilingual UI (English / 中文) following the system language

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间窗口主题：深色底，防止 Compose 绘制前闪白 -->
+    <style name="Theme.Yuanman" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

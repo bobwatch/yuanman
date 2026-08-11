@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">沅满</string>
+    <string name="shortcut_add">记一笔</string>
+
+    <!-- common -->
+    <string name="common_cancel">取消</string>
+    <string name="common_confirm">确定</string>
+    <string name="common_delete">删除</string>
+    <string name="common_save">保存</string>
+    <string name="common_add">添加</string>
+    <string name="common_create">创建</string>
+    <string name="common_back">返回</string>
+    <string name="date_pattern">yyyy年M月d日</string>
+
+    <!-- bottom tabs -->
+    <string name="tab_record">记账</string>
+    <string name="tab_habits">打卡</string>
+    <string name="tab_mood">心情</string>
+    <string name="tab_mine">我的</string>
+
+    <!-- month selector -->
+    <string name="month_format">%1$d年%2$d月</string>
+    <string name="month_prev">上个月</string>
+    <string name="month_next">下个月</string>
+
+    <!-- home -->
+    <string name="home_search">搜索</string>
+    <string name="home_search_hint">搜索备注或分类</string>
+    <string name="home_search_clear">清空</string>
+    <string name="home_menu">菜单</string>
+    <string name="home_menu_stats">统计</string>
+    <string name="home_add_desc">记一笔</string>
+    <string name="home_empty">📝\n\n本月暂无记录\n点击右下角 + 记一笔</string>
+    <string name="home_search_empty">🔍\n\n没有匹配「%1$s」的记录</string>
+    <string name="home_deleted">已删除</string>
+    <string name="home_undo">撤销</string>
+    <string name="home_overview_expense">本月支出</string>
+    <string name="home_overview_income_count">收入 %1$s · 共 %2$d 笔</string>
+    <string name="home_today">今日已花 %1$s · %2$d 笔</string>
+    <string name="home_budget_used">预算 %1$s · 已用 %2$d%%%3$s</string>
+    <string name="home_budget_over">（已超支）</string>
+    <string name="home_budget_set">设置月度预算 →</string>
+    <string name="home_streak">🔥 已连续记账 %d 天</string>
+    <string name="home_goals_guide">💎 定个小目标，开始攒钱 →</string>
+    <string name="home_day_header">%1$d月%2$d日 %3$s</string>
+    <string name="home_day_sub_expense">支出 %1$s</string>
+    <string name="home_day_sub_income">收入 %1$s</string>
+    <string name="home_item_duplicate">再记一笔</string>
+    <string name="home_item_delete">删除</string>
+    <string name="summary_title">📊 上月小结</string>
+    <string name="summary_totals">总支出 %1$s · 总收入 %2$s</string>
+    <string name="summary_max_single">最大单笔：%1$s %2$s</string>
+    <string name="summary_top_category">最常消费分类：%1$s</string>
+    <string name="summary_close">关闭</string>
+
+    <!-- weekdays -->
+    <string name="weekday_sun">日</string>
+    <string name="weekday_mon">一</string>
+    <string name="weekday_tue">二</string>
+    <string name="weekday_wed">三</string>
+    <string name="weekday_thu">四</string>
+    <string name="weekday_fri">五</string>
+    <string name="weekday_sat">六</string>
+
+    <!-- transaction sheet -->
+    <string name="sheet_title_new">记一笔</string>
+    <string name="sheet_title_edit">编辑记录</string>
+    <string name="sheet_title_duplicate">再记一笔</string>
+    <string name="sheet_amount_error">请输入正确的金额</string>
+    <string name="sheet_type_expense">支出</string>
+    <string name="sheet_type_income">收入</string>
+    <string name="sheet_category">分类</string>
+    <string name="sheet_more">更多选项 ▾</string>
+    <string name="sheet_less">收起 ▴</string>
+    <string name="sheet_note_hint">备注（可选）</string>
+    <string name="sheet_date">日期</string>
+    <string name="sheet_hint_tap_category">输入金额后点击分类即可保存</string>
+    <string name="numpad_plus">＋ 连加</string>
+
+    <!-- recurring -->
+    <string name="recurring_toggle">设为周期账单</string>
+    <string name="recurring_next_due">下次到期</string>
+    <string name="cycle_weekly">每周</string>
+    <string name="cycle_monthly">每月</string>
+    <string name="cycle_yearly">每年</string>
+    <string name="recurring_title">周期账单</string>
+    <string name="recurring_empty">🔁\n\n暂无周期账单\n记账时打开「设为周期账单」即可添加</string>
+    <string name="recurring_row_subtitle">%1$s · 下次到期 %2$s</string>
+    <string name="recurring_delete">删除</string>
+
+    <!-- stats -->
+    <string name="stats_title">统计</string>
+    <string name="stats_donut_expense">支出分类占比</string>
+    <string name="stats_donut_income">收入分类占比</string>
+    <string name="stats_empty_month">该月暂无记录</string>
+    <string name="stats_total_expense">总支出</string>
+    <string name="stats_total_income">总收入</string>
+    <string name="stats_trend_expense">近 6 个月支出趋势</string>
+    <string name="stats_trend_income">近 6 个月收入趋势</string>
+    <string name="stats_daily_expense">本月每日支出走势</string>
+    <string name="stats_daily_income">本月每日收入走势</string>
+    <string name="stats_total_expense_label">支出总额</string>
+    <string name="stats_total_income_label">收入总额</string>
+    <string name="stats_month_short">%d月</string>
+
+    <!-- budget dialog -->
+    <string name="budget_title">月度预算</string>
+    <string name="budget_amount_hint">金额（元）</string>
+    <string name="budget_clear">清除预算</string>
+
+    <!-- savings goals -->
+    <string name="goal_create_title">新建攒钱目标</string>
+    <string name="goal_name_hint">名称（如：旅行基金）</string>
+    <string name="goal_name_error">请输入名称</string>
+    <string name="goal_target_hint">目标金额（元）</string>
+    <string name="goal_emoji_pick">选择一个 emoji</string>
+    <string name="goal_deadline_toggle">目标日期（可选）</string>
+    <string name="goal_deadline_label">目标日期</string>
+    <string name="goal_card_saved">已存 %1$s</string>
+    <string name="goal_card_target">目标 %1$s</string>
+    <string name="goal_prediction_done">已达成 100% 🎉</string>
+    <string name="goal_prediction_percent">已达成 %1$d%%</string>
+    <string name="goal_prediction_date">预计 %1$d月%2$d日 达成</string>
+    <string name="goal_add_card">新建攒钱目标</string>
+    <string name="goal_detail_deadline">目标日期：%1$s</string>
+    <string name="goal_detail_done">🎉 目标已达成，太棒了！</string>
+    <string name="goal_detail_stats">平均每天存 %1$s · 距离目标还差 %2$s，按当前速度预计 %3$d 天</string>
+    <string name="goal_detail_stats_no_rate">平均每天存 %1$s · 距离目标还差 %2$s</string>
+    <string name="goal_deposit">存入</string>
+    <string name="goal_withdraw">取出</string>
+    <string name="goal_history">存入记录</string>
+    <string name="goal_history_empty">还没有存入记录，先存一笔吧</string>
+    <string name="goal_deposit_title">存入「%1$s」</string>
+    <string name="goal_withdraw_title">从「%1$s」取出</string>
+    <string name="goal_record_expense">同时记一笔支出流水（分类：💎 储蓄）</string>
+    <string name="goal_delete_title">删除目标</string>
+    <string name="goal_delete_msg">确定删除「%1$s」吗？存入记录会一并删除，已记的流水不受影响。</string>
+    <string name="milestone_25">🌱 好的开始！目标已攒下 25%</string>
+    <string name="milestone_50">💪 半程达成！目标已攒下 50%</string>
+    <string name="milestone_75">🔥 胜利在望！目标已攒下 75%</string>
+    <string name="milestone_100">🎉 目标达成！太棒了！</string>
+
+    <!-- habits -->
+    <string name="habit_empty">✅\n\n还没有习惯\n点击下方「+ 新习惯」建立一个，\n每天进步一点点</string>
+    <string name="habit_add_new">＋ 新习惯</string>
+    <string name="habit_build_streak">连续 %d 天</string>
+    <string name="habit_checked_today">✓ 已打卡</string>
+    <string name="habit_checkin_today">今天打卡</string>
+    <string name="habit_quit_days_big">%d 天</string>
+    <string name="habit_quit_since">已坚持</string>
+    <string name="habit_relapse">我破了…</string>
+    <string name="habit_relapse_title">记录破戒</string>
+    <string name="habit_relapse_msg">「%1$s」已坚持 %2$d 天。记录破戒后将从今天重新累计。确定吗？</string>
+    <string name="habit_relapse_cancel">再坚持一下</string>
+    <string name="habit_delete_title">删除习惯</string>
+    <string name="habit_delete_msg">确定删除「%1$s」吗？打卡记录会一并删除。</string>
+    <string name="habit_create_title">新建习惯</string>
+    <string name="habit_type_build">培养习惯</string>
+    <string name="habit_type_quit">戒掉习惯</string>
+    <string name="habit_name_hint">习惯名称</string>
+    <string name="habit_name_error">请输入名称</string>
+    <string name="habit_pick_emoji">选择一个 emoji</string>
+
+    <!-- mood -->
+    <string name="mood_today_question">今天感觉怎么样？</string>
+    <string name="mood_great">开心</string>
+    <string name="mood_good">不错</string>
+    <string name="mood_calm">平静</string>
+    <string name="mood_bad">难过</string>
+    <string name="mood_angry">生气</string>
+    <string name="mood_note_toggle">＋ 加一句话…</string>
+    <string name="mood_note_hint">一句话记录今天（可选）</string>
+    <string name="mood_note_save">保存备注</string>
+    <string name="mood_stats_title">本月统计</string>
+    <string name="mood_stats_empty">本月还没有心情记录</string>
+    <string name="mood_angry_days">😠 生气 %d 天</string>
+    <string name="mood_calm_streak">已连续 %d 天没生气</string>
+    <string name="mood_recorded_days">本月已记录 %d 天</string>
+    <string name="mood_grid_title">本月心情</string>
+    <string name="mood_donut_center">生气天数</string>
+    <string name="mood_cross">你生气的那几天平均多花 %1$s——保持好心情，也是省钱 💙</string>
+    <string name="mood_encourage_start">从今天开始记录心情吧，沅满陪你慢慢来 🌱</string>
+    <string name="mood_encourage_calm_month">本月一天气都没生，佛系本佛了 😇</string>
+    <string name="mood_encourage_streak">已经 %d 天没生气啦，继续保持 ✨</string>
+    <string name="mood_encourage_better">本月只生了 %1$d 天气，比上个月少 %2$d 天，越来越稳了 🌿</string>
+    <string name="mood_encourage_hard">最近有点辛苦吧，沅满陪你慢慢来 💙</string>
+    <string name="mood_encourage_stable">此刻心情不错，已经连续 %d 天平稳度过 ☀️</string>
+    <string name="mood_encourage_default">心情有起有落，记录下来就是进步 🌈</string>
+
+    <!-- categories management -->
+    <string name="cats_title">分类管理</string>
+    <string name="cats_add_title">添加自定义分类</string>
+    <string name="cats_name_hint">分类名称</string>
+    <string name="cats_error_empty">请输入分类名称</string>
+    <string name="cats_error_dup">分类已存在</string>
+    <string name="cats_added">已添加</string>
+    <string name="cats_custom">自定义分类</string>
+    <string name="cats_preset_expense">预设支出分类</string>
+    <string name="cats_preset_income">预设收入分类</string>
+
+    <!-- mine -->
+    <string name="mine_title">我的</string>
+    <string name="mine_badges">🏅 勋章墙</string>
+    <string name="mine_badges_sub">已解锁 %1$d / %2$d</string>
+    <string name="mine_section_appearance">外观</string>
+    <string name="mine_section_achievement">成就</string>
+    <string name="mine_dark_mode">深色模式</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="mine_section_record">记账</string>
+    <string name="mine_budget">月度预算</string>
+    <string name="mine_budget_unset">未设置</string>
+    <string name="mine_recurring">周期账单管理</string>
+    <string name="mine_recurring_sub">房租、订阅等自动记账</string>
+    <string name="mine_categories">分类管理</string>
+    <string name="mine_categories_sub">添加自定义分类</string>
+    <string name="mine_section_data">数据</string>
+    <string name="mine_family">家庭同步</string>
+    <string name="mine_family_sub">同一 Wi-Fi 下自动合并账本</string>
+    <string name="mine_export">导出备份</string>
+    <string name="mine_export_sub">JSON + CSV，通过分享保存</string>
+    <string name="mine_import">导入恢复</string>
+    <string name="mine_import_sub">合并导入或覆盖导入</string>
+    <string name="mine_section_about">关于</string>
+    <string name="mine_about_version">版本 %1$s</string>
+    <string name="mine_license">开源协议</string>
+    <string name="mine_feedback">意见反馈</string>
+    <string name="mine_feedback_sub">到 GitHub Issues 提建议或报 Bug</string>
+    <string name="mine_repo">GitHub 仓库</string>
+    <string name="mine_repo_sub">github.com/bobwatch/yuanman</string>
+
+    <!-- import / export -->
+    <string name="import_title">导入恢复</string>
+    <string name="import_message">合并导入：与现有数据按时间合并，不覆盖。\n覆盖导入：替换全部现有数据（现有数据会自动备份）。</string>
+    <string name="import_merge">合并导入</string>
+    <string name="import_overwrite">覆盖导入</string>
+    <string name="import_overwrite_msg">导入将覆盖现有 %1$d 条数据（现有数据会自动备份）。确定继续吗？</string>
+    <string name="import_confirm">确定导入</string>
+    <string name="import_success">导入成功</string>
+    <string name="import_invalid">备份文件格式不正确</string>
+    <string name="import_read_failed">读取文件失败</string>
+    <string name="import_read_failed_reason">读取文件失败：%1$s</string>
+    <string name="import_merged">已合并导入 %d 条记录</string>
+    <string name="export_title">导出备份</string>
+    <string name="export_failed">导出失败：%1$s</string>
+
+    <!-- family sync -->
+    <string name="family_title">家庭同步</string>
+    <string name="family_desc">同一 Wi-Fi 下的家庭设备会自动发现并双向合并账本。数据只在局域网内传输，不经过任何服务器、无需账号。两台设备使用相同配对码即组成家庭组。</string>
+    <string name="family_code_title">本机配对码</string>
+    <string name="family_regenerate">重新生成</string>
+    <string name="family_regenerated">已生成新配对码，旧家庭组将失效</string>
+    <string name="family_join_title">加入家庭</string>
+    <string name="family_join_hint">输入家人的 6 位配对码</string>
+    <string name="family_joined">已加入家庭组，等待自动同步</string>
+    <string name="family_join_invalid">请输入 6 位数字配对码</string>
+    <string name="family_status_title">同步状态</string>
+    <string name="family_sync_now">立即同步</string>
+    <string name="family_no_devices">暂未发现设备</string>
+    <string name="family_device">设备 %1$s</string>
+    <string name="family_connected">已连接</string>
+    <string name="family_discovered">已发现</string>
+    <string name="sync_status_starting">正在启动…</string>
+    <string name="sync_status_idle">未启动</string>
+    <string name="sync_status_discovering">正在发现同一 Wi-Fi 下的家庭设备…</string>
+    <string name="sync_status_failed">启动失败：%1$s</string>
+    <string name="sync_status_stopped">已停止（回到前台自动重新开始）</string>
+    <string name="sync_status_no_peers">未发现家庭设备，请确认双方连接同一 Wi-Fi</string>
+    <string name="sync_status_syncing">正在同步…</string>
+    <string name="sync_status_devices_found">已发现 %d 台家庭设备</string>
+    <string name="sync_status_register_failed">服务注册失败（%d）</string>
+    <string name="sync_status_discovery_failed">设备发现启动失败（%d）</string>
+
+    <!-- view model messages -->
+    <string name="sync_done_new">已与家庭设备同步，新增 %d 条</string>
+    <string name="sync_done_fresh">已与家庭设备同步，数据已是最新</string>
+    <string name="recurring_settled">已自动计入 %d 笔周期账单</string>
+
+    <!-- badges -->
+    <string name="badge_screen_title">勋章墙（%1$d / %2$d）</string>
+    <string name="badge_unlocked">🏅 解锁勋章：%1$s</string>
+    <string name="badge_obtained">获得于 %1$s</string>
+    <string name="badge_cat_record">记账</string>
+    <string name="badge_cat_habit">打卡</string>
+    <string name="badge_cat_mood">心情</string>
+    <string name="badge_first_tx_title">第一笔</string>
+    <string name="badge_first_tx_desc">记下第一笔流水</string>
+    <string name="badge_streak_7_title">记账周</string>
+    <string name="badge_streak_7_desc">连续记账 7 天</string>
+    <string name="badge_streak_30_title">记账月</string>
+    <string name="badge_streak_30_desc">连续记账 30 天</string>
+    <string name="badge_tx_100_title">百笔斩</string>
+    <string name="badge_tx_100_desc">累计记账 100 笔</string>
+    <string name="badge_goal_done_title">沅满罐</string>
+    <string name="badge_goal_done_desc">首个攒钱目标达成</string>
+    <string name="badge_first_checkin_title">说到做到</string>
+    <string name="badge_first_checkin_desc">完成首次打卡</string>
+    <string name="badge_habit_7_title">七分熟</string>
+    <string name="badge_habit_7_desc">单个习惯连续打卡 7 天</string>
+    <string name="badge_habit_21_title">自律者</string>
+    <string name="badge_habit_21_desc">单个习惯连续打卡 21 天</string>
+    <string name="badge_quit_30_title">拒绝诱惑</string>
+    <string name="badge_quit_30_desc">戒断坚持 30 天</string>
+    <string name="badge_first_mood_title">心情画家</string>
+    <string name="badge_first_mood_desc">首次记录心情</string>
+    <string name="badge_mood_7_title">七日晴</string>
+    <string name="badge_mood_7_desc">连续 7 天记录心情</string>
+    <string name="badge_calm_month_title">佛系本月</string>
+    <string name="badge_calm_month_desc">自然月 0 生气且记录 ≥10 天</string>
+
+    <!-- onboarding -->
+    <string name="onboard_1_title">3 秒记一笔</string>
+    <string name="onboard_1_desc">内置数字键盘，金额 → 分类 → 保存\n一气呵成</string>
+    <string name="onboard_2_title">打卡与心情，每天小进步</string>
+    <string name="onboard_2_desc">培养好习惯、戒掉坏习惯\n记录每天的心情，攒下小确幸</string>
+    <string name="onboard_3_title">数据只在你的手机</string>
+    <string name="onboard_3_desc">无服务器、无账号\n数据不出局域网，可随时导出备份</string>
+    <string name="onboard_start">开始记账</string>
+    <string name="onboard_next">下一步</string>
+    <string name="onboard_skip">跳过</string>
+
+    <!-- widget -->
+    <string name="widget_today">今日 %1$s</string>
+    <string name="widget_month">本月 %1$s</string>
+</resources>
