@@ -15,7 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.R
 
 /**
@@ -34,11 +36,11 @@ fun NumPad(
         listOf("7", "8", "9"),
         listOf(".", "0", "⌫")
     )
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         rows.forEach { row ->
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 row.forEach { key ->
                     NumKey(
@@ -49,19 +51,21 @@ fun NumPad(
                 }
             }
         }
+        // 全宽「＋ 连加」：品牌渐变
         Surface(
             onClick = { onKey("+") },
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(56.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = stringResource(R.string.numpad_plus),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
@@ -77,12 +81,17 @@ private fun NumKey(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.height(52.dp)
+        modifier = modifier.height(56.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(text = label, style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium,
+                fontSize = 22.sp
+            )
         }
     }
 }

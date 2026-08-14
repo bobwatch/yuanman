@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.moneyhistory.app.sync.FamilySyncManager
 import com.moneyhistory.app.widget.SpendingWidgetProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -105,6 +106,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Snackbar 提示（同步完成 / 周期账单结算等）。 */
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    /** 在线升级状态（GitHub Releases）。 */
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     /** 当前数据条数（导入覆盖前的确认提示用）。 */
     val count: Int get() = store.all().size
@@ -384,9 +389,65 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- 在线升级 ----------
+
+    @Volatile
+    private var updateChecking = false
+
+    /** 检查 GitHub 最新发布；有新版本且未「稍后再说」时进入 Available。 */
+    fun checkForUpdates() {
+        if (updateChecking) return
+        updateChecking = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val latest = UpdateChecker.checkLatest() ?: return@launch
+                if (!UpdateChecker.isNewer(latest.versionName, BuildConfig.VERSION_NAME)) {
+                    return@launch
+                }
+                if (latest.versionName == settings.updateDismissedVersion.value) {
+                    return@launch
+                }
+                _updateState.value = UpdateState.Available(latest)
+            } finally {
+                updateChecking = false
+            }
+        }
+    }
+
+    /** 用户点「稍后再说」：记住该版本，不再弹窗。 */
+    fun dismissUpdate() {
+        val info = (_updateState.value as? UpdateState.Available)?.info ?: return
+        settings.setUpdateDismissedVersion(info.versionName)
+        _updateState.value = UpdateState.Idle
+    }
+
+    /** 下载并打开安装器。 */
+    fun downloadUpdate() {
+        val info = (_updateState.value as? UpdateState.Available)?.info ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _updateState.value = UpdateState.Downloading
+            val file = UpdateChecker.download(getApplication<Application>(), info.apkUrl)
+            if (file == null) {
+                _updateState.value = UpdateState.Idle
+                _messages.emit(
+                    getApplication<Application>().getString(R.string.update_download_failed)
+                )
+            } else {
+                _updateState.value = UpdateState.Idle
+                try {
+                    UpdateChecker.install(getApplication<Application>(), file)
+                } catch (e: Exception) {
+                    _messages.emit(
+                        getApplication<Application>().getString(R.string.update_install_failed)
+                    )
+                }
+            }
+        }
+    }
+
     // ---------- 生命周期 ----------
 
-    /** 进入前台：启动家庭同步 + 结算到期的周期账单 + 检查勋章。 */
+    /** 进入前台：启动家庭同步 + 结算到期的周期账单 + 检查勋章 + 检查更新。 */
     fun onForeground() {
         syncManager.start()
         val settled = recurringStore.settle(store)
@@ -401,6 +462,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         }
         checkBadges()
+        checkForUpdates()
     }
 
     /** 退后台：停止家庭同步（不做后台常驻）。 */

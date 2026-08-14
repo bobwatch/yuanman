@@ -1,9 +1,7 @@
 package com.moneyhistory.app.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,22 +21,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,6 +68,7 @@ import com.moneyhistory.app.checkedOn
 import com.moneyhistory.app.habitEmojiCandidates
 import com.moneyhistory.app.quitDays
 import com.moneyhistory.app.ui.theme.ExpenseRed
+import com.moneyhistory.app.ui.theme.IncomeGreen
 
 private data class HabitPreset(val emoji: String, val name: String, val type: Habit.Type)
 
@@ -86,7 +85,7 @@ private val habitPresets = listOf(
 )
 
 /** 打卡 Tab：习惯列表 + 虚线「+ 新习惯」入口卡片。 */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HabitScreen(viewModel: MainViewModel) {
     val habits by viewModel.habits.collectAsStateWithLifecycle()
@@ -96,21 +95,17 @@ fun HabitScreen(viewModel: MainViewModel) {
     var deleteTarget by remember { mutableStateOf<Habit?>(null) }
     var resetTarget by remember { mutableStateOf<Habit?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.tab_habits)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                )
-            )
-        }
-    ) { padding ->
+    Column(Modifier.fillMaxSize()) {
+        YuanmanHeader(
+            title = stringResource(R.string.tab_habits),
+            subtitle = stringResource(R.string.habit_header_sub)
+        )
+
         LazyColumn(
             Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(top = 4.dp)
         ) {
             if (habits.isEmpty()) {
                 item(key = "empty") {
@@ -229,8 +224,8 @@ private fun DashedAddCard(onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .dashedBorder(dashColor, 16.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .dashedBorder(dashColor, 20.dp)
+            .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 20.dp),
         contentAlignment = Alignment.Center
@@ -259,7 +254,6 @@ private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp): Modifier =
         )
     }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HabitCard(
     habit: Habit,
@@ -269,63 +263,66 @@ private fun HabitCard(
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    Box {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .combinedClickable(
-                    onClick = { menuOpen = true },
-                    onLongClick = { menuOpen = true }
-                )
-        ) {
+    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (habit.type == Habit.Type.BUILD) {
             val streak = habit.buildStreak(today)
             val checked = habit.checkedOn(today)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
+            Column(Modifier.padding(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = habit.emoji, fontSize = 20.sp)
-                }
-                Spacer(Modifier.size(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = habit.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.habit_build_streak, streak),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                // 打卡按钮：整块右侧大按钮，单手拇指可达
-                if (checked) {
-                    OutlinedButton(
-                        onClick = onCheckin,
-                        modifier = Modifier.heightIn(min = 56.dp)
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (checked) {
+                                    IncomeGreen.copy(alpha = 0.16f)
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(stringResource(R.string.habit_checked_today))
+                        Text(text = habit.emoji, fontSize = 22.sp)
                     }
-                } else {
-                    Button(
-                        onClick = onCheckin,
-                        modifier = Modifier.heightIn(min = 56.dp)
-                    ) {
-                        Text(stringResource(R.string.habit_checkin_today))
+                    Spacer(Modifier.size(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = habit.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.habit_build_streak, streak),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                    // 最近 7 天小圆点（打卡日实心）
+                    LastSevenDots(
+                        habit = habit,
+                        today = today,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    // 打卡按钮：整块右侧大按钮，单手拇指可达
+                    if (checked) {
+                        OutlinedButton(
+                            onClick = onCheckin,
+                            modifier = Modifier.heightIn(min = 52.dp)
+                        ) {
+                            Text(stringResource(R.string.habit_checked_today))
+                        }
+                    } else {
+                        Button(
+                            onClick = onCheckin,
+                            modifier = Modifier.heightIn(min = 52.dp)
+                        ) {
+                            Text(stringResource(R.string.habit_checkin_today))
+                        }
+                    }
+                    HabitMenuButton(onOpen = { menuOpen = true })
                 }
             }
         } else {
@@ -338,12 +335,12 @@ private fun HabitCard(
             ) {
                 Box(
                     Modifier
-                        .size(44.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = habit.emoji, fontSize = 20.sp)
+                    Text(text = habit.emoji, fontSize = 22.sp)
                 }
                 Spacer(Modifier.size(12.dp))
                 Column(Modifier.weight(1f)) {
@@ -372,20 +369,59 @@ private fun HabitCard(
                         Text(stringResource(R.string.habit_relapse))
                     }
                 }
+                HabitMenuButton(onOpen = { menuOpen = true })
             }
         }
-        }
-        // 单击/长按卡片弹出操作菜单
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.habit_delete_title)) },
-                onClick = {
-                    menuOpen = false
-                    onDelete()
-                }
+    }
+
+    DropdownMenu(
+        expanded = menuOpen,
+        onDismissRequest = { menuOpen = false }
+    ) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.habit_delete_title)) },
+            onClick = {
+                menuOpen = false
+                onDelete()
+            }
+        )
+    }
+}
+
+/** 卡片右上角「⋯」操作按钮。 */
+@Composable
+private fun HabitMenuButton(onOpen: () -> Unit) {
+    IconButton(onClick = onOpen) {
+        Icon(
+            Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.home_menu),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** 最近 7 天打卡小圆点：7 个小圆，打卡日实心主色，未打卡浅灰。 */
+@Composable
+private fun LastSevenDots(
+    habit: Habit,
+    today: String,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        (6 downTo 0).forEach { back ->
+            val day = DateUtils.addDays(today, -back)
+            val checked = habit.checkedOn(day)
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (checked) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        }
+                    )
             )
         }
     }

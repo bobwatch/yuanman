@@ -13,21 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -53,7 +44,6 @@ import java.util.Calendar
 import java.util.Locale
 
 /** 统计页：支出/收入 Tab + 分类环形图 + 近 6 个月趋势 + 本月每日走势。 */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(
     viewModel: MainViewModel,
@@ -158,29 +148,16 @@ fun StatsScreen(
         listOf(1, 5, 10, 15, 20, 25, 30).filter { it <= dailyValues.size }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.stats_title)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back)
-                        )
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    Column(Modifier.fillMaxSize()) {
+        SubPageHeader(
+            title = stringResource(R.string.stats_title),
+            onBack = onBack
+        )
+
         Column(
             Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
             MonthSelector(
@@ -190,7 +167,18 @@ fun StatsScreen(
                 nextEnabled = !isAtCurrentMonth
             )
 
-            TabRow(selectedTabIndex = tab) {
+            TabRow(
+                selectedTabIndex = tab,
+                containerColor = MaterialTheme.colorScheme.background,
+                indicator = { _ ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .padding(horizontal = 48.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            ) {
                 Tab(
                     selected = tab == 0,
                     onClick = { tab = 0 },
@@ -203,13 +191,45 @@ fun StatsScreen(
                 )
             }
 
+            // 顶部汇总
+            AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.stats_total_expense_label),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = MoneyUtils.formatCents(totalExpense),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ExpenseRed
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.stats_total_income_label),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = MoneyUtils.formatCents(totalIncome),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = IncomeGreen
+                        )
+                    }
+                }
+            }
+
             // 分类占比环形图
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
+            AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(
@@ -288,12 +308,7 @@ fun StatsScreen(
             }
 
             // 近 6 个月趋势
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
+            AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(
@@ -317,12 +332,7 @@ fun StatsScreen(
             }
 
             // 本月每日走势
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
+            AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(
@@ -343,48 +353,6 @@ fun StatsScreen(
                             .fillMaxWidth()
                             .height(160.dp)
                     )
-                }
-            }
-
-            // 顶部汇总
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stringResource(R.string.stats_total_expense_label),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = MoneyUtils.formatCents(totalExpense),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ExpenseRed
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stringResource(R.string.stats_total_income_label),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = MoneyUtils.formatCents(totalIncome),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = IncomeGreen
-                        )
-                    }
                 }
             }
 

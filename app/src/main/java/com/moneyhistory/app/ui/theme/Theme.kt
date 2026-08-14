@@ -2,7 +2,9 @@ package com.moneyhistory.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -10,6 +12,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 private val LightColors = lightColorScheme(
@@ -50,6 +53,13 @@ private val DarkColors = darkColorScheme(
     surfaceContainerHighest = DarkSurfaceVariant
 )
 
+// 全局圆角体系：大卡 20dp / 中卡 16dp / 控件 12dp，各页统一
+private val AppShapes = Shapes(
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp)
+)
+
 /** 沅满蓝 Material 3 主题。 */
 @Composable
 fun YuanmanTheme(
@@ -62,11 +72,15 @@ fun YuanmanTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
-                !darkTheme
+            // 页头统一为品牌渐变，状态栏与渐变顶部同色融合
+            window.statusBarColor = YuanmanGradientTop.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    MaterialTheme(
+        colorScheme = colorScheme,
+        shapes = AppShapes,
+        content = content
+    )
 }

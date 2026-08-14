@@ -59,6 +59,16 @@ class SettingsStore private constructor(context: Context) {
     private val _badgeUnlocks = MutableStateFlow(loadBadgeUnlocks())
     val badgeUnlocks: StateFlow<Map<String, String>> = _badgeUnlocks.asStateFlow()
 
+    /** 用户点「稍后再说」的升级版本号；同版本不再弹窗。 */
+    private val _updateDismissedVersion =
+        MutableStateFlow(prefs.getString(KEY_UPDATE_DISMISSED, "") ?: "")
+    val updateDismissedVersion: StateFlow<String> = _updateDismissedVersion.asStateFlow()
+
+    fun setUpdateDismissedVersion(version: String) {
+        _updateDismissedVersion.value = version
+        prefs.edit().putString(KEY_UPDATE_DISMISSED, version).apply()
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString(KEY_THEME, mode.json).apply()
@@ -133,6 +143,7 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_RECENT_EXPENSE_CATS = "recent_expense_categories"
         private const val KEY_RECENT_INCOME_CATS = "recent_income_categories"
         private const val KEY_BADGES = "badge_unlocks"
+        private const val KEY_UPDATE_DISMISSED = "update_dismissed_version"
         private const val MAX_RECENT = 5
 
         @Volatile

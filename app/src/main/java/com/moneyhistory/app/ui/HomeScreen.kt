@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -32,8 +33,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -51,8 +51,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MainViewModel
@@ -217,276 +216,384 @@ fun HomeScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            snackbarHost = {
-                // 避开 FAB 区域，与顶层宿主统一处理
-                SnackbarHost(
-                    snackbarHostState,
-                    modifier = Modifier.padding(bottom = 80.dp)
-                )
-            },
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.app_name)) },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.primary
-                    ),
-                    actions = {
-                        IconButton(onClick = {
-                            searchActive = !searchActive
-                            if (!searchActive) searchQuery = ""
-                        }) {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription = stringResource(R.string.home_search)
-                            )
-                        }
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(
-                                Icons.Filled.MoreVert,
-                                contentDescription = stringResource(R.string.home_menu)
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = menuOpen,
-                            onDismissRequest = { menuOpen = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_stats)) },
-                                onClick = {
-                                    menuOpen = false
-                                    onNavigateToStats()
-                                }
-                            )
-                        }
-                    }
-                )
-            },
-            floatingActionButton = {
-                val interactionSource = remember { MutableInteractionSource() }
-                val pressed by interactionSource.collectIsPressedAsState()
-                val fabScale by animateFloatAsState(
-                    targetValue = if (pressed) 0.88f else 1f,
-                    label = "fabScale"
-                )
-                FloatingActionButton(
-                    onClick = {
-                        editingId = null
-                        duplicatingId = null
-                        sheetOpen = true
+        Column(Modifier.fillMaxSize()) {
+            HomeHeader(
+                month = month,
+                onPrev = viewModel::prevMonth,
+                onNext = viewModel::nextMonth,
+                nextEnabled = !isAtCurrentMonth,
+                expense = monthExpense,
+                income = monthIncome,
+                todayExpense = todayStats.first,
+                todayCount = todayStats.second,
+                streak = streak,
+                onSearch = {
+                    searchActive = !searchActive
+                    if (!searchActive) searchQuery = ""
+                },
+                onMenu = { menuOpen = true },
+                menuOpen = menuOpen,
+                onDismissMenu = { menuOpen = false },
+                onOpenStats = onNavigateToStats
+            )
+
+            if (searchActive) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.home_search_hint)) },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = null)
                     },
-                    modifier = Modifier.scale(fabScale),
-                    interactionSource = interactionSource,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = stringResource(R.string.home_add_desc)
-                    )
-                }
-            }
-        ) { padding ->
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                if (searchActive) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text(stringResource(R.string.home_search_hint)) },
-                        singleLine = true,
-                        leadingIcon = {
-                            Icon(Icons.Filled.Search, contentDescription = null)
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription =
-                                            stringResource(R.string.home_search_clear)
-                                    )
-                                }
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription =
+                                        stringResource(R.string.home_search_clear)
+                                )
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(bottom = 96.dp)
+            ) {
+                if (summaryDismissed != summaryKey &&
+                    lastMonthTransactions.isNotEmpty()
+                ) {
+                    item(key = "summary") {
+                        MonthSummaryCard(
+                            list = lastMonthTransactions,
+                            onClose = {
+                                viewModel.settings.dismissSummary(summaryKey)
+                            }
+                        )
+                    }
+                }
+
+                item(key = "budget") {
+                    BudgetCard(
+                        expense = monthExpense,
+                        budgetCents = budgetCents,
+                        onSetBudget = { showBudgetDialog = true }
                     )
                 }
 
-                // 头部（小结卡/月份切换/概览卡/目标区）并入列表，随列表滚动
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 88.dp)
-                ) {
-                    if (summaryDismissed != summaryKey &&
-                        lastMonthTransactions.isNotEmpty()
-                    ) {
-                        item(key = "summary") {
-                            MonthSummaryCard(
-                                list = lastMonthTransactions,
-                                onClose = {
-                                    viewModel.settings.dismissSummary(summaryKey)
-                                }
-                            )
-                        }
-                    }
-
-                    item(key = "month_selector") {
-                        MonthSelector(
-                            month = month,
-                            onPrev = viewModel::prevMonth,
-                            onNext = viewModel::nextMonth,
-                            nextEnabled = !isAtCurrentMonth
-                        )
-                    }
-
-                    item(key = "overview") {
-                        OverviewCard(
-                            expense = monthExpense,
-                            income = monthIncome,
-                            count = monthTransactions.size,
-                            todayExpense = todayStats.first,
-                            todayCount = todayStats.second,
-                            budgetCents = budgetCents,
-                            streak = streak,
-                            onSetBudget = { showBudgetDialog = true },
-                            onClick = onNavigateToStats
-                        )
-                    }
-
-                    item(key = "goals") {
-                        if (goals.isEmpty()) {
+                item(key = "goals") {
+                    if (goals.isEmpty()) {
+                        AppCard(
+                            onClick = { showGoalSheet = true },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
                             Text(
                                 text = stringResource(R.string.home_goals_guide),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { showGoalSheet = true }
-                                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(16.dp)
                             )
-                        } else {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(goals, key = { it.id }) { goal ->
-                                    GoalCard(
-                                        goal = goal,
-                                        onClick = { onNavigateToGoal(goal.id) }
-                                    )
-                                }
-                                item(key = "add_goal") {
-                                    AddGoalCard(onClick = { showGoalSheet = true })
-                                }
+                        }
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(goals, key = { it.id }) { goal ->
+                                GoalCard(
+                                    goal = goal,
+                                    onClick = { onNavigateToGoal(goal.id) }
+                                )
+                            }
+                            item(key = "add_goal") {
+                                AddGoalCard(onClick = { showGoalSheet = true })
                             }
                         }
                     }
+                }
 
-                    if (filteredTransactions.isEmpty()) {
-                        item(key = "empty") {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 64.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = if (searchQuery.isNotBlank()) {
-                                        stringResource(
-                                            R.string.home_search_empty,
-                                            searchQuery
-                                        )
-                                    } else {
-                                        stringResource(R.string.home_empty)
-                                    },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        grouped.forEach { (dayKey, dayList) ->
-                            item(key = "header_$dayKey") {
-                                DayHeader(dayKey = dayKey, list = dayList)
-                            }
-                            items(dayList, key = { it.id }) { t ->
-                                Box(Modifier.animateItemPlacement()) {
-                                    SwipeToDismissItem(
-                                        t = t,
-                                        onDelete = {
-                                            viewModel.delete(t.id)
-                                            scope.launch {
-                                                val result = snackbarHostState
-                                                    .showSnackbar(
-                                                        message = deletedText,
-                                                        actionLabel = undoText
-                                                    )
-                                                if (result == SnackbarResult.ActionPerformed) {
-                                                    viewModel.restore(t)
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            editingId = t.id
-                                            duplicatingId = null
-                                            sheetOpen = true
-                                        },
-                                        onDuplicate = {
-                                            editingId = null
-                                            duplicatingId = t.id
-                                            sheetOpen = true
-                                        }
+                if (filteredTransactions.isEmpty()) {
+                    item(key = "empty") {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (searchQuery.isNotBlank()) {
+                                    stringResource(
+                                        R.string.home_search_empty,
+                                        searchQuery
                                     )
-                                }
+                                } else {
+                                    stringResource(R.string.home_empty)
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    grouped.forEach { (dayKey, dayList) ->
+                        item(key = "header_$dayKey") {
+                            DayHeader(dayKey = dayKey, list = dayList)
+                        }
+                        items(dayList, key = { it.id }) { t ->
+                            Box(Modifier.animateItemPlacement()) {
+                                SwipeToDismissItem(
+                                    t = t,
+                                    onDelete = {
+                                        viewModel.delete(t.id)
+                                        scope.launch {
+                                            val result = snackbarHostState
+                                                .showSnackbar(
+                                                    message = deletedText,
+                                                    actionLabel = undoText
+                                                )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                viewModel.restore(t)
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        editingId = t.id
+                                        duplicatingId = null
+                                        sheetOpen = true
+                                    },
+                                    onDuplicate = {
+                                        editingId = null
+                                        duplicatingId = t.id
+                                        sheetOpen = true
+                                    }
+                                )
                             }
                         }
                     }
                 }
             }
+        }
 
-            if (sheetOpen) {
-                TransactionSheet(
-                    initial = editing,
-                    prefill = duplicating,
-                    expenseCategories = expenseCategories,
-                    incomeCategories = incomeCategories,
-                    onDismiss = { sheetOpen = false },
-                    onSave = { t ->
-                        if (editing == null) viewModel.add(t) else viewModel.update(t)
-                        viewModel.onTransactionSaved(t)
-                        viewModel.postMessage(savedText)
-                        sheetOpen = false
-                    },
-                    onAddRecurring = { viewModel.addRecurring(it) }
+        // 顶部菜单已并入页头（HomeHeader），此处仅保留 FAB
+        // FAB：记一笔
+        val interactionSource = remember { MutableInteractionSource() }
+        val pressed by interactionSource.collectIsPressedAsState()
+        val fabScale by animateFloatAsState(
+            targetValue = if (pressed) 0.88f else 1f,
+            label = "fabScale"
+        )
+        FloatingActionButton(
+            onClick = {
+                editingId = null
+                duplicatingId = null
+                sheetOpen = true
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+                .scale(fabScale),
+            interactionSource = interactionSource,
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = stringResource(R.string.home_add_desc)
+            )
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
+        )
+
+        if (sheetOpen) {
+            TransactionSheet(
+                initial = editing,
+                prefill = duplicating,
+                expenseCategories = expenseCategories,
+                incomeCategories = incomeCategories,
+                onDismiss = { sheetOpen = false },
+                onSave = { t ->
+                    if (editing == null) viewModel.add(t) else viewModel.update(t)
+                    viewModel.onTransactionSaved(t)
+                    viewModel.postMessage(savedText)
+                    sheetOpen = false
+                },
+                onAddRecurring = { viewModel.addRecurring(it) }
+            )
+        }
+
+        if (showGoalSheet) {
+            GoalCreateSheet(
+                onDismiss = { showGoalSheet = false },
+                onCreate = { viewModel.addGoal(it) }
+            )
+        }
+
+        if (showBudgetDialog) {
+            BudgetDialog(
+                currentCents = budgetCents,
+                onDismiss = { showBudgetDialog = false },
+                onSave = { viewModel.settings.setBudgetCents(it) }
+            )
+        }
+
+        SuccessOverlay(trigger = successNonce)
+    }
+}
+
+/** 品牌蓝渐变大页头：标题 + 月份切换 + 本月支出大数字 + 快速指标。 */
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun HomeHeader(
+    month: YearMonth,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    nextEnabled: Boolean,
+    expense: Long,
+    income: Long,
+    todayExpense: Long,
+    todayCount: Int,
+    streak: Int,
+    onSearch: () -> Unit,
+    onMenu: () -> Unit,
+    menuOpen: Boolean,
+    onDismissMenu: () -> Unit,
+    onOpenStats: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+            .background(brandHeaderBrush())
+            .statusBarsPadding()
+    ) {
+        Row(
+            Modifier.padding(start = 20.dp, end = 6.dp, top = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onSearch) {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = stringResource(R.string.home_search),
+                    tint = Color.White
                 )
             }
-
-            if (showGoalSheet) {
-                GoalCreateSheet(
-                    onDismiss = { showGoalSheet = false },
-                    onCreate = { viewModel.addGoal(it) }
-                )
+            Box {
+                IconButton(onClick = onMenu) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.home_menu),
+                        tint = Color.White
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = onDismissMenu
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.home_menu_stats)) },
+                        onClick = {
+                            onDismissMenu()
+                            onOpenStats()
+                        }
+                    )
+                }
             }
+        }
 
-            if (showBudgetDialog) {
-                BudgetDialog(
-                    currentCents = budgetCents,
-                    onDismiss = { showBudgetDialog = false },
-                    onSave = { viewModel.settings.setBudgetCents(it) }
+        MonthSelector(
+            month = month,
+            onPrev = onPrev,
+            onNext = onNext,
+            nextEnabled = nextEnabled,
+            contentColor = Color.White
+        )
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenStats)
+                .padding(horizontal = 20.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.home_overview_expense),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            AnimatedContent(targetState = expense, label = "headerExpense") { value ->
+                Text(
+                    text = MoneyUtils.formatCents(value),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
             }
         }
 
-        SuccessOverlay(trigger = successNonce)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            QuickStat(
+                label = stringResource(R.string.home_header_income),
+                value = MoneyUtils.formatCents(income),
+                modifier = Modifier.weight(1f)
+            )
+            QuickStat(
+                label = stringResource(R.string.home_header_today),
+                value = MoneyUtils.formatCents(todayExpense) +
+                    if (todayCount > 0) " · $todayCount" else "",
+                modifier = Modifier.weight(1f)
+            )
+            QuickStat(
+                label = stringResource(R.string.home_header_streak),
+                value = stringResource(R.string.home_header_streak_short, streak),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** 渐变大页头上的小指标列。 */
+@Composable
+private fun QuickStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.7f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -512,12 +619,7 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
         .maxByOrNull { it.value.size }
         ?.key
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-    ) {
+    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -564,74 +666,32 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
     }
 }
 
-/** 本月概览卡：支出大数字主视觉 + 收入/笔数 + 今日支出 + 预算进度 + 连续天数。整卡可点击进统计页。 */
-@OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3Api::class)
+/** 月度预算卡：进度条 + 使用比例；未设置时提供入口。 */
 @Composable
-private fun OverviewCard(
+private fun BudgetCard(
     expense: Long,
-    income: Long,
-    count: Int,
-    todayExpense: Long,
-    todayCount: Int,
     budgetCents: Long,
-    streak: Int,
-    onSetBudget: () -> Unit,
-    onClick: () -> Unit
+    onSetBudget: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
+    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         Column(Modifier.padding(16.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.home_overview_expense),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            AnimatedContent(targetState = expense, label = "expense") { value ->
-                Text(
-                    text = MoneyUtils.formatCents(value),
-                    style = MaterialTheme.typography.displaySmall,
+                    text = stringResource(R.string.budget_title),
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = ExpenseRed
+                    modifier = Modifier.weight(1f)
                 )
+                if (budgetCents > 0) {
+                    Text(
+                        text = MoneyUtils.formatCents(budgetCents),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(
-                    R.string.home_overview_income_count,
-                    MoneyUtils.formatCents(income),
-                    count
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = stringResource(
-                    R.string.home_today,
-                    MoneyUtils.formatCents(todayExpense),
-                    todayCount
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(12.dp))
             if (budgetCents > 0) {
+                Spacer(Modifier.height(12.dp))
                 val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
                 val overBudget = expense > budgetCents
                 val progressColor = when {
@@ -642,9 +702,10 @@ private fun OverviewCard(
                 LinearProgressIndicator(
                     progress = { fraction },
                     modifier = Modifier.fillMaxWidth(),
-                    color = progressColor
+                    color = progressColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
                     text = stringResource(
                         R.string.home_budget_used,
@@ -664,18 +725,10 @@ private fun OverviewCard(
                     }
                 )
             } else {
+                Spacer(Modifier.height(4.dp))
                 TextButton(onClick = onSetBudget) {
                     Text(stringResource(R.string.home_budget_set))
                 }
-            }
-
-            if (streak > 0) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.home_streak, streak),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
@@ -723,7 +776,7 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -768,7 +821,7 @@ private fun SwipeToDismissItem(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(20.dp))
                     .background(ExpenseRed)
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd
@@ -803,33 +856,49 @@ private fun TransactionRow(
     var menuOpen by remember { mutableStateOf(false) }
     Box {
         Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.combinedClickable(
-                onClick = onClick,
-                onLongClick = { menuOpen = true }
-            )
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .pressScale()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuOpen = true }
+                )
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 分类 emoji 圆形浅底色块
                 Box(
                     Modifier
-                        .size(40.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .background(
+                            if (isExpense) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                IncomeGreen.copy(alpha = 0.14f)
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = Categories.emojiOf(t.category))
+                    Text(text = Categories.emojiOf(t.category), fontSize = 20.sp)
                 }
                 Spacer(Modifier.size(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = Categories.nameOf(t.category),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (t.note.isNotEmpty()) {
                         Text(

@@ -2,22 +2,38 @@ package com.moneyhistory.app.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.with
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +52,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,13 +66,15 @@ import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
 import com.moneyhistory.app.YearMonth
+import com.moneyhistory.app.ui.theme.YuanmanGradientBottom
+import com.moneyhistory.app.ui.theme.YuanmanGradientTop
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** 月份切换条（‹ 2026年8月 ›），月份文字带滑动动画。 */
+/** 月份切换条（‹ 2026年8月 ›），月份文字带滑动动画。[contentColor] 默认跟随主题。 */
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun MonthSelector(
@@ -58,7 +82,8 @@ fun MonthSelector(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
-    nextEnabled: Boolean = true
+    nextEnabled: Boolean = true,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -68,7 +93,8 @@ fun MonthSelector(
         IconButton(onClick = onPrev) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = stringResource(R.string.month_prev)
+                contentDescription = stringResource(R.string.month_prev),
+                tint = contentColor
             )
         }
         AnimatedContent(
@@ -90,13 +116,15 @@ fun MonthSelector(
             Text(
                 text = stringResource(R.string.month_format, m.year, m.month),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = contentColor
             )
         }
         IconButton(onClick = onNext, enabled = nextEnabled) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = stringResource(R.string.month_next)
+                contentDescription = stringResource(R.string.month_next),
+                tint = contentColor
             )
         }
     }
@@ -246,4 +274,158 @@ internal fun applyUtcDate(utcMillis: Long, baseMillis: Long): Long {
     cal.set(Calendar.MONTH, utc.get(Calendar.MONTH))
     cal.set(Calendar.DAY_OF_MONTH, utc.get(Calendar.DAY_OF_MONTH))
     return cal.timeInMillis
+}
+
+// ---------- 全局设计组件 ----------
+
+/** 品牌蓝渐变（页头自上而下压深）。 */
+@Composable
+fun brandHeaderBrush(): Brush =
+    Brush.verticalGradient(listOf(YuanmanGradientTop, YuanmanGradientBottom))
+
+/** 按压缩放微反馈：点击类卡片统一用它获得「按下缩小」的触感。
+ *  用 pointerInput 监听按下/抬起，不消费事件，不影响链路里的 clickable。 */
+fun Modifier.pressScale(pressedScale: Float = 0.96f): Modifier = composed {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        label = "pressScale"
+    )
+    this
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown()
+                pressed = true
+                waitForUpOrCancellation()
+                pressed = false
+            }
+        }
+        .scale(scale)
+}
+
+/** 统一卡片：品牌蓝圆角 + 纯色面（surface），带可选点击。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    if (onClick != null) {
+        val cardModifier = modifier
+            .fillMaxWidth()
+            .pressScale()
+        Card(
+            onClick = onClick,
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = cardModifier
+        ) { content() }
+    } else {
+        Card(
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = modifier.fillMaxWidth()
+        ) { content() }
+    }
+}
+
+/** 分区标题（用于列表分组，与卡片同宽对齐）。 */
+@Composable
+fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+    )
+}
+
+/** 一级页头（Tab 页）：品牌蓝渐变 + 状态栏融合 + 圆角收底。 */
+@Composable
+fun YuanmanHeader(
+    title: String,
+    subtitle: String? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
+            .background(brandHeaderBrush())
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp, bottom = 18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
+            actions()
+        }
+        subtitle?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+/** 二级页头（子页面）：返回箭头 + 标题 + 可选操作。 */
+@Composable
+fun SubPageHeader(
+    title: String,
+    subtitle: String? = null,
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
+            .background(brandHeaderBrush())
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp)
+            .padding(top = 4.dp, bottom = 16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.common_back),
+                    tint = Color.White
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+            }
+            actions()
+        }
+    }
 }

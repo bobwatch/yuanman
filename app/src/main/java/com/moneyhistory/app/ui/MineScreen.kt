@@ -4,8 +4,10 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,22 +15,33 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +49,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -103,28 +118,28 @@ fun MineScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.mine_title)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                )
+    Column(Modifier.fillMaxSize()) {
+        YuanmanHeader(
+            title = stringResource(R.string.mine_title),
+            subtitle = stringResource(
+                R.string.mine_badges_sub,
+                badgeUnlocks.size,
+                allBadges.size
             )
-        }
-    ) { padding ->
+        )
+
         Column(
             Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 勋章墙
             SettingsCard(title = stringResource(R.string.mine_section_achievement)) {
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Star,
                     title = stringResource(R.string.mine_badges),
                     subtitle = stringResource(
                         R.string.mine_badges_sub,
@@ -137,12 +152,11 @@ fun MineScreen(
 
             // 外观
             SettingsCard(title = stringResource(R.string.mine_section_appearance)) {
-                Text(
-                    text = stringResource(R.string.mine_dark_mode),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                SettingRow(
+                    icon = Icons.Filled.Settings,
+                    title = stringResource(R.string.mine_dark_mode)
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = themeMode == ThemeMode.SYSTEM,
@@ -164,7 +178,8 @@ fun MineScreen(
 
             // 记账
             SettingsCard(title = stringResource(R.string.mine_section_record)) {
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.ShoppingCart,
                     title = stringResource(R.string.mine_budget),
                     subtitle = if (budgetCents > 0) {
                         MoneyUtils.formatCents(budgetCents)
@@ -173,12 +188,14 @@ fun MineScreen(
                     },
                     onClick = { showBudgetDialog = true }
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Refresh,
                     title = stringResource(R.string.mine_recurring),
                     subtitle = stringResource(R.string.mine_recurring_sub),
                     onClick = onNavigateToRecurring
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.AutoMirrored.Filled.List,
                     title = stringResource(R.string.mine_categories),
                     subtitle = stringResource(R.string.mine_categories_sub),
                     onClick = onNavigateToCategories
@@ -187,12 +204,14 @@ fun MineScreen(
 
             // 数据
             SettingsCard(title = stringResource(R.string.mine_section_data)) {
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Person,
                     title = stringResource(R.string.mine_family),
                     subtitle = stringResource(R.string.mine_family_sub),
                     onClick = onNavigateToFamily
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Share,
                     title = stringResource(R.string.mine_export),
                     subtitle = stringResource(R.string.mine_export_sub),
                     onClick = {
@@ -201,7 +220,8 @@ fun MineScreen(
                         }
                     }
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Add,
                     title = stringResource(R.string.mine_import),
                     subtitle = stringResource(R.string.mine_import_sub),
                     onClick = { showImportChooser = true }
@@ -210,18 +230,21 @@ fun MineScreen(
 
             // 关于
             SettingsCard(title = stringResource(R.string.mine_section_about)) {
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Info,
                     title = stringResource(R.string.app_name),
                     subtitle = stringResource(
                         R.string.mine_about_version,
                         BuildConfig.VERSION_NAME
                     )
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Favorite,
                     title = stringResource(R.string.mine_license),
                     subtitle = "MIT License"
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Email,
                     title = stringResource(R.string.mine_feedback),
                     subtitle = stringResource(R.string.mine_feedback_sub),
                     onClick = {
@@ -235,7 +258,8 @@ fun MineScreen(
                         )
                     }
                 )
-                SettingsRow(
+                SettingRow(
+                    icon = Icons.Filled.Home,
                     title = stringResource(R.string.mine_repo),
                     subtitle = stringResource(R.string.mine_repo_sub),
                     onClick = {
@@ -249,73 +273,73 @@ fun MineScreen(
                 )
             }
         }
+    }
 
-        if (showBudgetDialog) {
-            BudgetDialog(
-                currentCents = budgetCents,
-                onDismiss = { showBudgetDialog = false },
-                onSave = { viewModel.settings.setBudgetCents(it) }
-            )
-        }
+    if (showBudgetDialog) {
+        BudgetDialog(
+            currentCents = budgetCents,
+            onDismiss = { showBudgetDialog = false },
+            onSave = { viewModel.settings.setBudgetCents(it) }
+        )
+    }
 
-        if (showImportChooser) {
-            AlertDialog(
-                onDismissRequest = { showImportChooser = false },
-                title = { Text(stringResource(R.string.import_title)) },
-                text = { Text(stringResource(R.string.import_message)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showImportChooser = false
-                        importMergeMode = true
-                        importLauncher.launch(
-                            arrayOf("application/json", "text/*", "application/octet-stream")
-                        )
-                    }) {
-                        Text(stringResource(R.string.import_merge))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        showImportChooser = false
-                        importMergeMode = false
-                        importLauncher.launch(
-                            arrayOf("application/json", "text/*", "application/octet-stream")
-                        )
-                    }) {
-                        Text(stringResource(R.string.import_overwrite))
-                    }
-                }
-            )
-        }
-
-        pendingImport?.let { content ->
-            AlertDialog(
-                onDismissRequest = { pendingImport = null },
-                title = { Text(stringResource(R.string.import_overwrite)) },
-                text = {
-                    Text(
-                        stringResource(
-                            R.string.import_overwrite_msg,
-                            viewModel.count
-                        )
+    if (showImportChooser) {
+        AlertDialog(
+            onDismissRequest = { showImportChooser = false },
+            title = { Text(stringResource(R.string.import_title)) },
+            text = { Text(stringResource(R.string.import_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showImportChooser = false
+                    importMergeMode = true
+                    importLauncher.launch(
+                        arrayOf("application/json", "text/*", "application/octet-stream")
                     )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        pendingImport = null
-                        val ok = viewModel.importJson(content)
-                        viewModel.postMessage(if (ok) successText else invalidText)
-                    }) {
-                        Text(stringResource(R.string.import_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingImport = null }) {
-                        Text(stringResource(R.string.common_cancel))
-                    }
+                }) {
+                    Text(stringResource(R.string.import_merge))
                 }
-            )
-        }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showImportChooser = false
+                    importMergeMode = false
+                    importLauncher.launch(
+                        arrayOf("application/json", "text/*", "application/octet-stream")
+                    )
+                }) {
+                    Text(stringResource(R.string.import_overwrite))
+                }
+            }
+        )
+    }
+
+    pendingImport?.let { content ->
+        AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text(stringResource(R.string.import_overwrite)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.import_overwrite_msg,
+                        viewModel.count
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingImport = null
+                    val ok = viewModel.importJson(content)
+                    viewModel.postMessage(if (ok) successText else invalidText)
+                }) {
+                    Text(stringResource(R.string.import_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingImport = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }
 
@@ -324,10 +348,7 @@ internal fun SettingsCard(
     title: String,
     content: @Composable () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    AppCard {
         Column(Modifier.padding(16.dp)) {
             Text(
                 text = title,
@@ -341,8 +362,10 @@ internal fun SettingsCard(
     }
 }
 
+/** 设置行：左侧品牌色圆底图标 + 标题/副标题 + 右侧箭头。 */
 @Composable
-internal fun SettingsRow(
+internal fun SettingRow(
+    icon: ImageVector,
     title: String,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null
@@ -356,6 +379,21 @@ internal fun SettingsRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
             Text(text = title, style = MaterialTheme.typography.bodyLarge)
             if (subtitle != null) {

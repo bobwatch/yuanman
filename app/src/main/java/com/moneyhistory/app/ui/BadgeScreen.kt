@@ -1,5 +1,7 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,23 +10,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,7 +32,6 @@ import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
 
 /** 勋章墙：已获得彩色 + 获得日期；未获得灰色 + 解锁条件。 */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BadgeScreen(
     viewModel: MainViewModel,
@@ -44,54 +40,36 @@ fun BadgeScreen(
     val unlocks by viewModel.settings.badgeUnlocks.collectAsStateWithLifecycle()
     val grouped = allBadges.groupBy { it.categoryRes }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            R.string.badge_screen_title,
-                            unlocks.size,
-                            allBadges.size
-                        )
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back)
-                        )
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    Column(Modifier.fillMaxSize()) {
+        SubPageHeader(
+            title = stringResource(
+                R.string.badge_screen_title,
+                unlocks.size,
+                allBadges.size
+            ),
+            onBack = onBack
+        )
+
         LazyColumn(
             Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(top = 4.dp)
         ) {
             grouped.forEach { (categoryRes, badges) ->
                 item(key = "header_$categoryRes") {
-                    Text(
-                        text = stringResource(categoryRes),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                    SectionTitle(stringResource(categoryRes))
                 }
                 items(badges.size, key = { badges[it].id }) { index ->
                     val badge = badges[index]
                     val unlockedDate = unlocks[badge.id]
                     val unlocked = unlockedDate != null
                     Card(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -102,11 +80,25 @@ fun BadgeScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = badge.emoji,
-                                fontSize = 32.sp,
-                                modifier = Modifier.alpha(if (unlocked) 1f else 0.25f)
-                            )
+                            Box(
+                                Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (unlocked) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceContainerHighest
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = badge.emoji,
+                                    fontSize = 24.sp,
+                                    modifier = Modifier.alpha(if (unlocked) 1f else 0.3f)
+                                )
+                            }
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(

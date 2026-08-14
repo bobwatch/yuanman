@@ -135,8 +135,10 @@ private fun goalPredictionText(goal: Goal): String {
 fun GoalCard(goal: Goal, onClick: () -> Unit) {
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.width(210.dp)
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .width(210.dp)
+            .pressScale()
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -200,8 +202,10 @@ fun GoalCard(goal: Goal, onClick: () -> Unit) {
 fun AddGoalCard(onClick: () -> Unit) {
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.width(140.dp)
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .width(140.dp)
+            .pressScale()
     ) {
         Column(
             Modifier

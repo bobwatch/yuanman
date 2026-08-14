@@ -38,6 +38,10 @@
     <string name="home_overview_expense">本月支出</string>
     <string name="home_overview_income_count">收入 %1$s · 共 %2$d 笔</string>
     <string name="home_today">今日已花 %1$s · %2$d 笔</string>
+    <string name="home_header_income">收入</string>
+    <string name="home_header_today">今日</string>
+    <string name="home_header_streak">连续</string>
+    <string name="home_header_streak_short">🔥 %1$d 天</string>
     <string name="home_budget_used">预算 %1$s · 已用 %2$d%%%3$s</string>
     <string name="home_budget_over">（已超支）</string>
     <string name="home_budget_set">设置月度预算 →</string>
@@ -143,6 +147,7 @@
 
     <!-- habits -->
     <string name="habit_empty">✅\n\n还没有习惯\n点击下方「+ 新习惯」建立一个，\n每天进步一点点</string>
+    <string name="habit_header_sub">每日打卡，坚持养成</string>
     <string name="habit_add_new">＋ 新习惯</string>
     <string name="habit_build_streak">连续 %d 天</string>
     <string name="habit_checked_today">✓ 已打卡</string>
@@ -164,6 +169,7 @@
 
     <!-- mood -->
     <string name="mood_today_question">今天感觉怎么样？</string>
+    <string name="mood_header_sub">记录每一天，回看整个月</string>
     <string name="mood_great">开心</string>
     <string name="mood_good">不错</string>
     <string name="mood_calm">平静</string>
@@ -277,6 +283,15 @@
     <string name="sync_done_new">已与家庭设备同步，新增 %d 条</string>
     <string name="sync_done_fresh">已与家庭设备同步，数据已是最新</string>
     <string name="recurring_settled">已自动计入 %d 笔周期账单</string>
+
+    <!-- in-app update -->
+    <string name="update_title">发现新版本</string>
+    <string name="update_version">版本 %1$s</string>
+    <string name="update_download">下载并安装</string>
+    <string name="update_later">稍后再说</string>
+    <string name="update_downloading">正在下载更新…</string>
+    <string name="update_download_failed">更新下载失败，请检查网络后重试。</string>
+    <string name="update_install_failed">无法打开安装器。</string>
 
     <!-- badges -->
     <string name="badge_screen_title">勋章墙（%1$d / %2$d）</string>

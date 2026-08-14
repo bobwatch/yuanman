@@ -14,8 +14,8 @@ android {
         applicationId = "com.moneyhistory.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.0.2"
+        versionCode = 9
+        versionName = "0.0.3"
     }
 
     signingConfigs {

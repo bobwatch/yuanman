@@ -16,6 +16,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -32,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.R
 import kotlinx.coroutines.launch
 
-/** 首次启动引导（3 页 HorizontalPager）。 */
+/** 首次启动引导（3 页 HorizontalPager，品牌渐变整屏）。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
@@ -47,6 +49,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .background(brandHeaderBrush())
             .padding(24.dp)
     ) {
         HorizontalPager(
@@ -59,18 +62,29 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(text = emoji, fontSize = 72.sp)
-                Spacer(Modifier.height(24.dp))
+                // 半透明白底 emoji
+                Box(
+                    Modifier
+                        .size(128.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = emoji, fontSize = 56.sp)
+                }
+                Spacer(Modifier.height(32.dp))
                 Text(
                     text = stringResource(titleRes),
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = stringResource(descRes),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.85f),
                     textAlign = TextAlign.Center
                 )
             }
@@ -90,9 +104,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         .clip(CircleShape)
                         .background(
                             if (active) {
-                                MaterialTheme.colorScheme.primary
+                                Color.White
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant
+                                Color.White.copy(alpha = 0.35f)
                             }
                         )
                 )
@@ -109,12 +123,18 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.primary
+            )
         ) {
             Text(
                 stringResource(
                     if (isLast) R.string.onboard_start else R.string.onboard_next
-                )
+                ),
+                modifier = Modifier.padding(vertical = 6.dp)
             )
         }
         if (!isLast) {
@@ -122,7 +142,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 onClick = onFinish,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.onboard_skip))
+                Text(stringResource(R.string.onboard_skip), color = Color.White)
             }
         }
     }

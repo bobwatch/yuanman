@@ -9,30 +9,48 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +62,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.moneyhistory.app.UpdateState
 import com.moneyhistory.app.ui.BadgeScreen
 import com.moneyhistory.app.ui.CategoriesScreen
 import com.moneyhistory.app.ui.ConfettiOverlay
@@ -85,6 +104,7 @@ class MainActivity : ComponentActivity() {
             val onboardingSeen by viewModel.settings.onboardingSeen
                 .collectAsStateWithLifecycle()
             val confettiVisible by viewModel.confettiVisible.collectAsStateWithLifecycle()
+            val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val darkTheme = when (themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
@@ -123,6 +143,8 @@ class MainActivity : ComponentActivity() {
 
                     Box(Modifier.fillMaxSize()) {
                         Scaffold(
+                            // 各页面自绘渐变页头（含状态栏），外层不再叠加系统 insets
+                            contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
                             snackbarHost = {
                                 // 避开底部导航 / FAB 区域
                                 SnackbarHost(
@@ -131,7 +153,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             bottomBar = {
-                                NavigationBar {
+                                NavigationBar(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    tonalElevation = 0.dp
+                                ) {
                                     val backStackEntry by navController
                                         .currentBackStackEntryAsState()
                                     val currentRoute =
@@ -155,10 +180,41 @@ class MainActivity : ComponentActivity() {
                                             icon = {
                                                 Icon(
                                                     tab.icon,
-                                                    contentDescription = tabLabel
+                                                    contentDescription = tabLabel,
+                                                    modifier = Modifier.size(22.dp)
                                                 )
                                             },
-                                            label = { Text(tabLabel) }
+                                            label = {
+                                                Text(
+                                                    tabLabel,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (currentRoute == tab.route) {
+                                                        FontWeight.Bold
+                                                    } else {
+                                                        FontWeight.Medium
+                                                    }
+                                                )
+                                            },
+                                            colors = NavigationBarItemDefaults.colors(
+                                                selectedIconColor = MaterialTheme
+                                                    .colorScheme.primary,
+                                                selectedTextColor = MaterialTheme
+                                                    .colorScheme.primary,
+                                                unselectedIconColor = MaterialTheme
+                                                    .colorScheme.onSurfaceVariant,
+                                                unselectedTextColor = MaterialTheme
+                                                    .colorScheme.onSurfaceVariant,
+                                                indicatorColor = MaterialTheme
+                                                    .colorScheme.primaryContainer
+                                            ),
+                                            modifier = Modifier
+                                                .padding(horizontal = 6.dp)
+                                                .clip(
+                                                    RoundedCornerShape(
+                                                        topStart = 16.dp,
+                                                        topEnd = 16.dp
+                                                    )
+                                                )
                                         )
                                     }
                                 }
@@ -283,6 +339,13 @@ class MainActivity : ComponentActivity() {
                             visible = confettiVisible,
                             onFinished = { viewModel.dismissConfetti() }
                         )
+
+                        // 在线升级：新版本弹窗 + 下载中进度
+                        UpdateDialog(
+                            updateState = updateState,
+                            onDownload = { viewModel.downloadUpdate() },
+                            onDismiss = { viewModel.dismissUpdate() }
+                        )
                     }
                 }
             }
@@ -303,5 +366,70 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_ACTION = "action"
         const val ACTION_ADD = "add"
+    }
+}
+
+/** 升级弹窗：新版本提示 + 下载中进度。 */
+@Composable
+private fun UpdateDialog(
+    updateState: UpdateState,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    when (updateState) {
+        UpdateState.Idle -> Unit
+        UpdateState.Downloading -> {
+            AlertDialog(
+                onDismissRequest = {},
+                icon = {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                },
+                title = { Text(stringResource(R.string.update_downloading)) },
+                text = {},
+                confirmButton = {}
+            )
+        }
+        is UpdateState.Available -> {
+            val info = updateState.info
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                icon = {
+                    Icon(
+                        Icons.Filled.SystemUpdate,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = { Text(stringResource(R.string.update_title)) },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            text = stringResource(R.string.update_version, info.versionName),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (info.notes.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = info.notes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onDownload) {
+                        Text(stringResource(R.string.update_download))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.update_later))
+                    }
+                }
+            )
+        }
     }
 }

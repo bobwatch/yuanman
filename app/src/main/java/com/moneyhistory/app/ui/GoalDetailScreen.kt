@@ -10,27 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,7 +44,6 @@ import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
 
 /** 攒钱目标详情：大圆环 + 存入/取出 + 存入历史 + 删除目标。 */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GoalDetailScreen(
     viewModel: MainViewModel,
@@ -62,7 +52,6 @@ fun GoalDetailScreen(
 ) {
     val goals by viewModel.goals.collectAsStateWithLifecycle()
     val successNonce by viewModel.successNonce.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
 
     val goal = goals.firstOrNull { it.id == goalId }
 
@@ -76,45 +65,30 @@ fun GoalDetailScreen(
         if (goal == null) onBack()
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text(goal?.let { "${it.emoji} ${it.name}" } ?: "") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back)
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showDeleteConfirm = true }) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = stringResource(R.string.goal_delete_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+    Column(Modifier.fillMaxSize()) {
+        SubPageHeader(
+            title = goal?.let { "${it.emoji} ${it.name}" } ?: "",
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = stringResource(R.string.goal_delete_title),
+                        tint = androidx.compose.ui.graphics.Color.White
+                    )
                 }
-            )
-        }
-    ) { padding ->
-        goal ?: return@Scaffold
+            }
+        )
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        if (goal != null) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             Spacer(Modifier.height(8.dp))
             ProgressRing(
                 progress = goal.progress,
@@ -203,10 +177,7 @@ fun GoalDetailScreen(
             }
 
             Spacer(Modifier.height(16.dp))
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            AppCard {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(R.string.goal_history),
@@ -246,6 +217,7 @@ fun GoalDetailScreen(
                     }
                 }
             }
+        }
         }
     }
 

@@ -1,6 +1,9 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -30,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +45,8 @@ import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
 import com.moneyhistory.app.Transaction
+import com.moneyhistory.app.ui.theme.ExpenseRed
+import com.moneyhistory.app.ui.theme.IncomeGreen
 import java.util.Calendar
 
 /**
@@ -207,6 +215,36 @@ fun TransactionSheet(
             )
             Spacer(Modifier.height(12.dp))
 
+            // 收支切换：置顶一屏可见，减少进「更多选项」的步骤
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SheetTypePill(
+                    selected = type == Transaction.Type.EXPENSE,
+                    label = stringResource(R.string.sheet_type_expense),
+                    accent = ExpenseRed,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        type = Transaction.Type.EXPENSE
+                        if (category !in expenseCategories) {
+                            category = defaultCategoryFor(Transaction.Type.EXPENSE)
+                        }
+                    }
+                )
+                SheetTypePill(
+                    selected = type == Transaction.Type.INCOME,
+                    label = stringResource(R.string.sheet_type_income),
+                    accent = IncomeGreen,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        type = Transaction.Type.INCOME
+                        if (category !in incomeCategories) {
+                            category = defaultCategoryFor(Transaction.Type.INCOME)
+                        }
+                        recurringEnabled = false
+                    }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+
             // 金额大号等宽显示 + 连加实时合计；编辑模式保存按钮置顶右侧
             Row(
                 Modifier.fillMaxWidth(),
@@ -283,30 +321,6 @@ fun TransactionSheet(
                 )
             }
             if (moreOpen) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = type == Transaction.Type.EXPENSE,
-                        onClick = {
-                            type = Transaction.Type.EXPENSE
-                            if (category !in expenseCategories) {
-                                category = defaultCategoryFor(Transaction.Type.EXPENSE)
-                            }
-                        },
-                        label = { Text(stringResource(R.string.sheet_type_expense)) }
-                    )
-                    FilterChip(
-                        selected = type == Transaction.Type.INCOME,
-                        onClick = {
-                            type = Transaction.Type.INCOME
-                            if (category !in incomeCategories) {
-                                category = defaultCategoryFor(Transaction.Type.INCOME)
-                            }
-                            recurringEnabled = false
-                        },
-                        label = { Text(stringResource(R.string.sheet_type_income)) }
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
                 DatePickerButton(
                     label = stringResource(R.string.sheet_date),
                     millis = dateMillis,
@@ -391,6 +405,42 @@ fun TransactionSheet(
                     Text(stringResource(R.string.discard_keep))
                 }
             }
+        )
+    }
+}
+
+/** 收支切换胶囊：选中态用语义色浅底 + 同色文字，未选中浅灰。 */
+@Composable
+private fun SheetTypePill(
+    selected: Boolean,
+    label: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val container = if (selected) {
+        accent.copy(alpha = 0.14f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    val content = if (selected) {
+        accent
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = content
         )
     }
 }

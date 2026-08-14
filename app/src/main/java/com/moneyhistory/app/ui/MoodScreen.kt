@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,14 +20,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -65,8 +64,7 @@ private fun moodLabel(mood: Mood): String = stringResource(
     }
 )
 
-/** 心情 Tab：今日记录 + 本月统计 + 鼓励卡 + 心情网格 + 心情×消费交叉卡。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 心情 Tab：今日记录 + 鼓励卡 + 本月统计 + 心情网格 + 心情×消费交叉卡。 */
 @Composable
 fun MoodScreen(viewModel: MainViewModel) {
     val moods by viewModel.moods.collectAsStateWithLifecycle()
@@ -116,27 +114,22 @@ fun MoodScreen(viewModel: MainViewModel) {
         Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.tab_mood)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                )
-            )
-        }
-    ) { padding ->
+    Column(Modifier.fillMaxSize()) {
+        YuanmanHeader(
+            title = stringResource(R.string.tab_mood),
+            subtitle = stringResource(R.string.mood_header_sub)
+        )
+
         Column(
             Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 今日记录：点 emoji 即保存
-            Card(shape = RoundedCornerShape(16.dp)) {
+            AppCard {
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -148,8 +141,8 @@ fun MoodScreen(viewModel: MainViewModel) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Mood.entries.forEach { mood ->
                             MoodButton(
                                 mood = mood,
@@ -187,7 +180,14 @@ fun MoodScreen(viewModel: MainViewModel) {
             }
 
             // 鼓励卡（视觉强化）
-            Card(shape = RoundedCornerShape(16.dp)) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                        alpha = 0.55f
+                    )
+                )
+            ) {
                 Text(
                     text = encouragementText(moods, nonAngryStreak),
                     style = MaterialTheme.typography.titleMedium,
@@ -200,7 +200,7 @@ fun MoodScreen(viewModel: MainViewModel) {
             }
 
             // 本月统计
-            Card(shape = RoundedCornerShape(16.dp)) {
+            AppCard {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(R.string.mood_stats_title),
@@ -271,7 +271,7 @@ fun MoodScreen(viewModel: MainViewModel) {
 
             // 心情×消费交叉卡
             crossAmount?.let {
-                Card(shape = RoundedCornerShape(16.dp)) {
+                AppCard {
                     Text(
                         text = stringResource(
                             R.string.mood_cross,
@@ -284,7 +284,7 @@ fun MoodScreen(viewModel: MainViewModel) {
             }
 
             // 本月心情网格
-            Card(shape = RoundedCornerShape(16.dp)) {
+            AppCard {
                 Column(Modifier.padding(16.dp)) {
                     Text(
                         text = stringResource(R.string.mood_grid_title),
@@ -310,22 +310,29 @@ private fun MoodButton(
     onClick: () -> Unit
 ) {
     val borderWidth by animateDpAsState(
-        targetValue = if (selected) 3.dp else 0.dp,
+        targetValue = if (selected) 2.dp else 0.dp,
         label = "moodBorder"
     )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        label = "moodScale"
+    )
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.scale(scale)
+    ) {
         Box(
             Modifier
                 .size(52.dp)
                 .clip(CircleShape)
                 .background(
                     if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     }
                 )
-                .border(borderWidth, MaterialTheme.colorScheme.primary, CircleShape)
+                .border(borderWidth, Color.White, CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
@@ -335,6 +342,7 @@ private fun MoodButton(
         Text(
             text = moodLabel(mood),
             style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) {
                 MaterialTheme.colorScheme.primary
             } else {
