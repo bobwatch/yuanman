@@ -204,6 +204,8 @@
     <string name="mood_calm_streak">%d days without anger</string>
     <string name="mood_recorded_days">%d days recorded this month</string>
     <string name="mood_grid_title">Mood this month</string>
+    <string name="mood_day_pattern">MMM d</string>
+    <string name="mood_day_none">No mood recorded for this day — pick one to add it</string>
     <string name="mood_donut_center">Angry days</string>
     <string name="mood_cross">You spent %1$s more per day on angry days — a good mood saves money too 💙</string>
     <string name="mood_encourage_start">Start recording your mood today — Yuanman is here with you 🌱</string>

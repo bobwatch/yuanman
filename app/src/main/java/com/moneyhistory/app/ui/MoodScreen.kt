@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
@@ -53,7 +56,9 @@ import com.moneyhistory.app.MoodEntry
 import com.moneyhistory.app.R
 import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.consecutiveNonAngryDays
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 /** 心情名称文案。 */
@@ -119,6 +124,9 @@ fun MoodScreen(viewModel: MainViewModel) {
     val daysInMonth = remember {
         Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
     }
+    // 心情日历点击回看 / 补记：选中的日期 key（yyyy-MM-dd）
+    var dayPicker by remember { mutableStateOf<String?>(null) }
+    val dayTitlePattern = stringResource(R.string.mood_day_pattern)
 
     Column(Modifier.fillMaxSize()) {
         YuanmanHeader(
@@ -314,11 +322,75 @@ fun MoodScreen(viewModel: MainViewModel) {
                     MoodGrid(
                         daysInMonth = daysInMonth,
                         monthPrefix = monthPrefix,
-                        moods = moods
+                        moods = moods,
+                        onDayClick = { dayPicker = it }
                     )
                 }
             }
         }
+    }
+
+    // 回看 / 补记某天：显示当天记录，点心情即覆盖保存
+    dayPicker?.let { dayKey ->
+        val entry = moods[dayKey]
+        val dayTitle = remember(dayKey) {
+            try {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    .parse(dayKey)
+                    ?.let {
+                        SimpleDateFormat(dayTitlePattern, Locale.getDefault()).format(it)
+                    }
+                    ?: dayKey
+            } catch (e: Exception) {
+                dayKey
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { dayPicker = null },
+            title = { Text(dayTitle) },
+            text = {
+                Column {
+                    if (entry != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(entry.mood.emoji, fontSize = 32.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = moodLabel(entry.mood),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (entry.note.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = entry.note,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.mood_day_none),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    CompactMoodPicker(
+                        selected = entry?.mood,
+                        onSelect = { mood ->
+                            viewModel.setMood(dayKey, mood, entry?.note ?: "")
+                            dayPicker = null
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { dayPicker = null }) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            }
+        )
     }
 }
 
@@ -378,12 +450,46 @@ private fun MoodButton(
     }
 }
 
-/** 本月心情日历：周表头 + 7 列按星期对齐，每日一个色点（未记录灰色）。 */
+/** 对话框内的小号心情选择：emoji 圆钮，选中按该情绪本色填充。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactMoodPicker(
+    selected: Mood?,
+    onSelect: (Mood) -> Unit
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        maxItemsInEachRow = 5,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Mood.entries.forEach { mood ->
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (mood == selected) {
+                            Color(mood.colorValue)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        }
+                    )
+                    .clickable { onSelect(mood) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = mood.emoji, fontSize = 20.sp)
+            }
+        }
+    }
+}
+
+/** 本月心情日历：周表头 + 7 列按星期对齐，每日一个色点（未记录灰色），点击可回看/补记。 */
 @Composable
 private fun MoodGrid(
     daysInMonth: Int,
     monthPrefix: String,
-    moods: Map<String, MoodEntry>
+    moods: Map<String, MoodEntry>,
+    onDayClick: (String) -> Unit
 ) {
     Column {
         // 周表头（周一起始）
@@ -450,7 +556,8 @@ private fun MoodGrid(
                                         } else {
                                             MaterialTheme.colorScheme.surfaceContainerHighest
                                         }
-                                    ),
+                                    )
+                                    .clickable { onDayClick(key) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

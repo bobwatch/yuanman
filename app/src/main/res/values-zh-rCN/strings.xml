@@ -204,6 +204,8 @@
     <string name="mood_calm_streak">已连续 %d 天没生气</string>
     <string name="mood_recorded_days">本月已记录 %d 天</string>
     <string name="mood_grid_title">本月心情</string>
+    <string name="mood_day_pattern">M月d日</string>
+    <string name="mood_day_none">这一天还没有记录，选一个心情补记吧</string>
     <string name="mood_donut_center">生气天数</string>
     <string name="mood_cross">你生气的那几天平均多花 %1$s——保持好心情，也是省钱 💙</string>
     <string name="mood_encourage_start">从今天开始记录心情吧，沅满陪你慢慢来 🌱</string>

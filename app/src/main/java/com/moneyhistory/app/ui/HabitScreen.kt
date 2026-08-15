@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -406,13 +408,34 @@ private fun HabitCard(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconTile(
-                        icon = habitIcon(habit.emoji),
-                        tint = habitIconColor(habit),
-                        container = habitIconColor(habit).copy(alpha = if (checked) 0.2f else 0.12f),
-                        size = 46.dp,
-                        iconSize = 22.dp
-                    )
+                    // 已打卡：图标右下角叠对勾角标，一眼可辨今日状态
+                    Box {
+                        IconTile(
+                            icon = habitIcon(habit.emoji),
+                            tint = habitIconColor(habit),
+                            container = habitIconColor(habit).copy(alpha = if (checked) 0.2f else 0.12f),
+                            size = 46.dp,
+                            iconSize = 22.dp
+                        )
+                        if (checked) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
