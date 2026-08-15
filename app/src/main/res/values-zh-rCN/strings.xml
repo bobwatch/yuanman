@@ -47,6 +47,9 @@
     <string name="home_budget_set">设置月度预算 →</string>
     <string name="home_streak">🔥 已连续记账 %d 天</string>
     <string name="home_goals_guide">💎 定个小目标，开始攒钱 →</string>
+    <string name="home_section_goal">攒钱目标</string>
+    <string name="home_goal_set">定个小目标 →</string>
+    <string name="home_goal_progress">%1$s %2$d%%</string>
     <string name="home_day_header">%1$d月%2$d日 %3$s</string>
     <string name="home_day_sub_expense">支出 %1$s</string>
     <string name="home_day_sub_income">收入 %1$s</string>

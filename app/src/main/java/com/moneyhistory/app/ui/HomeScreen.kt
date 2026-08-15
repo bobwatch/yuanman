@@ -40,6 +40,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -62,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
+import com.moneyhistory.app.Goal
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
@@ -283,43 +286,18 @@ fun HomeScreen(
                     }
                 }
 
-                item(key = "budget") {
-                    BudgetCard(
+                item(key = "budget_goals") {
+                    BudgetGoalCard(
                         expense = monthExpense,
                         budgetCents = budgetCents,
-                        onSetBudget = { showBudgetDialog = true }
+                        goals = goals,
+                        onSetBudget = { showBudgetDialog = true },
+                        onGoalClick = {
+                            // 无目标时引导新建；有目标时直达进度最高的目标详情
+                            if (goals.isEmpty()) showGoalSheet = true
+                            else onNavigateToGoal(goals.maxByOrNull { it.progress }!!.id)
+                        }
                     )
-                }
-
-                item(key = "goals") {
-                    if (goals.isEmpty()) {
-                        AppCard(
-                            onClick = { showGoalSheet = true },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.home_goals_guide),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
-                    } else {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(goals, key = { it.id }) { goal ->
-                                GoalCard(
-                                    goal = goal,
-                                    onClick = { onNavigateToGoal(goal.id) }
-                                )
-                            }
-                            item(key = "add_goal") {
-                                AddGoalCard(onClick = { showGoalSheet = true })
-                            }
-                        }
-                    }
                 }
 
                 if (filteredTransactions.isEmpty()) {
@@ -648,69 +626,118 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
     }
 }
 
-/** 月度预算卡：进度条 + 使用比例；未设置时提供入口。 */
+/** 预算 + 攒钱目标合并的紧凑双行卡：单卡两行各自可点，压缩首页占位。 */
 @Composable
-private fun BudgetCard(
+private fun BudgetGoalCard(
     expense: Long,
     budgetCents: Long,
-    onSetBudget: () -> Unit
+    goals: List<Goal>,
+    onSetBudget: () -> Unit,
+    onGoalClick: () -> Unit
 ) {
     AppCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSetBudget)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "💰", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.budget_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    fontWeight = FontWeight.Bold
                 )
                 if (budgetCents > 0) {
+                    Spacer(Modifier.width(12.dp))
+                    val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
+                    val overBudget = expense > budgetCents
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(6.dp)
+                            .clip(CircleShape),
+                        color = when {
+                            overBudget -> ExpenseRed
+                            fraction > 0.8f -> WarningOrange
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Text(
-                        text = MoneyUtils.formatCents(budgetCents),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = (expense * 100 / budgetCents).toString() + "%" +
+                            if (overBudget) {
+                                stringResource(R.string.home_budget_over)
+                            } else {
+                                ""
+                            },
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (overBudget) {
+                            ExpenseRed
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = stringResource(R.string.home_budget_set),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
-            if (budgetCents > 0) {
-                Spacer(Modifier.height(12.dp))
-                val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
-                val overBudget = expense > budgetCents
-                val progressColor = when {
-                    overBudget -> ExpenseRed
-                    fraction > 0.8f -> WarningOrange
-                    else -> MaterialTheme.colorScheme.primary
-                }
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = progressColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-                Spacer(Modifier.height(6.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onGoalClick)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "🎯", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(
-                        R.string.home_budget_used,
-                        MoneyUtils.formatCents(budgetCents),
-                        expense * 100 / budgetCents,
-                        if (overBudget) {
-                            stringResource(R.string.home_budget_over)
-                        } else {
-                            ""
-                        }
-                    ),
+                    text = stringResource(R.string.home_section_goal),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.width(12.dp))
+                val topGoal = goals.maxByOrNull { it.progress }
+                Text(
+                    text = if (topGoal == null) {
+                        stringResource(R.string.home_goal_set)
+                    } else {
+                        stringResource(
+                            R.string.home_goal_progress,
+                            topGoal.name,
+                            (topGoal.progress * 100).toInt().coerceAtMost(100)
+                        )
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (overBudget) {
-                        ExpenseRed
+                    fontWeight = FontWeight.Medium,
+                    color = if (topGoal == null) {
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    },
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End
                 )
-            } else {
-                Spacer(Modifier.height(4.dp))
-                TextButton(onClick = onSetBudget) {
-                    Text(stringResource(R.string.home_budget_set))
-                }
             }
         }
     }

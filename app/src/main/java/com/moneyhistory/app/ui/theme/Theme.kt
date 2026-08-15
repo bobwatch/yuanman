@@ -74,7 +74,14 @@ fun YuanmanTheme(
             val window = (view.context as Activity).window
             // 页头统一为品牌渐变，状态栏与渐变顶部同色融合
             window.statusBarColor = YuanmanGradientTop.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            // 底部导航条跟随主题：与底部 Tab 栏（surface 色）融为一体，
+            // 全面屏手势横条浅色主题深色、深色主题浅色
+            window.navigationBarColor =
+                if (darkTheme) DarkSurface.toArgb() else LightSurface.toArgb()
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = !darkTheme
+            }
         }
     }
 
