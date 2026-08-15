@@ -36,8 +36,14 @@
     <string name="home_menu">菜单</string>
     <string name="home_menu_stats">统计</string>
     <string name="home_add_desc">记一笔</string>
-    <string name="home_empty">📝\n\n本月暂无记录\n点击右下角 + 记一笔</string>
-    <string name="home_search_empty">🔍\n\n没有匹配「%1$s」的记录</string>
+    <string name="home_welcome_title">欢迎来到沅满 👋</string>
+    <string name="home_welcome_sub">开启你的记账之旅，记下第一笔只需十秒</string>
+    <string name="home_welcome_action">记第一笔</string>
+    <string name="home_empty_title">本月还没有记录</string>
+    <string name="home_empty_sub">一笔一笔记下来，生活越来越清晰</string>
+    <string name="home_empty_action">现在记一笔</string>
+    <string name="home_search_empty_title">没有找到相关记录</string>
+    <string name="home_search_empty_sub">没有匹配「%1$s」的记录，换个关键词试试</string>
     <string name="home_deleted">已删除</string>
     <string name="home_undo">撤销</string>
     <string name="home_delete_confirm_title">删除这条记录？</string>

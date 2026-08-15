@@ -36,8 +36,14 @@
     <string name="home_menu">Menu</string>
     <string name="home_menu_stats">Stats</string>
     <string name="home_add_desc">Add transaction</string>
-    <string name="home_empty">📝\n\nNo records this month\nTap + to add one</string>
-    <string name="home_search_empty">🔍\n\nNo records matching \"%1$s\"</string>
+    <string name="home_welcome_title">Welcome to Yuanman 👋</string>
+    <string name="home_welcome_sub">Start your money journey — the first record takes just ten seconds</string>
+    <string name="home_welcome_action">Add first record</string>
+    <string name="home_empty_title">No records this month</string>
+    <string name="home_empty_sub">Small records add up to big clarity — start with today</string>
+    <string name="home_empty_action">Record now</string>
+    <string name="home_search_empty_title">No matching records</string>
+    <string name="home_search_empty_sub">Nothing found for \"%1$s\" — try another keyword</string>
     <string name="home_deleted">Deleted</string>
     <string name="home_undo">Undo</string>
     <string name="home_delete_confirm_title">Delete this record?</string>
