@@ -8,7 +8,9 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
@@ -60,6 +62,9 @@ private val AppShapes = Shapes(
     large = RoundedCornerShape(20.dp)
 )
 
+/** 当前主题是否深色（首页滚动时切换状态栏图标深浅需要）。 */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
 /** 沅满蓝 Material 3 主题。 */
 @Composable
 fun YuanmanTheme(
@@ -72,8 +77,10 @@ fun YuanmanTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // 页头统一为品牌渐变，状态栏与渐变顶部同色融合
-            window.statusBarColor = YuanmanGradientTop.toArgb()
+            // 状态栏底色 = 页面背景色：各页蓝色页头自带 statusBarsPadding 覆盖，
+            // 首页页头随列表滚出后状态栏自然露出背景色，不残留蓝条
+            window.statusBarColor =
+                if (darkTheme) DarkBackground.toArgb() else LightBackground.toArgb()
             // 底部导航条跟随主题：与底部 Tab 栏（surface 色）融为一体，
             // 全面屏手势横条浅色主题深色、深色主题浅色
             window.navigationBarColor =
@@ -85,9 +92,11 @@ fun YuanmanTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        shapes = AppShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            shapes = AppShapes,
+            content = content
+        )
+    }
 }

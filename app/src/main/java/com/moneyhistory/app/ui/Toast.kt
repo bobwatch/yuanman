@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MessageVariant
+import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -112,7 +112,8 @@ fun ToastHost(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ToastItem(toast: ToastData, onDismiss: () -> Unit) {
-    val darkTheme = isSystemInDarkTheme()
+    // 深浅色取应用主题（非系统）：用户手动切换主题时 Toast 也要跟着换
+    val darkTheme = LocalDarkTheme.current
     val container = if (darkTheme) Color(0xFFF2F4F8) else Color(0xFF232A35)
     val content = if (darkTheme) Color(0xFF161B22) else Color.White
     // 按消息类型着色（信息蓝 / 成功绿 / 警告橙 / 异常红）

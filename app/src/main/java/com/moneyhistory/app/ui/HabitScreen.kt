@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.Habit
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.R
 import com.moneyhistory.app.buildStreak
 import com.moneyhistory.app.checkedOn
@@ -87,6 +89,9 @@ private val habitPresets = listOf(
 fun HabitScreen(viewModel: MainViewModel) {
     val habits by viewModel.habits.collectAsStateWithLifecycle()
     val today = remember { DateUtils.today() }
+    val context = LocalContext.current
+    val deletedText = stringResource(R.string.common_deleted)
+    val resetDoneText = stringResource(R.string.habit_reset_done)
 
     // 正在进行的习惯排最前：build（今天/昨天有打卡）或 quit（今天未破戒）
     val sortedHabits = remember(habits, today) {
@@ -123,6 +128,10 @@ fun HabitScreen(viewModel: MainViewModel) {
                                     type = type,
                                     startDate = DateUtils.today()
                                 )
+                            )
+                            viewModel.postMessage(
+                                context.getString(R.string.habit_created, name),
+                                MessageVariant.SUCCESS
                             )
                             showCreate = false
                         }
@@ -177,6 +186,7 @@ fun HabitScreen(viewModel: MainViewModel) {
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.removeHabit(habit.id)
+                    viewModel.postMessage(deletedText, MessageVariant.INFO)
                     deleteTarget = null
                 }) {
                     Text(
@@ -209,6 +219,7 @@ fun HabitScreen(viewModel: MainViewModel) {
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.resetHabit(habit.id)
+                    viewModel.postMessage(resetDoneText, MessageVariant.SUCCESS)
                     resetTarget = null
                 }) {
                     Text(
@@ -430,6 +441,7 @@ private fun HabitCard(
                 if (checked) {
                     OutlinedButton(
                         onClick = onCheckin,
+                        shape = MaterialTheme.shapes.large,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
@@ -439,6 +451,7 @@ private fun HabitCard(
                 } else {
                     Button(
                         onClick = onCheckin,
+                        shape = MaterialTheme.shapes.large,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
@@ -490,7 +503,8 @@ private fun HabitCard(
                         ),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
+                        // 戒断用橙色保持卡片身份统一（icon 同为橙色），不用品牌蓝
+                        color = habitIconColor(habit),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)

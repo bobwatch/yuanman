@@ -11,7 +11,9 @@
     <string name="common_add">Add</string>
     <string name="common_create">Create</string>
     <string name="common_back">Back</string>
+    <string name="common_deleted">Deleted</string>
     <string name="date_pattern">MMM d, yyyy</string>
+    <string name="date_label_format">%1$s: %2$s</string>
 
     <!-- bottom tabs -->
     <string name="tab_record">Money</string>
@@ -38,11 +40,15 @@
     <string name="home_search_empty">🔍\n\nNo records matching \"%1$s\"</string>
     <string name="home_deleted">Deleted</string>
     <string name="home_undo">Undo</string>
+    <string name="home_delete_confirm_title">Delete this record?</string>
+    <string name="home_delete_confirm_msg">%1$s %2$s will be deleted. This cannot be undone.</string>
     <string name="home_overview_expense">Spent this month</string>
     <string name="home_overview_income_count">Earned %1$s · %2$d entries</string>
     <string name="home_today">Spent today %1$s · %2$d entries</string>
     <string name="home_header_income">Income</string>
     <string name="home_header_today">Today</string>
+    <string name="home_header_today_count">%1$d entries</string>
+    <string name="home_header_today_none">—</string>
     <string name="home_header_streak">Streak</string>
     <string name="home_header_streak_short">🔥 %1$d days</string>
     <string name="home_budget_used">Budget %1$s · %2$d%% used%3$s</string>
@@ -83,6 +89,7 @@
     <string name="sheet_less">Less ▴</string>
     <string name="sheet_note_hint">Note (optional)</string>
     <string name="sheet_done">Done</string>
+    <string name="sheet_close">Close</string>
     <string name="sheet_date">Date</string>
     <string name="sheet_hint_save">Enter an amount, pick a category, then tap Save</string>
     <string name="numpad_plus">＋ Add up</string>
@@ -99,12 +106,14 @@
     <string name="recurring_empty">🔁\n\nNo recurring bills yet\nTurn on \"Make recurring\" when adding a transaction</string>
     <string name="recurring_row_subtitle">%1$s · next %2$s</string>
     <string name="recurring_delete">Delete</string>
+    <string name="recurring_delete_confirm_title">Delete this recurring bill?</string>
+    <string name="recurring_delete_confirm_msg">%1$s %2$s will no longer be recorded automatically. This cannot be undone.</string>
 
     <!-- stats -->
     <string name="stats_title">Stats</string>
     <string name="stats_donut_expense">Spending by category</string>
     <string name="stats_donut_income">Income by category</string>
-    <string name="stats_empty_month">No records this month</string>
+    <string name="stats_empty_month">📊 No records this month</string>
     <string name="stats_total_expense">Total</string>
     <string name="stats_total_income">Total</string>
     <string name="stats_trend_expense">6-month spending trend</string>
@@ -141,7 +150,7 @@
     <string name="goal_deposit">Deposit</string>
     <string name="goal_withdraw">Withdraw</string>
     <string name="goal_history">History</string>
-    <string name="goal_history_empty">No deposits yet — make your first one</string>
+    <string name="goal_history_empty">💸 No deposits yet — make your first one</string>
     <string name="goal_deposit_title">Deposit to \"%1$s\"</string>
     <string name="goal_withdraw_title">Withdraw from \"%1$s\"</string>
     <string name="goal_record_expense">Also record an expense (category: 💎 Savings)</string>
@@ -173,6 +182,9 @@
     <string name="habit_name_hint">Habit name</string>
     <string name="habit_name_error">Please enter a name</string>
     <string name="habit_pick_emoji">Pick an emoji</string>
+    <string name="habit_checked_streak">🔥 %1$d-day streak</string>
+    <string name="habit_created">Created "%1$s"</string>
+    <string name="habit_reset_done">Relapse recorded — restarting from today 🌱</string>
 
     <!-- mood -->
     <string name="mood_today_question">How are you feeling today?</string>
@@ -185,6 +197,7 @@
     <string name="mood_note_toggle">＋ Add a note…</string>
     <string name="mood_note_hint">One line about today (optional)</string>
     <string name="mood_note_save">Save note</string>
+    <string name="mood_note_saved">Saved today\'s note ✨</string>
     <string name="mood_stats_title">This month</string>
     <string name="mood_stats_empty">No mood records this month</string>
     <string name="mood_angry_days">😠 Angry %d days</string>
@@ -208,6 +221,8 @@
     <string name="cats_error_empty">Please enter a name</string>
     <string name="cats_error_dup">Category already exists</string>
     <string name="cats_added">Added</string>
+    <string name="cats_delete_confirm_title">Delete this category?</string>
+    <string name="cats_delete_confirm_msg">"%1$s" will be removed. Existing records keep the category name.</string>
     <string name="cats_custom">Custom categories</string>
     <string name="cats_preset_expense">Preset expense categories</string>
     <string name="cats_preset_income">Preset income categories</string>
@@ -239,6 +254,7 @@
     <string name="mine_section_about">About</string>
     <string name="mine_about_version">Version %1$s</string>
     <string name="mine_license">Open-source license</string>
+    <string name="mine_license_sub">MIT License</string>
     <string name="mine_feedback">Feedback</string>
     <string name="mine_feedback_sub">Suggest or report on GitHub Issues</string>
     <string name="mine_repo">GitHub repository</string>
@@ -257,6 +273,7 @@
     <string name="import_read_failed_reason">Failed to read the file: %1$s</string>
     <string name="import_merged">Merged %d records</string>
     <string name="export_title">Export backup</string>
+    <string name="export_done">Backup created — choose where to save it</string>
     <string name="export_failed">Export failed: %1$s</string>
 
     <!-- family sync -->
@@ -271,7 +288,7 @@
     <string name="family_join_invalid">Please enter a 6-digit code</string>
     <string name="family_status_title">Sync status</string>
     <string name="family_sync_now">Sync now</string>
-    <string name="family_no_devices">No devices found yet</string>
+    <string name="family_no_devices">📡 No devices found yet</string>
     <string name="family_device">Device %1$s</string>
     <string name="family_connected">Connected</string>
     <string name="family_discovered">Found</string>

@@ -90,6 +90,7 @@ fun MineScreen(
     val readFailedText = stringResource(R.string.import_read_failed)
     val invalidText = stringResource(R.string.import_invalid)
     val successText = stringResource(R.string.import_success)
+    val exportDoneText = stringResource(R.string.export_done)
 
     // Snackbar 统一由 MainActivity 顶层宿主展示，这里只发消息
     val importLauncher = rememberLauncherForActivityResult(
@@ -223,9 +224,16 @@ fun MineScreen(
                     title = stringResource(R.string.mine_export),
                     subtitle = stringResource(R.string.mine_export_sub),
                     onClick = {
-                        exportBackup(context, viewModel) { msg ->
-                            viewModel.postMessage(msg, MessageVariant.ERROR)
-                        }
+                        exportBackup(
+                            context,
+                            viewModel,
+                            onSuccess = {
+                                viewModel.postMessage(exportDoneText, MessageVariant.SUCCESS)
+                            },
+                            onError = { msg ->
+                                viewModel.postMessage(msg, MessageVariant.ERROR)
+                            }
+                        )
                     }
                 )
                 SettingRow(
@@ -249,7 +257,7 @@ fun MineScreen(
                 SettingRow(
                     icon = Icons.Filled.Favorite,
                     title = stringResource(R.string.mine_license),
-                    subtitle = "MIT License"
+                    subtitle = stringResource(R.string.mine_license_sub)
                 )
                 SettingRow(
                     icon = Icons.Filled.Email,

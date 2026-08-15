@@ -79,6 +79,7 @@ import com.moneyhistory.app.ui.MoodScreen
 import com.moneyhistory.app.ui.OnboardingScreen
 import com.moneyhistory.app.ui.RecurringScreen
 import com.moneyhistory.app.ui.StatsScreen
+import com.moneyhistory.app.ui.SuccessOverlay
 import com.moneyhistory.app.ui.ToastHost
 import com.moneyhistory.app.ui.ToastHostState
 import com.moneyhistory.app.ui.theme.YuanmanTheme
@@ -134,6 +135,7 @@ class MainActivity : ComponentActivity() {
             val onboardingSeen by viewModel.settings.onboardingSeen
                 .collectAsStateWithLifecycle()
             val confettiVisible by viewModel.confettiVisible.collectAsStateWithLifecycle()
+            val successNonce by viewModel.successNonce.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val darkTheme = when (themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -370,6 +372,9 @@ class MainActivity : ComponentActivity() {
                             visible = confettiVisible,
                             onFinished = { viewModel.dismissConfetti() }
                         )
+
+                        // 记账 / 打卡 / 存入成功的全局对勾动效：任何页面都可见
+                        SuccessOverlay(trigger = successNonce)
 
                         // 全局 Toast：顶部向下一点，避开状态栏
                         ToastHost(

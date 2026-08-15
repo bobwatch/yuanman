@@ -28,10 +28,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -283,11 +286,12 @@ fun TransactionSheet(
             tonalElevation = 3.dp
         ) {
         Column(Modifier.fillMaxSize()) {
-            // 装饰性拖动手柄（仅视觉，Dialog 不支持下滑关闭）
+            // 拖动手柄：点击或下滑手势关闭弹窗
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp, bottom = 2.dp),
+                    .padding(top = 10.dp, bottom = 2.dp)
+                    .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -332,6 +336,15 @@ fun TransactionSheet(
                     ) {
                         Text(stringResource(R.string.common_save))
                     }
+                    Spacer(Modifier.width(4.dp))
+                }
+                // 右上角显式关闭：返回键之外的退出入口
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.sheet_close),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -398,27 +411,22 @@ fun TransactionSheet(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    text = if (amountError) {
-                                        stringResource(R.string.sheet_amount_error)
-                                    } else {
-                                        "≈ ${MoneyUtils.formatCents(liveCents)}"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (amountError) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
-                                )
-                            }
                             Text(
-                                text = "⌨️",
-                                fontSize = 16.sp,
-                                modifier = Modifier.padding(start = 8.dp)
+                                text = if (amountError) {
+                                    stringResource(R.string.sheet_amount_error)
+                                } else {
+                                    "≈ ${MoneyUtils.formatCents(liveCents)}"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (amountError) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                }
                             )
                         }
                     }
+                }
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -525,6 +533,8 @@ fun TransactionSheet(
             NumPad(
                 onKey = { onNumKey(it) },
                 onCollapse = { numpadExpanded = false },
+                // 当前段为空时连加无意义，禁用并压暗
+                plusEnabled = segments.last().isNotEmpty(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)

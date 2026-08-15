@@ -46,7 +46,8 @@ fun FamilySyncScreen(
     val myCode by sync.pairingCode.collectAsStateWithLifecycle()
 
     var inputCode by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
+    // 配对码操作结果：text + 是否错误（失败用错误红而非品牌蓝）
+    var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
     val regeneratedText = stringResource(R.string.family_regenerated)
     val joinedText = stringResource(R.string.family_joined)
@@ -90,7 +91,7 @@ fun FamilySyncScreen(
                     )
                     TextButton(onClick = {
                         sync.regeneratePairingCode()
-                        message = regeneratedText
+                        message = regeneratedText to false
                     }) {
                         Text(stringResource(R.string.family_regenerate))
                     }
@@ -104,6 +105,8 @@ fun FamilySyncScreen(
                         value = inputCode,
                         onValueChange = { input ->
                             inputCode = input.filter { it.isDigit() }.take(6)
+                            // 输入变化后清掉上一条结果，避免旧提示误导
+                            message = null
                         },
                         label = { Text(stringResource(R.string.family_join_hint)) },
                         keyboardOptions = KeyboardOptions(
@@ -115,20 +118,24 @@ fun FamilySyncScreen(
                     Spacer(Modifier.width(8.dp))
                     Button(onClick = {
                         message = if (sync.setPairingCode(inputCode)) {
-                            joinedText
+                            joinedText to false
                         } else {
-                            joinInvalidText
+                            joinInvalidText to true
                         }
                     }) {
                         Text(stringResource(R.string.common_confirm))
                     }
                 }
-                message?.let {
+                message?.let { (text, isError) ->
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = it,
+                        text = text,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
                     )
                 }
             }

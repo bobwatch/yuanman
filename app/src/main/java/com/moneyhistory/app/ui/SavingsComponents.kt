@@ -436,7 +436,10 @@ fun AmountPadDialog(
                 Spacer(Modifier.height(8.dp))
                 extraContent()
                 Spacer(Modifier.height(8.dp))
-                NumPad(onKey = { onNumKey(it) })
+                NumPad(
+                    onKey = { onNumKey(it) },
+                    plusEnabled = segments.last().isNotEmpty()
+                )
                 errorRes?.let {
                     Spacer(Modifier.height(4.dp))
                     Text(

@@ -13,6 +13,7 @@ import java.io.File
 internal fun exportBackup(
     context: Context,
     viewModel: MainViewModel,
+    onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
     try {
@@ -41,6 +42,7 @@ internal fun exportBackup(
                 context.getString(R.string.export_title)
             )
         )
+        onSuccess()
     } catch (e: Exception) {
         onError(context.getString(R.string.export_failed, e.message))
     }

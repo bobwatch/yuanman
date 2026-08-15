@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.Mood
 import com.moneyhistory.app.MoodEntry
@@ -76,6 +77,7 @@ fun MoodScreen(viewModel: MainViewModel) {
 
     val today = remember { DateUtils.today() }
     val monthPrefix = remember { DateUtils.monthPrefix() }
+    val noteSavedText = stringResource(R.string.mood_note_saved)
     val todayEntry = moods[today]
     var note by remember(today, todayEntry?.note) {
         mutableStateOf(todayEntry?.note ?: "")
@@ -181,6 +183,11 @@ fun MoodScreen(viewModel: MainViewModel) {
                             )
                             TextButton(onClick = {
                                 viewModel.setMood(today, todayEntry.mood, note.trim())
+                                // 保存后给明确反馈，避免「点了没反应」的错觉
+                                viewModel.postMessage(
+                                    noteSavedText,
+                                    MessageVariant.SUCCESS
+                                )
                             }) {
                                 Text(stringResource(R.string.mood_note_save))
                             }

@@ -51,7 +51,6 @@ fun GoalDetailScreen(
     onBack: () -> Unit
 ) {
     val goals by viewModel.goals.collectAsStateWithLifecycle()
-    val successNonce by viewModel.successNonce.collectAsStateWithLifecycle()
 
     val goal = goals.firstOrNull { it.id == goalId }
 
@@ -288,6 +287,4 @@ fun GoalDetailScreen(
             }
         )
     }
-
-    SuccessOverlay(trigger = successNonce)
 }

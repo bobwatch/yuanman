@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -24,8 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,12 +35,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,16 +50,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,12 +72,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.Goal
@@ -85,11 +94,14 @@ import com.moneyhistory.app.ofMonth
 import com.moneyhistory.app.streakOf
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
+import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import com.moneyhistory.app.ui.theme.WarningOrange
+import com.moneyhistory.app.ui.theme.YuanmanBlueDeep
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -114,7 +126,6 @@ fun HomeScreen(
     val recentIncome by viewModel.settings.recentIncomeCategories
         .collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
-    val successNonce by viewModel.successNonce.collectAsStateWithLifecycle()
     val summaryDismissed by viewModel.settings.summaryDismissedMonth
         .collectAsStateWithLifecycle()
 
@@ -219,181 +230,153 @@ fun HomeScreen(
             c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) + 1
     }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            HomeHeader(
-                month = month,
-                onPrev = viewModel::prevMonth,
-                onNext = viewModel::nextMonth,
-                nextEnabled = !isAtCurrentMonth,
-                onSearch = {
-                    searchActive = !searchActive
-                    if (!searchActive) searchQuery = ""
-                },
-                onMenu = { menuOpen = true },
-                menuOpen = menuOpen,
-                onDismissMenu = { menuOpen = false },
-                onOpenStats = onNavigateToStats
-            )
+    // 整页单列表：蓝色页头随内容一起滚动。页头滚出状态栏区域后，
+    // 状态栏露出页面背景色，浅色主题下把图标切深色保证可读（深色主题图标恒白）。
+    val listState = rememberLazyListState()
+    val darkTheme = LocalDarkTheme.current
+    val scrolledPastHeader = remember {
+        derivedStateOf {
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            first != null && (first.index > 0 || first.offset < 0)
+        }
+    }
+    val lightStatusIcons = !darkTheme && scrolledPastHeader.value
+    val view = LocalView.current
+    val window = (view.context as Activity).window
+    LaunchedEffect(lightStatusIcons) {
+        WindowCompat.getInsetsController(window, view)
+            .isAppearanceLightStatusBars = lightStatusIcons
+    }
+    // 离开首页（切 Tab / 进子页）恢复白图标：其他页页头都是固定蓝色渐变
+    DisposableEffect(Unit) {
+        onDispose {
+            WindowCompat.getInsetsController(window, view)
+                .isAppearanceLightStatusBars = false
+        }
+    }
 
-            if (searchActive) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text(stringResource(R.string.home_search_hint)) },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Filled.Search, contentDescription = null)
+    // 打开搜索时回到顶部，让搜索框出现在页头下方
+    LaunchedEffect(searchActive) {
+        if (searchActive) listState.animateScrollToItem(0)
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 96.dp)
+        ) {
+            item(key = "header") {
+                HomeHeader(
+                    month = month,
+                    onPrev = viewModel::prevMonth,
+                    onNext = viewModel::nextMonth,
+                    nextEnabled = !isAtCurrentMonth,
+                    expense = monthExpense,
+                    income = monthIncome,
+                    todayCount = todayStats.second,
+                    streak = streak,
+                    onSearch = {
+                        searchActive = !searchActive
+                        if (!searchActive) searchQuery = ""
                     },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription =
-                                        stringResource(R.string.home_search_clear)
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                    onMenu = { menuOpen = true },
+                    menuOpen = menuOpen,
+                    onDismissMenu = { menuOpen = false },
+                    onOpenStats = onNavigateToStats,
+                    searchActive = searchActive,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    searchType = searchType,
+                    onSearchTypeChange = { searchType = it }
                 )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = searchType == null,
-                        onClick = { searchType = null },
-                        label = {
-                            Text(stringResource(R.string.search_filter_all))
-                        }
-                    )
-                    FilterChip(
-                        selected = searchType == Transaction.Type.EXPENSE,
-                        onClick = { searchType = Transaction.Type.EXPENSE },
-                        label = {
-                            Text(stringResource(R.string.search_filter_expense))
-                        }
-                    )
-                    FilterChip(
-                        selected = searchType == Transaction.Type.INCOME,
-                        onClick = { searchType = Transaction.Type.INCOME },
-                        label = {
-                            Text(stringResource(R.string.search_filter_income))
+            }
+
+            item(key = "budget_goals") {
+                BudgetGoalCard(
+                    expense = monthExpense,
+                    budgetCents = budgetCents,
+                    goals = goals,
+                    onSetBudget = { showBudgetDialog = true },
+                    onGoalClick = {
+                        // 无目标时引导新建；有目标时直达进度最高的目标详情
+                        if (goals.isEmpty()) showGoalSheet = true
+                        else onNavigateToGoal(goals.maxByOrNull { it.progress }!!.id)
+                    }
+                )
+            }
+
+            if (summaryDismissed != summaryKey &&
+                lastMonthTransactions.isNotEmpty()
+            ) {
+                item(key = "summary") {
+                    MonthSummaryCard(
+                        list = lastMonthTransactions,
+                        onClose = {
+                            viewModel.settings.dismissSummary(summaryKey)
                         }
                     )
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(bottom = 96.dp)
-            ) {
-                // 本月统计卡：随列表滚动（不固定），点击进统计页
-                item(key = "stats") {
-                    CompactMonthStats(
-                        expense = monthExpense,
-                        income = monthIncome,
-                        todayCount = todayStats.second,
-                        streak = streak,
-                        onClick = onNavigateToStats
-                    )
-                }
-
-                if (summaryDismissed != summaryKey &&
-                    lastMonthTransactions.isNotEmpty()
-                ) {
-                    item(key = "summary") {
-                        MonthSummaryCard(
-                            list = lastMonthTransactions,
-                            onClose = {
-                                viewModel.settings.dismissSummary(summaryKey)
-                            }
+            if (filteredTransactions.isEmpty()) {
+                item(key = "empty") {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (searchQuery.isNotBlank()) {
+                                stringResource(
+                                    R.string.home_search_empty,
+                                    searchQuery
+                                )
+                            } else {
+                                stringResource(R.string.home_empty)
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
-
-                item(key = "budget_goals") {
-                    BudgetGoalCard(
-                        expense = monthExpense,
-                        budgetCents = budgetCents,
-                        goals = goals,
-                        onSetBudget = { showBudgetDialog = true },
-                        onGoalClick = {
-                            // 无目标时引导新建；有目标时直达进度最高的目标详情
-                            if (goals.isEmpty()) showGoalSheet = true
-                            else onNavigateToGoal(goals.maxByOrNull { it.progress }!!.id)
-                        }
-                    )
-                }
-
-                if (filteredTransactions.isEmpty()) {
-                    item(key = "empty") {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 48.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (searchQuery.isNotBlank()) {
-                                    stringResource(
-                                        R.string.home_search_empty,
-                                        searchQuery
-                                    )
-                                } else {
-                                    stringResource(R.string.home_empty)
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+            } else {
+                grouped.forEach { (dayKey, dayList) ->
+                    item(key = "header_$dayKey") {
+                        DayHeader(dayKey = dayKey, list = dayList)
                     }
-                } else {
-                    grouped.forEach { (dayKey, dayList) ->
-                        item(key = "header_$dayKey") {
-                            DayHeader(dayKey = dayKey, list = dayList)
-                        }
-                        items(dayList, key = { it.id }) { t ->
-                            Box(Modifier.animateItemPlacement()) {
-                                SwipeToDismissItem(
-                                    t = t,
-                                    onDelete = {
-                                        viewModel.delete(t.id)
-                                        toastHostState.show(
-                                            message = deletedText,
-                                            variant = MessageVariant.INFO,
-                                            actionLabel = undoText,
-                                            onAction = { viewModel.restore(t) }
-                                        )
-                                    },
-                                    onClick = {
-                                        editingId = t.id
-                                        duplicatingId = null
-                                        sheetOpen = true
-                                    },
-                                    onDuplicate = {
-                                        editingId = null
-                                        duplicatingId = t.id
-                                        sheetOpen = true
-                                    }
-                                )
-                            }
+                    items(dayList, key = { it.id }) { t ->
+                        Box(Modifier.animateItemPlacement()) {
+                            SwipeToDismissItem(
+                                t = t,
+                                onDelete = {
+                                    viewModel.delete(t.id)
+                                    toastHostState.show(
+                                        message = deletedText,
+                                        variant = MessageVariant.INFO,
+                                        actionLabel = undoText,
+                                        onAction = { viewModel.restore(t) }
+                                    )
+                                },
+                                onClick = {
+                                    editingId = t.id
+                                    duplicatingId = null
+                                    sheetOpen = true
+                                },
+                                onDuplicate = {
+                                    editingId = null
+                                    duplicatingId = t.id
+                                    sheetOpen = true
+                                }
+                            )
                         }
                     }
                 }
             }
         }
 
-        // 顶部菜单已并入页头（HomeHeader），此处仅保留 FAB
         // FAB：记一笔
         val interactionSource = remember { MutableInteractionSource() }
         val pressed by interactionSource.collectIsPressedAsState()
@@ -460,28 +443,38 @@ fun HomeScreen(
                 onSave = { viewModel.settings.setBudgetCents(it) }
             )
         }
-
-        SuccessOverlay(trigger = successNonce)
     }
 }
 
-/** 品牌蓝渐变大页头：标题 + 月份切换。统计数字在滚动区的 CompactMonthStats 卡里。 */
+/**
+ * 品牌蓝渐变大页头（随列表滚动）：标题行 + 月份切换 + 本月支出大数字 +
+ * 三个宽松小指标（收入 / 今日 / 连续）+ 激活时的搜索区。
+ */
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun HomeHeader(
     month: YearMonth,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     nextEnabled: Boolean,
+    expense: Long,
+    income: Long,
+    todayCount: Int,
+    streak: Int,
     onSearch: () -> Unit,
     onMenu: () -> Unit,
     menuOpen: Boolean,
     onDismissMenu: () -> Unit,
-    onOpenStats: () -> Unit
+    onOpenStats: () -> Unit,
+    searchActive: Boolean,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    searchType: Transaction.Type?,
+    onSearchTypeChange: (Transaction.Type?) -> Unit
 ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
             .background(brandHeaderBrush())
             .statusBarsPadding()
     ) {
@@ -533,82 +526,151 @@ private fun HomeHeader(
             nextEnabled = nextEnabled,
             contentColor = Color.White
         )
-    }
-}
 
-/** 本月统计卡（随列表滚动）：本月支出大数字 + 收入 / 今日 / 连续小指标。 */
-@OptIn(ExperimentalAnimationApi::class)
-@Composable
-private fun CompactMonthStats(
-    expense: Long,
-    income: Long,
-    todayCount: Int,
-    streak: Int,
-    onClick: () -> Unit
-) {
-    AppCard(
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-    ) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = stringResource(R.string.home_overview_expense),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.75f)
+            )
+            Spacer(Modifier.height(2.dp))
+            // 本月支出大数字：单独成行，突出主数字
+            AnimatedContent(targetState = expense, label = "headerExpense") { value ->
                 Text(
-                    text = stringResource(R.string.home_overview_expense),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = stringResource(R.string.home_header_today) +
-                        if (todayCount > 0) " · $todayCount" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    text = MoneyUtils.formatCents(value),
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(verticalAlignment = Alignment.Bottom) {
-                AnimatedContent(targetState = expense, label = "statsExpense") { value ->
-                    Text(
-                        text = MoneyUtils.formatCents(value),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                QuickStat(
+            Spacer(Modifier.height(18.dp))
+            // 三个小指标：等宽三列，间距宽松，不再挤在数字右侧
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HeaderStat(
                     label = stringResource(R.string.home_header_income),
-                    value = MoneyUtils.formatCents(income)
+                    value = MoneyUtils.formatCents(income),
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.width(12.dp))
-                QuickStat(
+                HeaderStat(
+                    label = stringResource(R.string.home_header_today),
+                    value = if (todayCount > 0) {
+                        stringResource(R.string.home_header_today_count, todayCount)
+                    } else {
+                        stringResource(R.string.home_header_today_none)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                HeaderStat(
                     label = stringResource(R.string.home_header_streak),
-                    value = stringResource(R.string.home_header_streak_short, streak)
+                    value = stringResource(R.string.home_header_streak_short, streak),
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
+
+        if (searchActive) {
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                placeholder = { Text(stringResource(R.string.home_search_hint)) },
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onSearchQueryChange("") }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription =
+                                    stringResource(R.string.home_search_clear)
+                            )
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SearchTypeChip(
+                    selected = searchType == null,
+                    label = stringResource(R.string.search_filter_all),
+                    onClick = { onSearchTypeChange(null) }
+                )
+                SearchTypeChip(
+                    selected = searchType == Transaction.Type.EXPENSE,
+                    label = stringResource(R.string.search_filter_expense),
+                    onClick = { onSearchTypeChange(Transaction.Type.EXPENSE) }
+                )
+                SearchTypeChip(
+                    selected = searchType == Transaction.Type.INCOME,
+                    label = stringResource(R.string.search_filter_income),
+                    onClick = { onSearchTypeChange(Transaction.Type.INCOME) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
     }
 }
 
-/** 小指标列（浅色卡片上用）。 */
+/** 页头上的筛选胶囊：蓝底上用半透明白 / 纯白底对比。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickStat(label: String, value: String, modifier: Modifier = Modifier) {
+private fun SearchTypeChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = Color.White.copy(alpha = 0.14f),
+            labelColor = Color.White,
+            selectedContainerColor = Color.White,
+            selectedLabelColor = YuanmanBlueDeep
+        )
+    )
+}
+
+/** 页头小指标列：白字 label 在上、白字加粗 value 在下。 */
+@Composable
+private fun HeaderStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Color.White.copy(alpha = 0.75f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        Spacer(Modifier.height(2.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -777,7 +839,7 @@ private fun BudgetGoalCard(
     }
 }
 
-/** 日期分组头：日期 + 星期 + 当日小计。 */
+/** 日期分组头：日期 + 星期 + 当日小计（日期小字，弱化视觉层级）。 */
 @Composable
 private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     val weekdays = listOf(
@@ -830,7 +892,7 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
                 day,
                 weekdayName(list.first().timestamp, weekdays)
             ),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -847,7 +909,9 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     }
 }
 
-/** 流水项：左滑删除；点击编辑；长按弹出「再记一笔 / 删除」菜单。 */
+/**
+ * 流水项：左滑（或长按菜单）删除需二次确认；点击编辑。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeToDismissItem(
@@ -857,11 +921,61 @@ private fun SwipeToDismissItem(
     onDuplicate: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    // 左滑到位 → 弹确认框（先不删，等用户确认）
     LaunchedEffect(dismissState.currentValue) {
         if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-            onDelete()
+            confirmDelete = true
         }
     }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = {
+                confirmDelete = false
+                scope.launch { dismissState.reset() }
+            },
+            icon = {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.home_delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.home_delete_confirm_msg,
+                        t.category,
+                        MoneyUtils.formatCents(t.amountCents)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch { dismissState.reset() }
+                }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
@@ -887,7 +1001,7 @@ private fun SwipeToDismissItem(
                 t = t,
                 onClick = onClick,
                 onDuplicate = onDuplicate,
-                onDelete = onDelete
+                onDelete = { confirmDelete = true }
             )
         }
     )

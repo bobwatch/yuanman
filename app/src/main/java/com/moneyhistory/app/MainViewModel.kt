@@ -322,11 +322,24 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _habits.value = habitsStore.all()
     }
 
-    /** build 类打卡/撤销，返回操作后是否已打卡。 */
+    /** build 类打卡/撤销，返回操作后是否已打卡。打卡成功给对勾动效 + 连续天数反馈。 */
     fun toggleCheckin(id: String): Boolean {
         val checked = habitsStore.toggleCheckin(id)
         _habits.value = habitsStore.all()
-        if (checked) checkBadges()
+        if (checked) {
+            checkBadges()
+            val streak = _habits.value.firstOrNull { it.id == id }
+                ?.buildStreak(DateUtils.today()) ?: 0
+            _successNonce.value += 1
+            viewModelScope.launch {
+                _messages.emit(
+                    UiMessage(
+                        app.getString(R.string.habit_checked_streak, streak),
+                        MessageVariant.SUCCESS
+                    )
+                )
+            }
+        }
         return checked
     }
 

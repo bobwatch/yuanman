@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,7 +32,8 @@ import com.moneyhistory.app.R
  * 计算器式九宫格数字键盘（自绘，不弹系统软键盘）。
  * 按键：1-9、0、小数点、退格 ⌫。
  * 顶部：传入 [onCollapse] 时显示细收起条（点击收起键盘，由调用方控制显隐）。
- * 底部一行：左侧「＋ 连加」，右侧可放 [footer]（如「保存」）并排。
+ * 底部一行：左侧「＋ 连加」（当前段为空时禁用，避免点了没反应），右侧可放 [footer]。
+ * 所有按键 48dp 高，满足触摸目标下限。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,15 +41,16 @@ fun NumPad(
     onKey: (String) -> Unit,
     modifier: Modifier = Modifier,
     onCollapse: (() -> Unit)? = null,
+    plusEnabled: Boolean = true,
     footer: @Composable RowScope.() -> Unit = {}
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onCollapse != null) {
-            // 键盘顶部细条：点中间箭头收起键盘
+            // 键盘顶部细条：点中间箭头收起键盘（整条 40dp 高，够得着）
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(20.dp)
+                    .height(40.dp)
                     .clickable(onClick = onCollapse),
                 contentAlignment = Alignment.Center
             ) {
@@ -85,13 +88,18 @@ fun NumPad(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
-                onClick = { onKey("+") },
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(
+                    alpha = if (plusEnabled) 1f else 0.4f
+                ),
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                    alpha = if (plusEnabled) 1f else 0.4f
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(enabled = plusEnabled) { onKey("+") }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -117,7 +125,7 @@ private fun NumKey(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.height(46.dp)
+        modifier = modifier.height(48.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(

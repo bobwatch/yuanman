@@ -11,7 +11,9 @@
     <string name="common_add">添加</string>
     <string name="common_create">创建</string>
     <string name="common_back">返回</string>
+    <string name="common_deleted">已删除</string>
     <string name="date_pattern">yyyy年M月d日</string>
+    <string name="date_label_format">%1$s：%2$s</string>
 
     <!-- bottom tabs -->
     <string name="tab_record">记账</string>
@@ -38,11 +40,15 @@
     <string name="home_search_empty">🔍\n\n没有匹配「%1$s」的记录</string>
     <string name="home_deleted">已删除</string>
     <string name="home_undo">撤销</string>
+    <string name="home_delete_confirm_title">删除这条记录？</string>
+    <string name="home_delete_confirm_msg">将删除「%1$s %2$s」，此操作不可撤销。</string>
     <string name="home_overview_expense">本月支出</string>
     <string name="home_overview_income_count">收入 %1$s · 共 %2$d 笔</string>
     <string name="home_today">今日已花 %1$s · %2$d 笔</string>
     <string name="home_header_income">收入</string>
     <string name="home_header_today">今日</string>
+    <string name="home_header_today_count">%1$d 笔</string>
+    <string name="home_header_today_none">—</string>
     <string name="home_header_streak">连续</string>
     <string name="home_header_streak_short">🔥 %1$d 天</string>
     <string name="home_budget_used">预算 %1$s · 已用 %2$d%%%3$s</string>
@@ -83,6 +89,7 @@
     <string name="sheet_less">收起 ▴</string>
     <string name="sheet_note_hint">备注（可选）</string>
     <string name="sheet_done">完成</string>
+    <string name="sheet_close">关闭</string>
     <string name="sheet_date">日期</string>
     <string name="sheet_hint_save">输入金额，选择分类，点保存</string>
     <string name="numpad_plus">＋ 连加</string>
@@ -99,12 +106,14 @@
     <string name="recurring_empty">🔁\n\n暂无周期账单\n记账时打开「设为周期账单」即可添加</string>
     <string name="recurring_row_subtitle">%1$s · 下次到期 %2$s</string>
     <string name="recurring_delete">删除</string>
+    <string name="recurring_delete_confirm_title">删除这条周期账单？</string>
+    <string name="recurring_delete_confirm_msg">将不再自动记录「%1$s %2$s」，此操作不可撤销。</string>
 
     <!-- stats -->
     <string name="stats_title">统计</string>
     <string name="stats_donut_expense">支出分类占比</string>
     <string name="stats_donut_income">收入分类占比</string>
-    <string name="stats_empty_month">该月暂无记录</string>
+    <string name="stats_empty_month">📊 该月暂无记录</string>
     <string name="stats_total_expense">总支出</string>
     <string name="stats_total_income">总收入</string>
     <string name="stats_trend_expense">近 6 个月支出趋势</string>
@@ -141,7 +150,7 @@
     <string name="goal_deposit">存入</string>
     <string name="goal_withdraw">取出</string>
     <string name="goal_history">存入记录</string>
-    <string name="goal_history_empty">还没有存入记录，先存一笔吧</string>
+    <string name="goal_history_empty">💸 还没有存入记录，先存一笔吧</string>
     <string name="goal_deposit_title">存入「%1$s」</string>
     <string name="goal_withdraw_title">从「%1$s」取出</string>
     <string name="goal_record_expense">同时记一笔支出流水（分类：💎 储蓄）</string>
@@ -173,6 +182,9 @@
     <string name="habit_name_hint">习惯名称</string>
     <string name="habit_name_error">请输入名称</string>
     <string name="habit_pick_emoji">选择一个 emoji</string>
+    <string name="habit_checked_streak">🔥 连续打卡 %1$d 天</string>
+    <string name="habit_created">已创建「%1$s」</string>
+    <string name="habit_reset_done">已记录破戒，从今天重新开始 🌱</string>
 
     <!-- mood -->
     <string name="mood_today_question">今天感觉怎么样？</string>
@@ -185,6 +197,7 @@
     <string name="mood_note_toggle">＋ 加一句话…</string>
     <string name="mood_note_hint">一句话记录今天（可选）</string>
     <string name="mood_note_save">保存备注</string>
+    <string name="mood_note_saved">已保存今天的一句话 ✨</string>
     <string name="mood_stats_title">本月统计</string>
     <string name="mood_stats_empty">本月还没有心情记录</string>
     <string name="mood_angry_days">😠 生气 %d 天</string>
@@ -208,6 +221,8 @@
     <string name="cats_error_empty">请输入分类名称</string>
     <string name="cats_error_dup">分类已存在</string>
     <string name="cats_added">已添加</string>
+    <string name="cats_delete_confirm_title">删除这个分类？</string>
+    <string name="cats_delete_confirm_msg">将删除「%1$s」，已有流水仍保留原分类名称。</string>
     <string name="cats_custom">自定义分类</string>
     <string name="cats_preset_expense">预设支出分类</string>
     <string name="cats_preset_income">预设收入分类</string>
@@ -239,6 +254,7 @@
     <string name="mine_section_about">关于</string>
     <string name="mine_about_version">版本 %1$s</string>
     <string name="mine_license">开源协议</string>
+    <string name="mine_license_sub">MIT 协议</string>
     <string name="mine_feedback">意见反馈</string>
     <string name="mine_feedback_sub">到 GitHub Issues 提建议或报 Bug</string>
     <string name="mine_repo">GitHub 仓库</string>
@@ -257,6 +273,7 @@
     <string name="import_read_failed_reason">读取文件失败：%1$s</string>
     <string name="import_merged">已合并导入 %d 条记录</string>
     <string name="export_title">导出备份</string>
+    <string name="export_done">备份已生成，请选择保存方式</string>
     <string name="export_failed">导出失败：%1$s</string>
 
     <!-- family sync -->
@@ -271,7 +288,7 @@
     <string name="family_join_invalid">请输入 6 位数字配对码</string>
     <string name="family_status_title">同步状态</string>
     <string name="family_sync_now">立即同步</string>
-    <string name="family_no_devices">暂未发现设备</string>
+    <string name="family_no_devices">📡 暂未发现设备</string>
     <string name="family_device">设备 %1$s</string>
     <string name="family_connected">已连接</string>
     <string name="family_discovered">已发现</string>

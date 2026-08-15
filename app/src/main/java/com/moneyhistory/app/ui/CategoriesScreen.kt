@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -22,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,10 +51,12 @@ fun CategoriesScreen(
 
     var selectedEmoji by remember { mutableStateOf(Categories.emojiCandidates.first()) }
     var name by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<String?>(null) }
 
     val errorEmptyText = stringResource(R.string.cats_error_empty)
     val errorDupText = stringResource(R.string.cats_error_dup)
     val addedText = stringResource(R.string.cats_added)
+    val deletedText = stringResource(R.string.common_deleted)
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -128,7 +132,7 @@ fun CategoriesScreen(
                     CategoryRow(
                         category = category,
                         deletable = true,
-                        onDelete = { viewModel.removeCustomCategory(category) }
+                        onDelete = { deleteTarget = category }
                     )
                 }
             }
@@ -155,6 +159,38 @@ fun CategoriesScreen(
                 )
             }
         }
+    }
+
+    deleteTarget?.let { category ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(stringResource(R.string.cats_delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.cats_delete_confirm_msg,
+                        Categories.nameOf(category)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.removeCustomCategory(category)
+                    viewModel.postMessage(deletedText, MessageVariant.INFO)
+                    deleteTarget = null
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }
 

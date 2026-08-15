@@ -31,13 +31,19 @@ val ChartPalette = listOf(
     Color(0xFF607D8B), Color(0xFFEC407A)
 )
 
-/** 金额缩写（图表标签用）：≥1000 元显示 3.2k，否则取整。 */
+/**
+ * 金额缩写（图表标签用）：≥1 万显示 3.2万（中文环境），≥1000 显示 3.2k，否则取整。
+ * 跟随设备语言：中文用「万」，其余用 k。
+ */
 internal fun abbrevYuan(cents: Long): String {
     val yuan = cents / 100f
-    return if (yuan >= 1000f) {
-        String.format(Locale.CHINA, "%.1fk", yuan / 1000f)
-    } else {
-        String.format(Locale.CHINA, "%.0f", yuan)
+    val locale = Locale.getDefault()
+    val isChinese = locale.language.startsWith("zh")
+    return when {
+        yuan >= 10000f && isChinese ->
+            String.format(locale, "%.1f万", yuan / 10000f)
+        yuan >= 1000f -> String.format(locale, "%.1fk", yuan / 1000f)
+        else -> String.format(locale, "%.0f", yuan)
     }
 }
 

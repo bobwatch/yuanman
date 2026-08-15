@@ -149,7 +149,13 @@ fun DatePickerButton(
     OutlinedButton(onClick = { show = true }, modifier = modifier) {
         Icon(Icons.Filled.DateRange, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text("$label：${formatSheetDate(millis, datePattern)}")
+        Text(
+            stringResource(
+                R.string.date_label_format,
+                label,
+                formatSheetDate(millis, datePattern)
+            )
+        )
     }
 
     if (show) {

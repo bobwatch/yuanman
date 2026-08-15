@@ -12,14 +12,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -30,8 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
+import com.moneyhistory.app.RecurringExpense
 
 /** 周期账单管理：列表 + 删除（不做编辑，删掉重录）。 */
 @Composable
@@ -41,6 +48,8 @@ fun RecurringScreen(
 ) {
     val recurring by viewModel.recurring.collectAsStateWithLifecycle()
     val datePattern = stringResource(R.string.date_pattern)
+    val deletedText = stringResource(R.string.common_deleted)
+    var deleteTarget by remember { mutableStateOf<RecurringExpense?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -121,7 +130,7 @@ fun RecurringScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            IconButton(onClick = { viewModel.removeRecurring(r.id) }) {
+                            IconButton(onClick = { deleteTarget = r }) {
                                 Icon(
                                     Icons.Filled.Delete,
                                     contentDescription =
@@ -134,5 +143,38 @@ fun RecurringScreen(
                 }
             }
         }
+    }
+
+    deleteTarget?.let { r ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(stringResource(R.string.recurring_delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.recurring_delete_confirm_msg,
+                        Categories.nameOf(r.category),
+                        MoneyUtils.formatCents(r.amountCents)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.removeRecurring(r.id)
+                    viewModel.postMessage(deletedText, MessageVariant.INFO)
+                    deleteTarget = null
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }
