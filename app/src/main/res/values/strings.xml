@@ -120,6 +120,7 @@
     <string name="recurring_empty_title">No recurring bills yet</string>
     <string name="recurring_empty_sub">Turn on \"Make recurring\" when adding a transaction</string>
     <string name="recurring_row_subtitle">%1$s · next %2$s</string>
+    <string name="recurring_row_title">%1$s · %2$s</string>
     <string name="recurring_delete">Delete</string>
     <string name="recurring_delete_confirm_title">Delete this recurring bill?</string>
     <string name="recurring_delete_confirm_msg">%1$s %2$s will no longer be recorded automatically. This cannot be undone.</string>

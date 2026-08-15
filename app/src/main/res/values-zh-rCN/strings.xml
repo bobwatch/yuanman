@@ -120,6 +120,7 @@
     <string name="recurring_empty_title">暂无周期账单</string>
     <string name="recurring_empty_sub">记账时打开「设为周期账单」，自动记录房租、订阅等</string>
     <string name="recurring_row_subtitle">%1$s · 下次到期 %2$s</string>
+    <string name="recurring_row_title">%1$s · %2$s</string>
     <string name="recurring_delete">删除</string>
     <string name="recurring_delete_confirm_title">删除这条周期账单？</string>
     <string name="recurring_delete_confirm_msg">将不再自动记录「%1$s %2$s」，此操作不可撤销。</string>

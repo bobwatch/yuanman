@@ -4,13 +4,14 @@ import android.content.Context
 import org.json.JSONObject
 import java.io.File
 
-/** 心情档位（json 值 / emoji / 网格与图表配色；中文名走字符串资源）。 */
+/** 心情档位（json 值 / emoji / 网格与图表配色；中文名走字符串资源）。
+ *  配色统一取中深色阶：白色文字/图标叠在圆点上满足 AA 对比度（≥4.5:1）。 */
 enum class Mood(val json: String, val emoji: String, val colorValue: Long) {
-    GREAT("great", "😄", 0xFF4CAF50),
-    GOOD("good", "🙂", 0xFF8BC34A),
-    CALM("calm", "😐", 0xFF2AABEE),
-    BAD("bad", "😔", 0xFF78909C),
-    ANGRY("angry", "😠", 0xFFE53935);
+    GREAT("great", "😄", 0xFF2E7D32),
+    GOOD("good", "🙂", 0xFF33691E),
+    CALM("calm", "😐", 0xFF1565C0),
+    BAD("bad", "😔", 0xFF455A64),
+    ANGRY("angry", "😠", 0xFFC62828);
 
     companion object {
         fun fromJson(value: String): Mood =

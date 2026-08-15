@@ -2,6 +2,7 @@ package com.moneyhistory.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -56,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -410,13 +412,18 @@ internal fun SettingRow(
     subtitle: String? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val view = LocalView.current
     Row(
         Modifier
             .fillMaxWidth()
             .then(
                 if (onClick != null) {
                     Modifier
-                        .clickable(onClick = onClick)
+                        .clickable {
+                            // 与全 App 触觉语言一致：导航型点击轻震一下
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            onClick()
+                        }
                         .pressScale(pressedScale = 0.97f)
                 } else {
                     Modifier

@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +52,7 @@ fun RecurringScreen(
     val datePattern = stringResource(R.string.date_pattern)
     val deletedText = stringResource(R.string.common_deleted)
     var deleteTarget by remember { mutableStateOf<RecurringExpense?>(null) }
+    val view = LocalView.current
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -103,9 +106,18 @@ fun RecurringScreen(
                             )
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {
+                                // 备注为空时不显示「分类 · 」的裸分隔符
+                                val rowTitle = if (r.note.isEmpty()) {
+                                    Categories.displayName(r.category)
+                                } else {
+                                    stringResource(
+                                        R.string.recurring_row_title,
+                                        Categories.displayName(r.category),
+                                        r.note
+                                    )
+                                }
                                 Text(
-                                    text = Categories.displayName(r.category) +
-                                        if (r.note.isNotEmpty()) " · ${r.note}" else "",
+                                    text = rowTitle,
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
@@ -160,6 +172,8 @@ fun RecurringScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // 删除成功反馈与全 App 一致：轻震动确认
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     viewModel.removeRecurring(r.id)
                     viewModel.postMessage(deletedText, MessageVariant.INFO)
                     deleteTarget = null
