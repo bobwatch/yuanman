@@ -32,11 +32,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -125,6 +127,9 @@ fun TransactionSheet(
     var recurringEnabled by rememberSaveable { mutableStateOf(false) }
     var cycle by rememberSaveable { mutableStateOf(RecurringExpense.Cycle.MONTHLY) }
     var dueMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+
+    // 备注聚焦（键盘弹起）时隐藏金额区，给键盘让出空间
+    var noteFocused by remember { mutableStateOf(false) }
 
     val liveCents = segments.mapNotNull { MoneyUtils.parseToCents(it) }.sum()
 
@@ -245,44 +250,46 @@ fun TransactionSheet(
             }
             Spacer(Modifier.height(12.dp))
 
-            // 金额大号等宽显示 + 连加实时合计
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    Modifier.weight(1f),
-                    horizontalAlignment = Alignment.End
+            // 金额大号等宽显示 + 连加实时合计；键盘弹起（编辑备注）时隐藏省空间
+            if (!noteFocused) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = segments.joinToString(" + ").ifEmpty { "0" },
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = if (amountError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = if (amountError) {
-                            stringResource(R.string.sheet_amount_error)
-                        } else {
-                            "≈ ${MoneyUtils.formatCents(liveCents)}"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (amountError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
-                    )
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = segments.joinToString(" + ").ifEmpty { "0" },
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (amountError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (amountError) {
+                                stringResource(R.string.sheet_amount_error)
+                            } else {
+                                "≈ ${MoneyUtils.formatCents(liveCents)}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (amountError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
                 }
+                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(12.dp))
 
             // 备注：常驻可见，聚焦时随键盘上移不遮挡
             OutlinedTextField(
@@ -290,7 +297,9 @@ fun TransactionSheet(
                 onValueChange = { note = it },
                 label = { Text(stringResource(R.string.sheet_note_hint)) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { noteFocused = it.isFocused }
             )
             Spacer(Modifier.height(12.dp))
 

@@ -1,18 +1,24 @@
 package com.moneyhistory.app.ui
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.ShowChart
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Checkroom
+import androidx.compose.material.icons.outlined.ChildCare
 import androidx.compose.material.icons.outlined.Diamond
 import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.DirectionsCar
-import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material.icons.outlined.Eco
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.FitnessCenter
@@ -23,13 +29,13 @@ import androidx.compose.material.icons.outlined.Laptop
 import androidx.compose.material.icons.outlined.LocalDrink
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.LocalPharmacy
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Redeem
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.School
@@ -40,7 +46,6 @@ import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.SentimentVeryDissatisfied
 import androidx.compose.material.icons.outlined.SentimentVerySatisfied
 import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.SmokeFree
 import androidx.compose.material.icons.outlined.Spa
@@ -48,7 +53,6 @@ import androidx.compose.material.icons.outlined.SportsBar
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.SportsSoccer
 import androidx.compose.material.icons.outlined.TaskAlt
-import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.Weekend
 import androidx.compose.material.icons.outlined.Work
@@ -62,23 +66,29 @@ import com.moneyhistory.app.Mood
 private val categoryIcons = mapOf(
     "🍜" to Icons.Outlined.Restaurant,
     "🚌" to Icons.Outlined.DirectionsBus,
-    "🛍" to Icons.Outlined.ShoppingBag,
-    "🏠" to Icons.Outlined.Home,
+    "🚗" to Icons.Outlined.DirectionsCar,
     "💡" to Icons.Outlined.Bolt,
-    "🎮" to Icons.Outlined.SportsEsports,
-    "💊" to Icons.Outlined.LocalPharmacy,
-    "📚" to Icons.Outlined.School,
-    "📱" to Icons.Outlined.Smartphone,
     "👕" to Icons.Outlined.Checkroom,
-    "🐾" to Icons.Outlined.Pets,
+    "🛋" to Icons.Outlined.Weekend,
+    "📱" to Icons.Outlined.Smartphone,
     "⚽" to Icons.Outlined.SportsSoccer,
-    "🎁" to Icons.Outlined.CardGiftcard,
     "💅" to Icons.Outlined.Brush,
+    "👶" to Icons.Outlined.ChildCare,
+    "🐾" to Icons.Outlined.Pets,
+    "🏢" to Icons.Outlined.Business,
+    "✈️" to Icons.Outlined.Flight,
+    "🎮" to Icons.Outlined.SportsEsports,
+    "📚" to Icons.Outlined.School,
+    "💊" to Icons.Outlined.LocalPharmacy,
+    "🛠" to Icons.Outlined.Build,
+    "🎁" to Icons.Outlined.CardGiftcard,
+    "💹" to Icons.AutoMirrored.Outlined.ShowChart,
     "📦" to Icons.Outlined.Category,
     "💰" to Icons.Outlined.Payments,
     "🧧" to Icons.Outlined.Redeem,
-    "📈" to Icons.Outlined.TrendingUp,
-    "💼" to Icons.Outlined.Work
+    "📈" to Icons.AutoMirrored.Outlined.TrendingUp,
+    "💼" to Icons.Outlined.Work,
+    "🔄" to Icons.Outlined.Refresh
 )
 
 /** 分类 → 矢量图标（自定义分类未匹配时用通用分类图标）。 */
@@ -92,9 +102,9 @@ fun categoryIcon(category: String): ImageVector {
 private val habitIcons = mapOf(
     "💪" to Icons.Outlined.FitnessCenter,
     "📚" to Icons.Outlined.School,
-    "📖" to Icons.Outlined.MenuBook,
+    "📖" to Icons.AutoMirrored.Outlined.MenuBook,
     "🌅" to Icons.Outlined.WbSunny,
-    "🏃" to Icons.Outlined.DirectionsRun,
+    "🏃" to Icons.AutoMirrored.Outlined.DirectionsRun,
     "🧘" to Icons.Outlined.SelfImprovement,
     "🥗" to Icons.Outlined.Restaurant,
     "💤" to Icons.Outlined.Bedtime,
@@ -147,7 +157,7 @@ fun moodIcon(mood: Mood): ImageVector = when (mood) {
 
 private val badgeIcons = mapOf(
     "first_tx" to Icons.Outlined.Eco,
-    "streak_7" to Icons.Outlined.MenuBook,
+    "streak_7" to Icons.AutoMirrored.Outlined.MenuBook,
     "streak_30" to Icons.Outlined.CalendarMonth,
     "tx_100" to Icons.Outlined.CheckCircle,
     "goal_done" to Icons.Outlined.Diamond,
