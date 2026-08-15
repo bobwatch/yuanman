@@ -81,6 +81,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _month = MutableStateFlow(currentYearMonth())
     val month: StateFlow<YearMonth> = _month.asStateFlow()
 
+    // 首页流水分类筛选（统计页点分类图例直达明细用）；null = 不过滤
+    private val _homeFilter = MutableStateFlow<String?>(null)
+    val homeFilter: StateFlow<String?> = _homeFilter.asStateFlow()
+
     private val _recurring = MutableStateFlow(recurringStore.all())
     val recurring: StateFlow<List<RecurringExpense>> = _recurring.asStateFlow()
 
@@ -179,6 +183,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 跳到指定月份（保存流水后定位到该笔所在月，避免「记完看不见」）。 */
     fun goToMonth(target: YearMonth) {
         _month.value = target
+    }
+
+    /** 设置/清除首页流水分类筛选（统计页点分类直达明细用）。 */
+    fun setHomeFilter(category: String?) {
+        _homeFilter.value = category
     }
 
     // ---------- 流水 ----------

@@ -56,6 +56,7 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxDefaults
 import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -128,6 +129,7 @@ fun HomeScreen(
 ) {
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val month by viewModel.month.collectAsStateWithLifecycle()
+    val homeFilter by viewModel.homeFilter.collectAsStateWithLifecycle()
     val budgetCents by viewModel.settings.budgetCents.collectAsStateWithLifecycle()
     val customCategories by viewModel.customCategories.collectAsStateWithLifecycle()
     val recentExpense by viewModel.settings.recentExpenseCategories
@@ -179,9 +181,10 @@ fun HomeScreen(
     }
     val categoryDisplayNames = monthCategories.associateWith { Categories.displayName(it) }
     val filteredTransactions = remember(
-        monthTransactions, searchQuery, searchType, categoryDisplayNames
+        monthTransactions, searchQuery, searchType, categoryDisplayNames, homeFilter
     ) {
         monthTransactions.filter { t ->
+            if (homeFilter != null && t.category != homeFilter) return@filter false
             if (searchType != null && t.type != searchType) return@filter false
             if (searchQuery.isBlank()) return@filter true
             val q = searchQuery.trim()
@@ -193,6 +196,11 @@ fun HomeScreen(
                 t.category.contains(q, ignoreCase = true) ||
                 categoryDisplayNames[t.category].orEmpty().contains(q, ignoreCase = true)
         }
+    }
+    // 分类筛选条上的笔数（按整月统计，不随搜索词变化）
+    val homeFilterCount = remember(monthTransactions, homeFilter) {
+        if (homeFilter == null) 0
+        else monthTransactions.count { it.category == homeFilter }
     }
     var monthExpense = 0L
     var monthIncome = 0L
@@ -375,8 +383,21 @@ fun HomeScreen(
                 }
             }
 
+            // 统计页点分类直达：顶部常驻筛选条，一键清除回到全部流水
+            homeFilter?.let { filter ->
+                item(key = "filter_$filter") {
+                    CategoryFilterBar(
+                        category = filter,
+                        count = homeFilterCount,
+                        onClear = { viewModel.setHomeFilter(null) }
+                    )
+                }
+            }
+
             if (filteredTransactions.isEmpty()) {
                 item(key = "empty") {
+                    // delegated 属性不能智能转换，先捕获为局部变量再判空
+                    val activeFilter = homeFilter
                     if (searchActive) {
                         // 搜索无结果：轻量提示
                         EmptyState(
@@ -386,6 +407,15 @@ fun HomeScreen(
                                 R.string.home_search_empty_sub,
                                 searchQuery
                             )
+                        )
+                    } else if (activeFilter != null) {
+                        // 分类筛选无结果：说明 + 一键清除
+                        EmptyState(
+                            emoji = Categories.emojiOf(activeFilter),
+                            title = stringResource(R.string.home_filter_empty_title),
+                            subtitle = stringResource(R.string.home_filter_empty_sub),
+                            actionLabel = stringResource(R.string.home_filter_clear),
+                            onAction = { viewModel.setHomeFilter(null) }
                         )
                     } else if (transactions.isEmpty()) {
                         // 全新用户：欢迎 + 记第一笔引导
@@ -494,6 +524,10 @@ fun HomeScreen(
                     val isNew = editing == null
                     if (isNew) viewModel.add(t) else viewModel.update(t)
                     viewModel.onTransactionSaved(t)
+                    // 分类筛选下记了其它分类：清掉筛选，新记录立即可见
+                    if (homeFilter != null && t.category != homeFilter) {
+                        viewModel.setHomeFilter(null)
+                    }
                     if (isNew) {
                         // 成功 Toast 带「再记一笔」：连续记账不打断节奏（参考支付宝）
                         toastHostState.show(
@@ -1317,6 +1351,46 @@ private fun TransactionRow(
 private fun weekdayName(timestamp: Long, weekdays: List<String>): String {
     val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
     return weekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
+}
+
+/** 统计页点分类直达后首页顶部的筛选条：分类名 + 笔数 + 一键清除。 */
+@Composable
+private fun CategoryFilterBar(
+    category: String,
+    count: Int,
+    onClear: () -> Unit
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = primary.copy(alpha = 0.1f)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${Categories.emojiOf(category)} ${Categories.displayName(category)}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = stringResource(R.string.home_filter_count, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = primary
+            )
+            TextButton(onClick = onClear) {
+                Text(stringResource(R.string.home_filter_clear))
+            }
+        }
+    }
 }
 
 private fun formatTime(timestamp: Long): String =

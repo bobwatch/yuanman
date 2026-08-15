@@ -159,6 +159,12 @@
     <!-- 触控气泡：每日图中的几号 -->
     <string name="chart_touch_day">%1$d日</string>
 
+    <!-- 首页分类筛选（统计页图例直达） -->
+    <string name="home_filter_count">%1$d 笔</string>
+    <string name="home_filter_clear">清除</string>
+    <string name="home_filter_empty_title">这个分类还没有记录</string>
+    <string name="home_filter_empty_sub">清除筛选，回到全部流水</string>
+
     <!-- budget dialog -->
     <string name="budget_title">月度预算</string>
     <string name="budget_amount_hint">金额（元）</string>

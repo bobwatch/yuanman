@@ -1,6 +1,9 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -28,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +60,7 @@ fun StatsScreen(
     onBack: () -> Unit
 ) {
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
+    val view = LocalView.current
     // 月份为统计页本地状态（不与首页共享，返回首页月份不受影响）。
     // 存相对当前月的偏移量（rememberSaveable 可存），旋转屏幕不丢查看位置
     var monthOffset by rememberSaveable { mutableIntStateOf(0) }
@@ -422,7 +430,24 @@ fun StatsScreen(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 3.dp),
+                                    .padding(vertical = 3.dp)
+                                    .pressScale()
+                                    .clickable(
+                                        interactionSource = remember {
+                                            MutableInteractionSource()
+                                        },
+                                        indication = null
+                                    ) {
+                                        // 点分类 → 首页直达该分类流水（占比 → 逐笔明细闭环）
+                                        view.performHapticFeedback(
+                                            HapticFeedbackConstants.KEYBOARD_TAP
+                                        )
+                                        viewModel.setHomeFilter(slice.label)
+                                        if (monthOffset != 0) {
+                                            viewModel.goToMonth(month)
+                                        }
+                                        onBack()
+                                    },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -451,6 +476,14 @@ fun StatsScreen(
                                     ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.size(2.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        .copy(alpha = 0.7f)
                                 )
                             }
                         }
