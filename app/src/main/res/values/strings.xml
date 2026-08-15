@@ -54,11 +54,22 @@
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">Streak</string>
     <string name="home_header_streak_short">🔥 %1$d days</string>
-    <string name="home_budget_over"> (over budget)</string>
     <string name="home_budget_set">Set monthly budget →</string>
+    <string name="budget_left">%1$s left</string>
+    <string name="budget_over_amount">%1$s over</string>
     <string name="home_section_goal">Savings goals</string>
     <string name="home_goal_set">Set a goal →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>
+
+    <!-- greetings (time-of-day, light emotional touch) -->
+    <string name="greeting_morning">Good morning</string>
+    <string name="greeting_noon">Good afternoon</string>
+    <string name="greeting_afternoon">Good afternoon</string>
+    <string name="greeting_evening">Good evening</string>
+    <string name="greeting_sub_morning">A fresh day starts with one record ✨</string>
+    <string name="greeting_sub_noon">Don\'t forget to log this morning 📝</string>
+    <string name="greeting_sub_afternoon">All of today\'s records caught up?</string>
+    <string name="greeting_sub_evening">One last record to wrap up today 🌙</string>
     <string name="home_day_header">%3$s, %1$d/%2$d</string>
     <string name="home_day_today">Today</string>
     <string name="home_day_yesterday">Yesterday</string>
@@ -129,6 +140,17 @@
     <string name="stats_total_income_label">Total income</string>
     <string name="stats_balance">Balance</string>
     <string name="stats_month_short">%d</string>
+    <!-- stats insights -->
+    <string name="stats_insight_title_expense">Spending insights</string>
+    <string name="stats_insight_title_income">Income insights</string>
+    <string name="stats_insight_top_value">%1$s · %2$d%%</string>
+    <string name="stats_insight_daily_expense">📈 Daily average</string>
+    <string name="stats_insight_daily_income">📈 Daily average</string>
+    <string name="stats_insight_daily_value">%1$s / day</string>
+    <string name="stats_insight_vs">📊 vs last month</string>
+    <string name="stats_insight_more">+%1$s (+%2$d%%)</string>
+    <string name="stats_insight_less">-%1$s (-%2$d%%)</string>
+    <string name="stats_insight_even">Same as last month</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
@@ -138,6 +160,7 @@
     <string name="budget_title">Monthly budget</string>
     <string name="budget_amount_hint">Amount</string>
     <string name="budget_clear">Clear budget</string>
+    <string name="budget_month_spent">Spent %1$s</string>
 
     <!-- savings goals -->
     <string name="goal_create_title">New savings goal</string>
@@ -222,6 +245,7 @@
     <string name="mood_grid_title">Mood this month</string>
     <string name="mood_day_pattern">MMM d</string>
     <string name="mood_day_none">No mood recorded for this day — pick one to add it</string>
+    <string name="mood_today_marker">today</string>
     <string name="mood_donut_center">Angry days</string>
     <string name="mood_cross">You spent %1$s more per day on angry days — a good mood saves money too 💙</string>
     <string name="mood_encourage_start">Start recording your mood today — Yuanman is here with you 🌱</string>

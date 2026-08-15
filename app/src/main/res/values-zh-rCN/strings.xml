@@ -54,11 +54,22 @@
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">连续</string>
     <string name="home_header_streak_short">🔥 %1$d 天</string>
-    <string name="home_budget_over">（已超支）</string>
     <string name="home_budget_set">设置月度预算 →</string>
+    <string name="budget_left">还可花 %1$s</string>
+    <string name="budget_over_amount">已超支 %1$s</string>
     <string name="home_section_goal">攒钱目标</string>
     <string name="home_goal_set">定个小目标 →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>
+
+    <!-- greetings -->
+    <string name="greeting_morning">早上好</string>
+    <string name="greeting_noon">中午好</string>
+    <string name="greeting_afternoon">下午好</string>
+    <string name="greeting_evening">晚上好</string>
+    <string name="greeting_sub_morning">新的一天，从记一笔开始 ✨</string>
+    <string name="greeting_sub_noon">别忘了记上午的账哦 📝</string>
+    <string name="greeting_sub_afternoon">下午了，今天的账都记下了吗？</string>
+    <string name="greeting_sub_evening">睡前记一笔，给今天收个尾 🌙</string>
     <string name="home_day_header">%1$d月%2$d日 %3$s</string>
     <string name="home_day_today">今天</string>
     <string name="home_day_yesterday">昨天</string>
@@ -129,6 +140,17 @@
     <string name="stats_total_income_label">收入总额</string>
     <string name="stats_balance">结余</string>
     <string name="stats_month_short">%d月</string>
+    <!-- 统计洞察 -->
+    <string name="stats_insight_title_expense">支出洞察</string>
+    <string name="stats_insight_title_income">收入洞察</string>
+    <string name="stats_insight_top_value">%1$s · %2$d%%</string>
+    <string name="stats_insight_daily_expense">📈 日均支出</string>
+    <string name="stats_insight_daily_income">📈 日均收入</string>
+    <string name="stats_insight_daily_value">%1$s / 天</string>
+    <string name="stats_insight_vs">📊 较上月</string>
+    <string name="stats_insight_more">+%1$s（+%2$d%%）</string>
+    <string name="stats_insight_less">-%1$s（-%2$d%%）</string>
+    <string name="stats_insight_even">与上月持平</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
     <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
@@ -138,6 +160,7 @@
     <string name="budget_title">月度预算</string>
     <string name="budget_amount_hint">金额（元）</string>
     <string name="budget_clear">清除预算</string>
+    <string name="budget_month_spent">支出 %1$s</string>
 
     <!-- savings goals -->
     <string name="goal_create_title">新建攒钱目标</string>
@@ -222,6 +245,7 @@
     <string name="mood_grid_title">本月心情</string>
     <string name="mood_day_pattern">M月d日</string>
     <string name="mood_day_none">这一天还没有记录，选一个心情补记吧</string>
+    <string name="mood_today_marker">今天</string>
     <string name="mood_donut_center">生气天数</string>
     <string name="mood_cross">你生气的那几天平均多花 %1$s——保持好心情，也是省钱 💙</string>
     <string name="mood_encourage_start">从今天开始记录心情吧，沅满陪你慢慢来 🌱</string>

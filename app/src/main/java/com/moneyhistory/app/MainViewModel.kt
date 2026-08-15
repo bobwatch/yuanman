@@ -171,6 +171,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _month.value = YearMonth(year, month)
     }
 
+    /** 一键回到当前月（翻看历史月份后快速返回）。 */
+    fun goToCurrentMonth() {
+        _month.value = currentYearMonth()
+    }
+
+    /** 跳到指定月份（保存流水后定位到该笔所在月，避免「记完看不见」）。 */
+    fun goToMonth(target: YearMonth) {
+        _month.value = target
+    }
+
     // ---------- 流水 ----------
 
     fun add(t: Transaction) {

@@ -2,7 +2,13 @@ package com.moneyhistory.app.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -62,12 +68,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,7 +91,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** 月份切换条（‹ 2026年8月 ›），月份文字带滑动动画。[contentColor] 默认跟随主题。 */
+/** 月份切换条（‹ 2026年8月 ›），月份文字带滑动动画。[contentColor] 默认跟随主题。
+ *  [onTitleClick] 非空时月份标题可点击（加下划线提示），用于「一键回到本月」。 */
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun MonthSelector(
@@ -92,7 +101,8 @@ fun MonthSelector(
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
     nextEnabled: Boolean = true,
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    onTitleClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -122,11 +132,24 @@ fun MonthSelector(
             },
             label = "month"
         ) { m ->
+            val titleModifier = if (onTitleClick != null) {
+                Modifier
+                    .clickable(onClick = onTitleClick)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            } else {
+                Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            }
             Text(
                 text = stringResource(R.string.month_format, m.year, m.month),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = contentColor
+                color = contentColor,
+                textDecoration = if (onTitleClick != null) {
+                    TextDecoration.Underline
+                } else {
+                    TextDecoration.None
+                },
+                modifier = titleModifier
             )
         }
         IconButton(onClick = onNext, enabled = nextEnabled) {
@@ -368,7 +391,7 @@ fun SectionTitle(text: String) {
     )
 }
 
-/** 全局空状态：大 emoji 圆底 + 标题 + 副文案 + 可选主按钮（情绪价值引导）。 */
+/** 全局空状态：大 emoji 圆底（轻浮动呼吸感）+ 标题 + 副文案 + 可选主按钮。 */
 @Composable
 fun EmptyState(
     emoji: String,
@@ -377,6 +400,17 @@ fun EmptyState(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
+    // emoji 轻浮动：空状态也有呼吸感，不「死板」
+    val floatTransition = rememberInfiniteTransition(label = "emptyFloat")
+    val floatY by floatTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "emptyFloatY"
+    )
     Column(
         Modifier
             .fillMaxWidth()
@@ -389,7 +423,8 @@ fun EmptyState(
                 .clip(CircleShape)
                 .background(
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                ),
+                )
+                .graphicsLayer { translationY = floatY },
             contentAlignment = Alignment.Center
         ) {
             Text(emoji, fontSize = 42.sp)

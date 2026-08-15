@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +44,7 @@ import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** 统计页：支出/收入 Tab + 分类环形图 + 近 6 个月趋势 + 本月每日走势。 */
 @Composable
@@ -60,6 +62,9 @@ fun StatsScreen(
     }
     // 偏移 0 即当前月，不允许翻到未来
     val isAtCurrentMonth = monthOffset >= 0
+    // 不在当前月时月份标题可点（下划线提示），一键回到本月
+    val goToCurrentMonth: (() -> Unit)? =
+        if (monthOffset == 0) null else ({ monthOffset = 0 })
 
     fun shiftMonth(delta: Int) {
         if (monthOffset + delta > 0) return
@@ -151,6 +156,42 @@ fun StatsScreen(
             }
         }
     }
+    // 查看当月时标记「今天」的数据点（其他月份无意义）
+    val todayIndex = remember(month) {
+        val now = Calendar.getInstance()
+        if (month.year == now.get(Calendar.YEAR) &&
+            month.month == now.get(Calendar.MONTH) + 1
+        ) {
+            now.get(Calendar.DAY_OF_MONTH) - 1
+        } else {
+            null
+        }
+    }
+
+    // 洞察数据：上月同类型总额（环比用）+ 日均口径（当月按已过天数，历史月按整月）
+    val prevTotal = remember(transactions, month, currentType) {
+        val cal = Calendar.getInstance()
+        val prev = Calendar.getInstance().apply {
+            set(Calendar.YEAR, month.year)
+            set(Calendar.MONTH, month.month - 1)
+            add(Calendar.MONTH, -1)
+        }
+        val py = prev.get(Calendar.YEAR)
+        val pm = prev.get(Calendar.MONTH) + 1
+        transactions.filter { t ->
+            if (t.type != currentType) return@filter false
+            cal.timeInMillis = t.timestamp
+            cal.get(Calendar.YEAR) == py && cal.get(Calendar.MONTH) + 1 == pm
+        }.sumOf { it.amountCents }
+    }
+    val insightDays = remember(month) {
+        val now = Calendar.getInstance()
+        val isCurrent = month.year == now.get(Calendar.YEAR) &&
+            month.month == now.get(Calendar.MONTH) + 1
+        val cal = Calendar.getInstance().apply { set(month.year, month.month - 1, 1) }
+        val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        if (isCurrent) now.get(Calendar.DAY_OF_MONTH) else daysInMonth
+    }
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -168,7 +209,8 @@ fun StatsScreen(
                 month = month,
                 onPrev = { shiftMonth(-1) },
                 onNext = { shiftMonth(1) },
-                nextEnabled = !isAtCurrentMonth
+                nextEnabled = !isAtCurrentMonth,
+                onTitleClick = goToCurrentMonth
             )
 
             TabRow(
@@ -254,6 +296,80 @@ fun StatsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                    }
+                }
+            }
+
+            // 本月洞察：最大分类 / 日均 / 环比上月（有数据才显示，空数据不加噪）
+            if (currentTotal > 0) {
+                val top = slices.first()
+                val topPercent = (top.value / currentTotal * 100).roundToInt()
+                // 日均取整除法：低位小数月份仍能显示 1 元级均值
+                val avgCents = (currentTotal + insightDays / 2) / insightDays
+                AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = stringResource(
+                                if (tab == 0) {
+                                    R.string.stats_insight_title_expense
+                                } else {
+                                    R.string.stats_insight_title_income
+                                }
+                            ),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        InsightRow(
+                            leading = "${Categories.emojiOf(top.label)} " +
+                                Categories.displayName(top.label),
+                            leadingBold = true,
+                            trailing = stringResource(
+                                R.string.stats_insight_top_value,
+                                MoneyUtils.formatCents(top.value.toLong()),
+                                topPercent
+                            )
+                        )
+                        InsightRow(
+                            leading = stringResource(
+                                if (tab == 0) {
+                                    R.string.stats_insight_daily_expense
+                                } else {
+                                    R.string.stats_insight_daily_income
+                                }
+                            ),
+                            trailing = stringResource(
+                                R.string.stats_insight_daily_value,
+                                MoneyUtils.formatCents(avgCents)
+                            )
+                        )
+                        if (prevTotal > 0) {
+                            val diff = currentTotal - prevTotal
+                            val diffPct = (Math.abs(diff) * 100 / prevTotal).toInt()
+                            InsightRow(
+                                leading = stringResource(R.string.stats_insight_vs),
+                                trailing = when {
+                                    diff > 0 -> stringResource(
+                                        R.string.stats_insight_more,
+                                        MoneyUtils.formatCents(diff),
+                                        diffPct
+                                    )
+                                    diff < 0 -> stringResource(
+                                        R.string.stats_insight_less,
+                                        MoneyUtils.formatCents(-diff),
+                                        diffPct
+                                    )
+                                    else -> stringResource(R.string.stats_insight_even)
+                                },
+                                trailingColor = when {
+                                    diff > 0 ->
+                                        if (tab == 0) ExpenseRed else IncomeGreen
+                                    diff < 0 ->
+                                        if (tab == 0) IncomeGreen else ExpenseRed
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -398,6 +514,7 @@ fun StatsScreen(
                         DailyLineChart(
                             dailyCents = dailyValues,
                             dayLabels = dayLabels,
+                            todayIndex = todayIndex,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(160.dp)
@@ -408,5 +525,38 @@ fun StatsScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+/** 洞察行：左侧说明（可选加粗强调）+ 右侧数值（可选语义色）。 */
+@Composable
+private fun InsightRow(
+    leading: String,
+    trailing: String,
+    trailingColor: Color = MaterialTheme.colorScheme.onSurface,
+    leadingBold: Boolean = false
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = leading,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (leadingBold) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = trailing,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = trailingColor,
+            maxLines = 1
+        )
     }
 }

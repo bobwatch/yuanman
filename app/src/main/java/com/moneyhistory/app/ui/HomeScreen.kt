@@ -64,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -108,6 +109,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(
@@ -244,6 +246,21 @@ fun HomeScreen(
         month.year * 12 + month.month >=
             c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) + 1
     }
+    // 翻看历史月份后，点月份标题一键回当前月（编译器对方法引用进 if-else 有
+    // psi2ir 内部错误，统一走显式 lambda）
+    val monthTitleClick: (() -> Unit)? =
+        if (isAtCurrentMonth) null else ({ viewModel.goToCurrentMonth() })
+
+    // 页头时段问候语：跨时段后一分钟内更新（值不变不触发重组）
+    var greetingHour by remember {
+        mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            greetingHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        }
+    }
 
     // 整页单列表：蓝色页头随内容一起滚动。页头滚出状态栏区域后，
     // 状态栏露出页面背景色，浅色主题下把图标切深色保证可读（深色主题图标恒白）。
@@ -319,7 +336,9 @@ fun HomeScreen(
                     onSearchQueryChange = { searchQuery = it },
                     searchType = searchType,
                     onSearchTypeChange = { searchType = it },
-                    searchFocus = searchFocus
+                    searchFocus = searchFocus,
+                    greetingHour = greetingHour,
+                    onMonthTitleClick = monthTitleClick
                 )
             }
 
@@ -328,6 +347,8 @@ fun HomeScreen(
                     expense = monthExpense,
                     budgetCents = budgetCents,
                     goals = goals,
+                    // 预算只约束当前月：翻看历史月时隐藏进度条，避免与当月预算错位
+                    isCurrentMonth = isAtCurrentMonth,
                     onSetBudget = { showBudgetDialog = true },
                     onGoalClick = {
                         // 无目标时引导新建；单个目标直达详情；多个目标先弹列表选择
@@ -472,6 +493,13 @@ fun HomeScreen(
                     if (editing == null) viewModel.add(t) else viewModel.update(t)
                     viewModel.onTransactionSaved(t)
                     viewModel.postMessage(savedText, MessageVariant.SUCCESS)
+                    // 记完跳到这笔所在月份：历史月补记/改日期后，新记录立刻可见
+                    val cal = Calendar.getInstance().apply { timeInMillis = t.timestamp }
+                    val targetMonth = YearMonth(
+                        cal.get(Calendar.YEAR),
+                        cal.get(Calendar.MONTH) + 1
+                    )
+                    if (month != targetMonth) viewModel.goToMonth(targetMonth)
                     sheetOpen = false
                 },
                 onDelete = {
@@ -524,7 +552,7 @@ fun HomeScreen(
 }
 
 /**
- * 品牌蓝渐变大页头（随列表滚动）：标题行 + 月份切换 + 本月支出大数字 +
+ * 品牌蓝渐变大页头（随列表滚动）：时段问候 + 月份切换 + 本月支出大数字 +
  * 三个宽松小指标（收入 / 今日 / 连续）+ 激活时的搜索区。
  */
 @OptIn(ExperimentalAnimationApi::class)
@@ -548,8 +576,23 @@ private fun HomeHeader(
     onSearchQueryChange: (String) -> Unit,
     searchType: Transaction.Type?,
     onSearchTypeChange: (Transaction.Type?) -> Unit,
-    searchFocus: FocusRequester
+    searchFocus: FocusRequester,
+    greetingHour: Int,
+    onMonthTitleClick: (() -> Unit)?
 ) {
+    // 按时段换问候与副文案：早上 5-11 / 中午 11-13 / 下午 13-18 / 晚上 18-5
+    val greeting = when (greetingHour) {
+        in 5..10 -> stringResource(R.string.greeting_morning)
+        in 11..12 -> stringResource(R.string.greeting_noon)
+        in 13..17 -> stringResource(R.string.greeting_afternoon)
+        else -> stringResource(R.string.greeting_evening)
+    }
+    val greetingSub = when (greetingHour) {
+        in 5..10 -> stringResource(R.string.greeting_sub_morning)
+        in 11..12 -> stringResource(R.string.greeting_sub_noon)
+        in 13..17 -> stringResource(R.string.greeting_sub_afternoon)
+        else -> stringResource(R.string.greeting_sub_evening)
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -560,13 +603,23 @@ private fun HomeHeader(
             Modifier.padding(start = 20.dp, end = 6.dp, top = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = greeting,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = greetingSub,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             IconButton(onClick = onSearch) {
                 Icon(
                     Icons.Filled.Search,
@@ -602,7 +655,9 @@ private fun HomeHeader(
             onPrev = onPrev,
             onNext = onNext,
             nextEnabled = nextEnabled,
-            contentColor = Color.White
+            contentColor = Color.White,
+            // 不在当前月时标题可点（下划线提示），一键回到本月
+            onTitleClick = onMonthTitleClick
         )
 
         Column(Modifier.padding(horizontal = 20.dp)) {
@@ -801,12 +856,15 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
     }
 }
 
-/** 预算 + 攒钱目标合并的紧凑双行卡：单卡两行各自可点，压缩首页占位。 */
+/** 预算 + 攒钱目标合并的紧凑双行卡：单卡两行各自可点，压缩首页占位。
+ *  [isCurrentMonth] 为 false（翻看历史月）时预算行不显示进度——预算只约束
+ *  当前月，拿历史月支出比当月预算会误导，改为直接展示该月支出额。 */
 @Composable
 private fun BudgetGoalCard(
     expense: Long,
     budgetCents: Long,
     goals: List<Goal>,
+    isCurrentMonth: Boolean,
     onSetBudget: () -> Unit,
     onGoalClick: () -> Unit
 ) {
@@ -827,7 +885,7 @@ private fun BudgetGoalCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
-                if (budgetCents > 0) {
+                if (budgetCents > 0 && isCurrentMonth) {
                     Spacer(Modifier.width(12.dp))
                     val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
                     val overBudget = expense > budgetCents
@@ -846,20 +904,40 @@ private fun BudgetGoalCard(
                         strokeCap = StrokeCap.Round
                     )
                     Spacer(Modifier.width(12.dp))
+                    // 右侧直给「还可花多少 / 已超支多少」：比百分比更有行动指导
                     Text(
-                        text = Math.round(expense * 100f / budgetCents).toString() + "%" +
-                            if (overBudget) {
-                                stringResource(R.string.home_budget_over)
-                            } else {
-                                ""
-                            },
+                        text = if (overBudget) {
+                            stringResource(
+                                R.string.budget_over_amount,
+                                MoneyUtils.formatCents(expense - budgetCents)
+                            )
+                        } else {
+                            stringResource(
+                                R.string.budget_left,
+                                MoneyUtils.formatCents(budgetCents - expense)
+                            )
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
                         color = if (overBudget) {
                             ExpenseRed
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                        },
+                        maxLines = 1
+                    )
+                } else if (budgetCents > 0) {
+                    // 历史月：预算行退化为「该月支出」信息行，点击仍可设预算
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = stringResource(
+                            R.string.budget_month_spent,
+                            MoneyUtils.formatCents(expense)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 } else {
                     Spacer(Modifier.weight(1f))

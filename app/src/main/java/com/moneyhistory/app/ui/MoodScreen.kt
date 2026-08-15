@@ -360,6 +360,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                         daysInMonth = daysInMonth,
                         monthPrefix = monthPrefix,
                         moods = moods,
+                        today = today,
                         onDayClick = { dayPicker = it }
                     )
                 }
@@ -544,14 +545,24 @@ private fun CompactMoodPicker(
     }
 }
 
-/** 本月心情日历：周表头 + 7 列按星期对齐，每日一个色点（未记录灰色），点击可回看/补记。 */
+/** 本月心情日历：周表头 + 7 列按星期对齐，每日一个色点（未记录灰色），
+ *  今天主色描边圈定位，点击可回看/补记。 */
 @Composable
 private fun MoodGrid(
     daysInMonth: Int,
     monthPrefix: String,
     moods: Map<String, MoodEntry>,
+    today: String,
     onDayClick: (String) -> Unit
 ) {
+    // 今天是当月几号（跨月后自动失效，回看上月不标今天）
+    val todayDay = remember(monthPrefix, today) {
+        if (today.startsWith(monthPrefix)) {
+            today.substringAfterLast("-").toIntOrNull()
+        } else {
+            null
+        }
+    }
     Column {
         // 周表头（周一起始）
         Row(
@@ -601,9 +612,10 @@ private fun MoodGrid(
                     } else {
                         val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
                         val entry = moods[key]
+                        val isToday = day == todayDay
                         // 整格可点（48dp 高触达区，与全 App 触达下限一致），圆点只做视觉；
-                        // 无障碍读出当天心情（未记录也有明确说明）
-                        val cellDesc = if (entry != null) {
+                        // 无障碍读出当天心情（未记录也有明确说明），今天追加「今天」标记
+                        val dayDesc = if (entry != null) {
                             stringResource(
                                 R.string.mood_day_semantics,
                                 day,
@@ -611,6 +623,11 @@ private fun MoodGrid(
                             )
                         } else {
                             stringResource(R.string.mood_day_none)
+                        }
+                        val cellDesc = if (isToday) {
+                            dayDesc + " · " + stringResource(R.string.mood_today_marker)
+                        } else {
+                            dayDesc
                         }
                         Box(
                             Modifier
@@ -631,6 +648,18 @@ private fun MoodGrid(
                                             Color(entry.mood.colorValue)
                                         } else {
                                             MaterialTheme.colorScheme.surfaceContainerHighest
+                                        }
+                                    )
+                                    // 今天：主色描边圈，一眼定位「现在」的位置
+                                    .then(
+                                        if (isToday) {
+                                            Modifier.border(
+                                                2.dp,
+                                                MaterialTheme.colorScheme.primary,
+                                                CircleShape
+                                            )
+                                        } else {
+                                            Modifier
                                         }
                                     ),
                                 contentAlignment = Alignment.Center

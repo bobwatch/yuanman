@@ -224,14 +224,17 @@ fun TrendBarChart(
     }
 }
 
-/** 本月每日走势：折线 + 渐变填充面积图，X 轴抽样日期标签。 */
+/** 本月每日走势：折线 + 渐变填充面积图，X 轴抽样日期标签。
+ *  [todayIndex] 非空时在该数据点画主色实心圆（查看当月时标记「今天」）。 */
 @Composable
 fun DailyLineChart(
     dailyCents: List<Long>,
     dayLabels: List<Int>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    todayIndex: Int? = null
 ) {
     val primary = MaterialTheme.colorScheme.primary
+    val surfaceColor = MaterialTheme.colorScheme.surface
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
@@ -299,6 +302,12 @@ fun DailyLineChart(
                 color = primary,
                 style = Stroke(width = 4f, cap = StrokeCap.Round)
             )
+            // 「今天」高亮：表面色底圈 + 主色实心，一眼定位当前位置
+            if (todayIndex != null && todayIndex in dailyCents.indices) {
+                val todayPoint = pointAt(todayIndex)
+                drawCircle(color = surfaceColor, radius = 8f, center = todayPoint)
+                drawCircle(color = primary, radius = 5f, center = todayPoint)
+            }
             dayLabels.forEach { day ->
                 val index = (day - 1).coerceIn(0, dailyCents.size - 1)
                 drawContext.canvas.nativeCanvas.drawText(

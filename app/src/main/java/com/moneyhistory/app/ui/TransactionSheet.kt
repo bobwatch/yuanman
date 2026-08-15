@@ -163,8 +163,9 @@ fun TransactionSheet(
     var moreOpen by rememberSaveable { mutableStateOf(false) }
     // 编辑态删除：确认后由外部执行（走撤销 Toast）
     var deleteConfirm by rememberSaveable { mutableStateOf(false) }
-    // 数字键盘：默认收起让分类区独占空间，点金额输入框展开/收起
-    var numpadExpanded by rememberSaveable { mutableStateOf(false) }
+    // 数字键盘：默认展开，打开即可输金额（记账核心路径少一步，参考支付宝）；
+    // 点箭头收起让分类区独占空间，点金额输入框再次展开
+    var numpadExpanded by rememberSaveable { mutableStateOf(true) }
 
     // 周期账单（仅新增支出时可用）
     var recurringEnabled by rememberSaveable { mutableStateOf(false) }
