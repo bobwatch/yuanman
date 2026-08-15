@@ -64,11 +64,10 @@ fun RecurringScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = stringResource(R.string.recurring_empty),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                EmptyState(
+                    emoji = "🔁",
+                    title = stringResource(R.string.recurring_empty_title),
+                    subtitle = stringResource(R.string.recurring_empty_sub)
                 )
             }
         } else {

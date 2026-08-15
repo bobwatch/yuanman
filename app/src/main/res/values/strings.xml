@@ -109,7 +109,8 @@
     <string name="cycle_monthly">Monthly</string>
     <string name="cycle_yearly">Yearly</string>
     <string name="recurring_title">Recurring bills</string>
-    <string name="recurring_empty">🔁\n\nNo recurring bills yet\nTurn on \"Make recurring\" when adding a transaction</string>
+    <string name="recurring_empty_title">No recurring bills yet</string>
+    <string name="recurring_empty_sub">Turn on \"Make recurring\" when adding a transaction</string>
     <string name="recurring_row_subtitle">%1$s · next %2$s</string>
     <string name="recurring_delete">Delete</string>
     <string name="recurring_delete_confirm_title">Delete this recurring bill?</string>
@@ -168,7 +169,8 @@
     <string name="milestone_100">🎉 Goal achieved!</string>
 
     <!-- habits -->
-    <string name="habit_empty">✅\n\nNo habits yet\nTap \"+ New habit\" below,\nprogress a little every day</string>
+    <string name="habit_empty_title">No habits yet</string>
+    <string name="habit_empty_sub">A little progress every day adds up — start small</string>
     <string name="habit_header_sub">Check in daily and build streaks</string>
     <string name="habit_add_new">＋ New habit</string>
     <string name="habit_build_streak">%d-day streak</string>

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
@@ -64,8 +65,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
@@ -358,8 +361,56 @@ fun SectionTitle(text: String) {
     )
 }
 
-/** 矢量图标圆底（替代 emoji 文本图标）。 */
+/** 全局空状态：大 emoji 圆底 + 标题 + 副文案 + 可选主按钮（情绪价值引导）。 */
 @Composable
+fun EmptyState(
+    emoji: String,
+    title: String,
+    subtitle: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 40.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .size(92.dp)
+                .clip(CircleShape)
+                .background(
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(emoji, fontSize = 42.sp)
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(22.dp))
+            Button(onClick = onAction) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+/** 矢量图标圆底（替代 emoji 文本图标）。 */@Composable
 fun IconTile(
     icon: ImageVector,
     tint: Color,

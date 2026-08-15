@@ -109,7 +109,8 @@
     <string name="cycle_monthly">每月</string>
     <string name="cycle_yearly">每年</string>
     <string name="recurring_title">周期账单</string>
-    <string name="recurring_empty">🔁\n\n暂无周期账单\n记账时打开「设为周期账单」即可添加</string>
+    <string name="recurring_empty_title">暂无周期账单</string>
+    <string name="recurring_empty_sub">记账时打开「设为周期账单」，自动记录房租、订阅等</string>
     <string name="recurring_row_subtitle">%1$s · 下次到期 %2$s</string>
     <string name="recurring_delete">删除</string>
     <string name="recurring_delete_confirm_title">删除这条周期账单？</string>
@@ -168,7 +169,8 @@
     <string name="milestone_100">🎉 目标达成！太棒了！</string>
 
     <!-- habits -->
-    <string name="habit_empty">✅\n\n还没有习惯\n点击下方「+ 新习惯」建立一个，\n每天进步一点点</string>
+    <string name="habit_empty_title">还没有习惯</string>
+    <string name="habit_empty_sub">每天进步一点点，从一个小习惯开始</string>
     <string name="habit_header_sub">每日打卡，坚持养成</string>
     <string name="habit_add_new">＋ 新习惯</string>
     <string name="habit_build_streak">连续 %d 天</string>

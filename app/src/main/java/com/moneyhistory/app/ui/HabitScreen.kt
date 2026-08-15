@@ -143,14 +143,10 @@ fun HabitScreen(viewModel: MainViewModel) {
 
             if (habits.isEmpty() && !showCreate) {
                 item(key = "empty") {
-                    Text(
-                        text = stringResource(R.string.habit_empty),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp)
+                    EmptyState(
+                        emoji = "✅",
+                        title = stringResource(R.string.habit_empty_title),
+                        subtitle = stringResource(R.string.habit_empty_sub)
                     )
                 }
             }
