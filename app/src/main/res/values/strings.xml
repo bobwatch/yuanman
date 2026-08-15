@@ -80,6 +80,8 @@
     <string name="sheet_date">Date</string>
     <string name="sheet_hint_save">Enter an amount, pick a category, then tap Save</string>
     <string name="numpad_plus">＋ Add up</string>
+    <string name="numpad_expand">Show keypad</string>
+    <string name="numpad_collapse">Collapse keypad</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">Make recurring</string>

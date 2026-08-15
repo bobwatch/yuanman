@@ -80,6 +80,8 @@
     <string name="sheet_date">日期</string>
     <string name="sheet_hint_save">输入金额，选择分类，点保存</string>
     <string name="numpad_plus">＋ 连加</string>
+    <string name="numpad_expand">展开键盘</string>
+    <string name="numpad_collapse">收起键盘</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">设为周期账单</string>

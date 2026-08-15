@@ -152,6 +152,8 @@ fun TransactionSheet(
     }
     var amountError by rememberSaveable { mutableStateOf(false) }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
+    // 数字键盘折叠：收起后分类宫格独占空间，选择大分类时不用滚动
+    var numpadCollapsed by rememberSaveable { mutableStateOf(false) }
 
     // 周期账单（仅新增支出时可用）
     var recurringEnabled by rememberSaveable { mutableStateOf(false) }
@@ -439,7 +441,11 @@ fun TransactionSheet(
                 CategoryGrid(
                     categories = categories,
                     selected = category,
-                    onSelect = { category = it }
+                    // 收起键盘浏览分类时，选中即自动展开，直接输金额少一步
+                    onSelect = {
+                        category = it
+                        if (numpadCollapsed) numpadCollapsed = false
+                    }
                 )
 
                 // 更多选项（默认收起）
@@ -512,9 +518,11 @@ fun TransactionSheet(
                 }
                 Spacer(Modifier.height(8.dp))
 
-                // 「＋ 连加」与「保存」并排一行
+                // 「＋ 连加」与「保存」并排一行；键盘可折叠给分类区让空间
                 NumPad(
                     onKey = { onNumKey(it) },
+                    collapsed = numpadCollapsed,
+                    onToggleCollapsed = { numpadCollapsed = !numpadCollapsed },
                     footer = {
                         Button(
                             onClick = { doSave() },

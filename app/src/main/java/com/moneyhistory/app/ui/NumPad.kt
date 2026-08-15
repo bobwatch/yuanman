@@ -1,5 +1,7 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,8 +9,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,36 +33,95 @@ import com.moneyhistory.app.R
  * 计算器式九宫格数字键盘（自绘，不弹系统软键盘）。
  * 按键：1-9、0、小数点、退格 ⌫。
  * 底部一行：左侧「＋ 连加」，右侧可放 [footer]（如「保存」）并排。
+ *
+ * 传入 [onToggleCollapsed] 时键盘可折叠：收起后只留底部操作行，
+ * 给上方内容（如分类宫格）让出空间；展开态顶部有细收起条。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NumPad(
     onKey: (String) -> Unit,
     modifier: Modifier = Modifier,
+    collapsed: Boolean = false,
+    onToggleCollapsed: (() -> Unit)? = null,
     footer: @Composable RowScope.() -> Unit = {}
 ) {
-    val rows = listOf(
-        listOf("1", "2", "3"),
-        listOf("4", "5", "6"),
-        listOf("7", "8", "9"),
-        listOf(".", "0", "⌫")
-    )
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        rows.forEach { row ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { key ->
-                    NumKey(
-                        label = key,
-                        onClick = { onKey(key) },
-                        modifier = Modifier.weight(1f)
+        if (onToggleCollapsed != null) {
+            AnimatedVisibility(visible = !collapsed) {
+                // 键盘顶部细条：点中间箭头收起键盘
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(20.dp)
+                        .clickable(onClick = onToggleCollapsed),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.KeyboardArrowDown,
+                        contentDescription = stringResource(R.string.numpad_collapse),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
-        // 底部一行：「＋ 连加」与「保存」并排
+        AnimatedVisibility(visible = !collapsed) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val rows = listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf(".", "0", "⌫")
+                )
+                rows.forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { key ->
+                            NumKey(
+                                label = key,
+                                onClick = { onKey(key) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (collapsed && onToggleCollapsed != null) {
+            // 收起态：整行「展开键盘」条，点击恢复键盘
+            Surface(
+                onClick = onToggleCollapsed,
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Filled.KeyboardArrowUp,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.numpad_expand),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
+        }
+        // 底部一行：「＋ 连加」与「保存」并排（折叠时仍保留）
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
