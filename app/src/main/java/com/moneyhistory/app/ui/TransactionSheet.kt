@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import android.content.Context
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
@@ -725,6 +726,8 @@ private fun CategoryTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 与数字键盘同一套轻震反馈：点分类「按到了」的体感一致
+    val view = LocalView.current
     // 选中态颜色过渡 + 按压缩放（与全局 pressScale 体系一致），最常点的元素不「干跳」
     val circleColor by animateColorAsState(
         targetValue = if (selected) {
@@ -750,7 +753,10 @@ private fun CategoryTile(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .pressScale()
-            .clickable(onClick = onClick)
+            .clickable {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            }
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -789,6 +795,7 @@ private fun SheetTypePill(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
     val container by animateColorAsState(
         targetValue = if (selected) {
             accent.copy(alpha = 0.14f)
@@ -810,7 +817,10 @@ private fun SheetTypePill(
             .clip(RoundedCornerShape(14.dp))
             .background(container)
             .pressScale()
-            .clickable(onClick = onClick)
+            .clickable {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            }
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center
     ) {
