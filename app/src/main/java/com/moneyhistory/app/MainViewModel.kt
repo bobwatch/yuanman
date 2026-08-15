@@ -127,6 +127,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _tabReclick.tryEmit(route)
     }
 
+    /** 子页（统计等）「记一笔」直达：首页收到后打开记账面板。 */
+    private val _requestAddSheet = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val requestAddSheet: SharedFlow<Unit> = _requestAddSheet.asSharedFlow()
+
+    fun requestAddSheet() {
+        _requestAddSheet.tryEmit(Unit)
+    }
+
     init {
         // 流水变更后刷新桌面 Widget
         store.onChanged = { SpendingWidgetProvider.notifyChanged(app) }
@@ -471,20 +479,43 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _updateState.value = UpdateState.Idle
     }
 
-    /** 下载并打开安装器。 */
+    /** 取消下载：中止网络读取并收起下载弹窗（不提示失败——取消不是错误）。 */
+    fun cancelUpdate() {
+        updateCancelled = true
+        _updateState.value = UpdateState.Idle
+    }
+
+    @Volatile
+    private var updateCancelled = false
+
+    /** 下载并打开安装器；下载期间弹窗实时显示进度，可取消。 */
     fun downloadUpdate() {
         val info = (_updateState.value as? UpdateState.Available)?.info ?: return
+        updateCancelled = false
         viewModelScope.launch(Dispatchers.IO) {
-            _updateState.value = UpdateState.Downloading
-            val file = UpdateChecker.download(getApplication<Application>(), info.apkUrl)
+            _updateState.value = UpdateState.Downloading(0, info.sizeBytes)
+            val file = UpdateChecker.download(
+                getApplication<Application>(),
+                info.apkUrl,
+                onProgress = { done, total ->
+                    // 用户取消：抛异常让下载循环中止（download 捕获后返回 null）
+                    if (updateCancelled) {
+                        throw kotlin.coroutines.cancellation.CancellationException()
+                    }
+                    _updateState.value = UpdateState.Downloading(done, total)
+                }
+            )
             if (file == null) {
                 _updateState.value = UpdateState.Idle
-                _messages.emit(
-                    UiMessage(
-                        getApplication<Application>().getString(R.string.update_download_failed),
-                        MessageVariant.ERROR
+                if (!updateCancelled) {
+                    _messages.emit(
+                        UiMessage(
+                            getApplication<Application>()
+                                .getString(R.string.update_download_failed),
+                            MessageVariant.ERROR
+                        )
                     )
-                )
+                }
             } else {
                 _updateState.value = UpdateState.Idle
                 try {

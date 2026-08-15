@@ -40,6 +40,10 @@ internal object DateUtils {
     fun monthPrefix(millis: Long = System.currentTimeMillis()): String =
         SimpleDateFormat("yyyy-MM", Locale.CHINA).format(Date(millis))
 
+    /** 由月份前缀与日号拼出 "yyyy-MM-dd"（月历网格的日期 key）。 */
+    fun dateKeyOf(monthPrefix: String, day: Int): String =
+        String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
+
     /** 上个月份前缀 "yyyy-MM"。 */
     fun lastMonthPrefix(): String {
         val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -1) }

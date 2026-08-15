@@ -65,15 +65,18 @@ fun chartPalette(): List<Color> =
     if (LocalDarkTheme.current) ChartPaletteDark else ChartPalette
 
 /**
- * 金额缩写（图表标签用）：≥1 万用 [wanUnit]（中文环境「万」），≥1000 用 [kUnit]（k），
- * 否则取整。单位文案走字符串资源（英文环境 wanUnit 为空串，自动落到 k）。
+ * 金额缩写（图表标签用）：≥1 万用 [wanUnit]（中文环境「万」），
+ * 百万级用 [mUnit]（英文环境「M」，避免 1000.0k 的怪写法），≥1000 用 [kUnit]，
+ * 否则取整。单位文案走字符串资源（英文环境 wanUnit 为空串，自动落到 M/k）。
  */
-internal fun abbrevYuan(cents: Long, wanUnit: String, kUnit: String): String {
+internal fun abbrevYuan(cents: Long, wanUnit: String, kUnit: String, mUnit: String): String {
     val yuan = cents / 100f
     val locale = Locale.getDefault()
     return when {
         yuan >= 10000f && wanUnit.isNotEmpty() ->
             String.format(locale, "%.1f%s", yuan / 10000f, wanUnit)
+        yuan >= 1_000_000f && mUnit.isNotEmpty() ->
+            String.format(locale, "%.1f%s", yuan / 1_000_000f, mUnit)
         yuan >= 1000f -> String.format(locale, "%.1f%s", yuan / 1000f, kUnit)
         else -> String.format(locale, "%.0f", yuan)
     }
@@ -180,6 +183,7 @@ fun TrendBarChart(
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val wanUnit = stringResource(R.string.chart_abbrev_wan)
     val kUnit = stringResource(R.string.chart_abbrev_k)
+    val mUnit = stringResource(R.string.chart_abbrev_m)
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
             color = labelColor.toArgb()
@@ -199,7 +203,7 @@ fun TrendBarChart(
     // TalkBack 读出各月金额
     val desc = stringResource(
         R.string.chart_trend_desc,
-        points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents, wanUnit, kUnit)}" }
+        points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents, wanUnit, kUnit, mUnit)}" }
     )
     // 柱生长动画：数据变化时从底部一起长高，金额标签跟随柱顶
     val progress = remember(points) { Animatable(0f) }
@@ -267,7 +271,7 @@ fun TrendBarChart(
                     cornerRadius = CornerRadius(8f, 8f)
                 )
                 drawContext.canvas.nativeCanvas.drawText(
-                    abbrevYuan(p.amountCents, wanUnit, kUnit),
+                    abbrevYuan(p.amountCents, wanUnit, kUnit, mUnit),
                     left + barWidth / 2f,
                     top - 8f,
                     textPaint

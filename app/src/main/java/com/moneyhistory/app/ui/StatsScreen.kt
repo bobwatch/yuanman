@@ -24,7 +24,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -41,17 +43,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
+import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.YearMonth
 import com.moneyhistory.app.ofMonth
-import com.moneyhistory.app.ui.theme.ExpenseRed
-import com.moneyhistory.app.ui.theme.IncomeGreen
+import com.moneyhistory.app.ui.theme.expenseAmountColor
+import com.moneyhistory.app.ui.theme.incomeAmountColor
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 /** 统计页：支出/收入 Tab + 分类环形图 + 近 6 个月趋势 + 本月每日走势。 */
 @Composable
@@ -64,7 +68,21 @@ fun StatsScreen(
     // 月份为统计页本地状态（不与首页共享，返回首页月份不受影响）。
     // 存相对当前月的偏移量（rememberSaveable 可存），旋转屏幕不丢查看位置
     var monthOffset by rememberSaveable { mutableIntStateOf(0) }
-    val month = remember(monthOffset) {
+    // 每 30 秒校正一次「现在」：跨零点/跨月后当前月自动推进（与打卡/心情页同款轮询），
+    // 只在月份真正变化时自增，值不变不触发重组
+    var monthNow by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        var lastPrefix = DateUtils.monthPrefix()
+        while (true) {
+            delay(30_000L)
+            val prefix = DateUtils.monthPrefix()
+            if (prefix != lastPrefix) {
+                lastPrefix = prefix
+                monthNow++
+            }
+        }
+    }
+    val month = remember(monthOffset, monthNow) {
         val cal = Calendar.getInstance().apply { add(Calendar.MONTH, monthOffset) }
         YearMonth(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1)
     }
@@ -265,6 +283,20 @@ fun StatsScreen(
                 )
             }
 
+            // 整月无记录：整页空态（插图 + 记一笔直达），不再展示一串 0.00 的噪音卡片
+            if (monthTransactions.isEmpty()) {
+                EmptyState(
+                    emoji = "📊",
+                    title = stringResource(R.string.home_empty_title),
+                    subtitle = stringResource(R.string.home_empty_sub),
+                    actionLabel = stringResource(R.string.home_empty_action),
+                    onAction = {
+                        // 跨页闭环：回首页的同时打开记账面板
+                        viewModel.requestAddSheet()
+                        onBack()
+                    }
+                )
+            } else {
             // 顶部汇总：支出 / 收入 / 结余
             AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(
@@ -283,7 +315,7 @@ fun StatsScreen(
                             text = MoneyUtils.formatCents(totalExpense),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = ExpenseRed,
+                            color = expenseAmountColor(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -298,7 +330,7 @@ fun StatsScreen(
                             text = MoneyUtils.formatCents(totalIncome),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = IncomeGreen,
+                            color = incomeAmountColor(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -315,8 +347,8 @@ fun StatsScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = when {
-                                balance > 0 -> IncomeGreen
-                                balance < 0 -> ExpenseRed
+                                balance > 0 -> incomeAmountColor()
+                                balance < 0 -> expenseAmountColor()
                                 else -> MaterialTheme.colorScheme.onSurface
                             },
                             maxLines = 1,
@@ -389,9 +421,9 @@ fun StatsScreen(
                                 },
                                 trailingColor = when {
                                     diff > 0 ->
-                                        if (tab == 0) ExpenseRed else IncomeGreen
+                                        if (tab == 0) expenseAmountColor() else incomeAmountColor()
                                     diff < 0 ->
-                                        if (tab == 0) IncomeGreen else ExpenseRed
+                                        if (tab == 0) incomeAmountColor() else expenseAmountColor()
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
@@ -416,10 +448,18 @@ fun StatsScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     if (slices.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.stats_empty_month),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        SectionEmptyHint(
+                            message = stringResource(
+                                if (tab == 0) {
+                                    R.string.stats_empty_expense
+                                } else {
+                                    R.string.stats_empty_income
+                                }
+                            ),
+                            onRecord = {
+                                viewModel.requestAddSheet()
+                                onBack()
+                            }
                         )
                     } else {
                         DonutChart(
@@ -526,10 +566,12 @@ fun StatsScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     if (trendPoints.all { it.amountCents == 0L }) {
-                        Text(
-                            text = stringResource(R.string.stats_trend_empty),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        SectionEmptyHint(
+                            message = stringResource(R.string.stats_trend_empty),
+                            onRecord = {
+                                viewModel.requestAddSheet()
+                                onBack()
+                            }
                         )
                     } else {
                         TrendBarChart(
@@ -568,10 +610,18 @@ fun StatsScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     if (dailyValues.all { it == 0L }) {
-                        Text(
-                            text = stringResource(R.string.stats_empty_month),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        SectionEmptyHint(
+                            message = stringResource(
+                                if (tab == 0) {
+                                    R.string.stats_empty_expense
+                                } else {
+                                    R.string.stats_empty_income
+                                }
+                            ),
+                            onRecord = {
+                                viewModel.requestAddSheet()
+                                onBack()
+                            }
                         )
                     } else {
                         DailyLineChart(
@@ -585,8 +635,28 @@ fun StatsScreen(
                     }
                 }
             }
+            } // else：整月有记录
 
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+/** 图表区空数据：一句说明 + 「记一笔」入口（跨页直达记账面板）。 */
+@Composable
+private fun SectionEmptyHint(message: String, onRecord: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = onRecord) {
+            Text(stringResource(R.string.home_empty_action))
         }
     }
 }

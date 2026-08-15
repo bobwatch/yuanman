@@ -107,6 +107,8 @@ import com.moneyhistory.app.ui.theme.IncomeGreen
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import com.moneyhistory.app.ui.theme.WarningOrange
 import com.moneyhistory.app.ui.theme.YuanmanBlueDeep
+import com.moneyhistory.app.ui.theme.expenseAmountColor
+import com.moneyhistory.app.ui.theme.incomeAmountColor
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -315,6 +317,15 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         viewModel.tabReclick.collect { route ->
             if (route == "home") listState.animateScrollToItem(0)
+        }
+    }
+
+    // 统计页等子页的「记一笔」直达：返回首页的同时打开记账面板
+    LaunchedEffect(Unit) {
+        viewModel.requestAddSheet.collect {
+            editingId = null
+            duplicatingId = null
+            sheetOpen = true
         }
     }
 
@@ -732,7 +743,7 @@ private fun HomeHeader(
             val rolling = expenseAnim.isRunning
             Text(
                 text = MoneyUtils.formatCents(
-                    if (rolling.value) expenseAnim.value.roundToLong() else expense
+                    if (rolling) expenseAnim.value.roundToLong() else expense
                 ),
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
@@ -992,7 +1003,7 @@ private fun BudgetGoalCard(
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
                         color = if (overBudget) {
-                            ExpenseRed
+                            expenseAmountColor()
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
@@ -1336,7 +1347,11 @@ private fun TransactionRow(
                             MoneyUtils.formatCents(t.amountCents),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
-                        color = if (isExpense) ExpenseRed else IncomeGreen,
+                        color = if (isExpense) {
+                            expenseAmountColor()
+                        } else {
+                            incomeAmountColor()
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

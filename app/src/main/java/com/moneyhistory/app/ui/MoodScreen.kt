@@ -478,7 +478,8 @@ private fun MoodButton(
                 )
                 // 描边用卡片底色而非纯白：浅色主题下不消失，深色主题下不刺眼
                 .border(borderWidth, MaterialTheme.colorScheme.surface, CircleShape)
-                .semantics {
+                // 圆钮承载完整语义（清掉内部 icon），下方文字标签单独存在但不重复朗读
+                .clearAndSetSemantics {
                     contentDescription = label
                     selected = isSelected
                 }
@@ -498,6 +499,8 @@ private fun MoodButton(
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
+            // 名称已由圆钮读出，标签不再单独成节点，避免 TalkBack 重复
+            modifier = Modifier.clearAndSetSemantics {},
             style = MaterialTheme.typography.bodySmall,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = if (isSelected) {
@@ -572,6 +575,7 @@ private fun MoodGrid(
             null
         }
     }
+    val view = LocalView.current
     Column {
         // 周表头（周一起始）
         Row(
@@ -619,7 +623,7 @@ private fun MoodGrid(
                     if (day == null) {
                         Spacer(Modifier.weight(1f))
                     } else {
-                        val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
+                        val key = DateUtils.dateKeyOf(monthPrefix, day)
                         val entry = moods[key]
                         val isToday = day == todayDay
                         // 整格可点（48dp 高触达区，与全 App 触达下限一致），圆点只做视觉；
@@ -645,7 +649,11 @@ private fun MoodGrid(
                                 .clip(CircleShape)
                                 .pressScale()
                                 .clearAndSetSemantics { contentDescription = cellDesc }
-                                .clickable { onDayClick(key) },
+                                .clickable {
+                                    // 轻触感反馈选择落点，与主心情选择器一致
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    onDayClick(key)
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(

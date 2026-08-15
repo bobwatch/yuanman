@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -366,7 +368,8 @@ class MainActivity : ComponentActivity() {
                                         goalId = entry.arguments
                                             ?.getString("goalId")
                                             .orEmpty(),
-                                        onBack = { navController.popBackStack() }
+                                        onBack = { navController.popBackStack() },
+                                        toastHostState = toastHostState
                                     )
                                 }
                                 composable("family") {
@@ -412,7 +415,8 @@ class MainActivity : ComponentActivity() {
                         UpdateDialog(
                             updateState = updateState,
                             onDownload = { viewModel.downloadUpdate() },
-                            onDismiss = { viewModel.dismissUpdate() }
+                            onDismiss = { viewModel.dismissUpdate() },
+                            onCancel = { viewModel.cancelUpdate() }
                         )
                     }
                 }
@@ -437,24 +441,58 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** 升级弹窗：新版本提示 + 下载中进度。 */
+/** 升级弹窗：新版本提示 + 下载中进度（可取消）。 */
 @Composable
 private fun UpdateDialog(
     updateState: UpdateState,
     onDownload: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCancel: () -> Unit
 ) {
     when (updateState) {
         UpdateState.Idle -> Unit
-        UpdateState.Downloading -> {
+        is UpdateState.Downloading -> {
+            val state = updateState
+            // total 未知时（服务器未给大小）只显示转圈；有大小才显示进度条与百分比
+            val percent = if (state.totalBytes > 0) {
+                (state.downloadedBytes * 100 / state.totalBytes)
+                    .toInt()
+                    .coerceIn(0, 100)
+            } else {
+                null
+            }
             AlertDialog(
-                onDismissRequest = {},
+                // 返回键 / 点外部 = 取消下载（不再是无出口的无限转圈）
+                onDismissRequest = onCancel,
                 icon = {
                     CircularProgressIndicator(modifier = Modifier.size(28.dp))
                 },
                 title = { Text(stringResource(R.string.update_downloading)) },
-                text = {},
-                confirmButton = {}
+                text = {
+                    if (percent != null) {
+                        Column {
+                            LinearProgressIndicator(
+                                progress = { percent / 100f },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.update_download_progress,
+                                    percent
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = onCancel) {
+                        Text(stringResource(R.string.update_cancel))
+                    }
+                }
             )
         }
         is UpdateState.Available -> {

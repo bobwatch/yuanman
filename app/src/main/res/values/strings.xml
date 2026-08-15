@@ -37,7 +37,7 @@
     <string name="home_menu_stats">Stats</string>
     <string name="home_add_desc">Add transaction</string>
     <string name="home_welcome_title">Welcome to Yuanman 👋</string>
-    <string name="home_welcome_sub">Start your money journey — the first record takes just ten seconds</string>
+    <string name="home_welcome_sub">Start your money journey — recording takes just three seconds</string>
     <string name="home_welcome_action">Add first record</string>
     <string name="home_empty_title">No records this month</string>
     <string name="home_empty_sub">Small records add up to big clarity — start with today</string>
@@ -115,6 +115,7 @@
     <!-- recurring -->
     <string name="recurring_toggle">Make recurring</string>
     <string name="recurring_next_due">Next due</string>
+    <string name="recurring_expense_only">Recurring bills are available for expenses</string>
     <string name="cycle_weekly">Weekly</string>
     <string name="cycle_monthly">Monthly</string>
     <string name="cycle_yearly">Yearly</string>
@@ -131,7 +132,8 @@
     <string name="stats_title">Stats</string>
     <string name="stats_donut_expense">Spending by category</string>
     <string name="stats_donut_income">Income by category</string>
-    <string name="stats_empty_month">📊 No records this month</string>
+    <string name="stats_empty_expense">No expenses this month</string>
+    <string name="stats_empty_income">No income this month</string>
     <string name="stats_total_expense">Total</string>
     <string name="stats_total_income">Total</string>
     <string name="stats_trend_expense">6-month spending trend</string>
@@ -178,6 +180,7 @@
     <string name="goal_create_title">New savings goal</string>
     <string name="goal_name_hint">Name (e.g. Travel fund)</string>
     <string name="goal_name_error">Please enter a name</string>
+    <string name="goal_name_count">%1$d/%2$d</string>
     <string name="goal_target_hint">Target amount</string>
     <string name="goal_emoji_pick">Pick an emoji</string>
     <string name="goal_deadline_toggle">Target date (optional)</string>
@@ -202,6 +205,8 @@
     <string name="goal_record_expense">Also record an expense (category: 💎 Savings)</string>
     <string name="goal_delete_title">Delete goal</string>
     <string name="goal_delete_msg">Delete \"%1$s\"? Deposit history will be removed; recorded transactions are not affected.</string>
+    <string name="goal_deleted">Goal deleted</string>
+    <string name="goal_not_found">This goal no longer exists</string>
     <string name="milestone_25">🌱 Nice start! 25% saved</string>
     <string name="milestone_50">💪 Halfway there! 50% saved</string>
     <string name="milestone_75">🔥 Almost there! 75% saved</string>
@@ -330,6 +335,7 @@
     <string name="import_read_failed">Failed to read the file</string>
     <string name="import_read_failed_reason">Failed to read the file: %1$s</string>
     <string name="import_merged">Merged %d records</string>
+    <string name="importing">Importing…</string>
     <string name="export_title">Export backup</string>
     <string name="export_done">Backup created — choose where to save it</string>
     <string name="export_failed">Export failed: %1$s</string>
@@ -378,12 +384,15 @@
     <string name="update_downloading">Downloading update…</string>
     <string name="update_download_failed">Update download failed. Check your network and try again.</string>
     <string name="update_install_failed">Could not open the installer.</string>
+    <string name="update_download_progress">%1$d%% downloaded</string>
+    <string name="update_cancel">Cancel</string>
 
     <!-- badges -->
     <string name="badge_screen_title">Badges (%1$d / %2$d)</string>
     <string name="badge_unlocked">🏅 Badge unlocked: %1$s</string>
     <string name="badge_obtained">Earned on %1$s</string>
     <string name="badge_obtained_today">Unlocked today 🎉</string>
+    <string name="badge_progress">%1$d / %2$d</string>
     <string name="badge_cat_record">Money</string>
     <string name="badge_cat_habit">Habits</string>
     <string name="badge_cat_mood">Mood</string>
@@ -482,6 +491,7 @@
     <!-- charts -->
     <string name="chart_abbrev_wan"></string>
     <string name="chart_abbrev_k">k</string>
+    <string name="chart_abbrev_m">M</string>
 
     <!-- accessibility -->
     <string name="habit_week_summary">Checked in %1$d of the last 7 days</string>

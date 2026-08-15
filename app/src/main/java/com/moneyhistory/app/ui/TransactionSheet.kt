@@ -373,7 +373,6 @@ fun TransactionSheet(
                                 if (category !in incomeCategories) {
                                     category = defaultCategoryFor(Transaction.Type.INCOME)
                                 }
-                                recurringEnabled = false
                             }
                         )
                     }
@@ -492,36 +491,46 @@ fun TransactionSheet(
                         onDateSelected = { dateMillis = it }
                     )
 
-                    // 周期账单开关（仅新增支出）
-                    if (initial == null && type == Transaction.Type.EXPENSE) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = stringResource(R.string.recurring_toggle),
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Switch(
-                                checked = recurringEnabled,
-                                onCheckedChange = { recurringEnabled = it }
-                            )
-                        }
-                        if (recurringEnabled) {
+                    // 周期账单（仅新增支出）：切到收入时开关状态保留、下方改为提示，
+                    // 避免「选好周期切类型又丢设置」的挫败感
+                    if (initial == null) {
+                        if (type == Transaction.Type.EXPENSE) {
                             Spacer(Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                RecurringExpense.Cycle.entries.forEach { c ->
-                                    FilterChip(
-                                        selected = cycle == c,
-                                        onClick = { cycle = c },
-                                        label = { Text(cycleLabel(c)) }
-                                    )
-                                }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(R.string.recurring_toggle),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Switch(
+                                    checked = recurringEnabled,
+                                    onCheckedChange = { recurringEnabled = it }
+                                )
                             }
-                            Spacer(Modifier.height(8.dp))
-                            DatePickerButton(
-                                label = stringResource(R.string.recurring_next_due),
-                                millis = dueMillis,
-                                onDateSelected = { dueMillis = it }
+                            if (recurringEnabled) {
+                                Spacer(Modifier.height(4.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    RecurringExpense.Cycle.entries.forEach { c ->
+                                        FilterChip(
+                                            selected = cycle == c,
+                                            onClick = { cycle = c },
+                                            label = { Text(cycleLabel(c)) }
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                DatePickerButton(
+                                    label = stringResource(R.string.recurring_next_due),
+                                    millis = dueMillis,
+                                    onDateSelected = { dueMillis = it }
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.recurring_expense_only),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

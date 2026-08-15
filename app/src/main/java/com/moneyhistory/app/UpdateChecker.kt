@@ -21,7 +21,9 @@ data class UpdateInfo(
 sealed class UpdateState {
     object Idle : UpdateState()
     data class Available(val info: UpdateInfo) : UpdateState()
-    object Downloading : UpdateState()
+
+    /** 下载中：[downloadedBytes]/[totalBytes] 驱动进度条（total 未知时为 0）。 */
+    data class Downloading(val downloadedBytes: Long, val totalBytes: Long) : UpdateState()
 }
 
 /**
@@ -95,8 +97,17 @@ object UpdateChecker {
         return false
     }
 
-    /** 下载 APK 到缓存目录；失败返回 null。 */
-    fun download(context: Context, url: String, destName: String = "yuanman-update.apk"): File? {
+    /**
+     * 下载 APK 到缓存目录；失败返回 null。
+     * [onProgress] 在每次写入后回调（downloaded, total），可用于驱动进度条与取消；
+     * 回调里抛异常会中止下载（作为取消手段）。
+     */
+    fun download(
+        context: Context,
+        url: String,
+        destName: String = "yuanman-update.apk",
+        onProgress: ((downloaded: Long, total: Long) -> Unit)? = null
+    ): File? {
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
             try {
@@ -104,9 +115,20 @@ object UpdateChecker {
                 conn.readTimeout = DOWNLOAD_TIMEOUT_MS
                 conn.setRequestProperty("User-Agent", "yuanman-android")
                 if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
+                val total = conn.contentLength.toLong()
                 val file = File(context.cacheDir, destName)
                 conn.inputStream.use { input ->
-                    file.outputStream().use { output -> input.copyTo(output) }
+                    file.outputStream().use { output ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            output.write(buf, 0, n)
+                            done += n
+                            onProgress?.invoke(done, total)
+                        }
+                    }
                 }
                 file
             } finally {

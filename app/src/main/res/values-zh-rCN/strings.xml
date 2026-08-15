@@ -37,7 +37,7 @@
     <string name="home_menu_stats">统计</string>
     <string name="home_add_desc">记一笔</string>
     <string name="home_welcome_title">欢迎来到沅满 👋</string>
-    <string name="home_welcome_sub">开启你的记账之旅，记下第一笔只需十秒</string>
+    <string name="home_welcome_sub">开启你的记账之旅，记下一笔只需三秒</string>
     <string name="home_welcome_action">记第一笔</string>
     <string name="home_empty_title">本月还没有记录</string>
     <string name="home_empty_sub">一笔一笔记下来，生活越来越清晰</string>
@@ -115,6 +115,7 @@
     <!-- recurring -->
     <string name="recurring_toggle">设为周期账单</string>
     <string name="recurring_next_due">下次到期</string>
+    <string name="recurring_expense_only">周期账单仅支出可用</string>
     <string name="cycle_weekly">每周</string>
     <string name="cycle_monthly">每月</string>
     <string name="cycle_yearly">每年</string>
@@ -131,7 +132,8 @@
     <string name="stats_title">统计</string>
     <string name="stats_donut_expense">支出分类占比</string>
     <string name="stats_donut_income">收入分类占比</string>
-    <string name="stats_empty_month">📊 该月暂无记录</string>
+    <string name="stats_empty_expense">本月还没有支出</string>
+    <string name="stats_empty_income">本月还没有收入</string>
     <string name="stats_total_expense">总支出</string>
     <string name="stats_total_income">总收入</string>
     <string name="stats_trend_expense">近 6 个月支出趋势</string>
@@ -178,6 +180,7 @@
     <string name="goal_create_title">新建攒钱目标</string>
     <string name="goal_name_hint">名称（如：旅行基金）</string>
     <string name="goal_name_error">请输入名称</string>
+    <string name="goal_name_count">%1$d/%2$d</string>
     <string name="goal_target_hint">目标金额（元）</string>
     <string name="goal_emoji_pick">选择一个 emoji</string>
     <string name="goal_deadline_toggle">目标日期（可选）</string>
@@ -202,6 +205,8 @@
     <string name="goal_record_expense">同时记一笔支出流水（分类：💎 储蓄）</string>
     <string name="goal_delete_title">删除目标</string>
     <string name="goal_delete_msg">确定删除「%1$s」吗？存入记录会一并删除，已记的流水不受影响。</string>
+    <string name="goal_deleted">目标已删除</string>
+    <string name="goal_not_found">这个目标已不存在</string>
     <string name="milestone_25">🌱 好的开始！目标已攒下 25%</string>
     <string name="milestone_50">💪 半程达成！目标已攒下 50%</string>
     <string name="milestone_75">🔥 胜利在望！目标已攒下 75%</string>
@@ -330,6 +335,7 @@
     <string name="import_read_failed">读取文件失败</string>
     <string name="import_read_failed_reason">读取文件失败：%1$s</string>
     <string name="import_merged">已合并导入 %d 条记录</string>
+    <string name="importing">正在导入…</string>
     <string name="export_title">导出备份</string>
     <string name="export_done">备份已生成，请选择保存方式</string>
     <string name="export_failed">导出失败：%1$s</string>
@@ -378,12 +384,15 @@
     <string name="update_downloading">正在下载更新…</string>
     <string name="update_download_failed">更新下载失败，请检查网络后重试。</string>
     <string name="update_install_failed">无法打开安装器。</string>
+    <string name="update_download_progress">已下载 %1$d%%</string>
+    <string name="update_cancel">取消</string>
 
     <!-- badges -->
     <string name="badge_screen_title">勋章墙（%1$d / %2$d）</string>
     <string name="badge_unlocked">🏅 解锁勋章：%1$s</string>
     <string name="badge_obtained">获得于 %1$s</string>
     <string name="badge_obtained_today">今天获得 🎉</string>
+    <string name="badge_progress">%1$d / %2$d</string>
     <string name="badge_cat_record">记账</string>
     <string name="badge_cat_habit">打卡</string>
     <string name="badge_cat_mood">心情</string>
@@ -482,6 +491,8 @@
     <!-- 图表 -->
     <string name="chart_abbrev_wan">万</string>
     <string name="chart_abbrev_k">k</string>
+    <!-- 中文环境 ≥1 万走「万」分支，M 分支不会触达，留空占位 -->
+    <string name="chart_abbrev_m"></string>
 
     <!-- 无障碍 -->
     <string name="habit_week_summary">近 7 天打卡 %1$d 天</string>

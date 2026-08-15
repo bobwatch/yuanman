@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,18 +32,50 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
+import com.moneyhistory.app.Habit
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
+import com.moneyhistory.app.buildStreak
+import com.moneyhistory.app.moodStreakOf
+import com.moneyhistory.app.quitDays
+import com.moneyhistory.app.streakOf
 
-/** 勋章墙：已获得彩色 + 获得日期；未获得灰色 + 解锁条件。 */
+/** 勋章墙：已获得彩色 + 获得日期；未获得灰色 + 解锁条件（可量化条件显示当前进度）。 */
 @Composable
 fun BadgeScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
     val unlocks by viewModel.settings.badgeUnlocks.collectAsStateWithLifecycle()
+    val transactions by viewModel.transactions.collectAsStateWithLifecycle()
+    val habits by viewModel.habits.collectAsStateWithLifecycle()
+    val moods by viewModel.moods.collectAsStateWithLifecycle()
     val grouped = allBadges.groupBy { it.categoryRes }
+
+    // 各勋章的当前进度（current, target）；非线性条件（达成目标/佛系本月）不在其中
+    val badgeProgress = remember(transactions, habits, moods) {
+        val txCount = transactions.size
+        val txStreak = streakOf(transactions)
+        val maxBuild = habits.filter { it.type == Habit.Type.BUILD }
+            .maxOfOrNull { it.buildStreak() } ?: 0
+        val maxQuit = habits.filter { it.type == Habit.Type.QUIT }
+            .maxOfOrNull { it.quitDays() } ?: 0
+        val anyCheckin = habits.any { it.checkins.isNotEmpty() }
+        val moodStreak = moodStreakOf(moods.keys)
+        mapOf(
+            "first_tx" to (txCount to 1),
+            "streak_7" to (txStreak to 7),
+            "streak_30" to (txStreak to 30),
+            "tx_100" to (txCount to 100),
+            "first_checkin" to ((if (anyCheckin) 1 else 0) to 1),
+            "habit_7" to (maxBuild to 7),
+            "habit_21" to (maxBuild to 21),
+            "quit_30" to (maxQuit to 30),
+            "first_mood" to (moods.size to 1),
+            "mood_7" to (moodStreak to 7)
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -137,26 +170,47 @@ fun BadgeScreen(
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                     }
                                 )
-                                Text(
-                                    text = if (unlocked) {
-                                        if (fresh) {
+                                if (unlocked) {
+                                    Text(
+                                        text = if (fresh) {
                                             stringResource(R.string.badge_obtained_today)
                                         } else {
                                             stringResource(
                                                 R.string.badge_obtained,
                                                 obtainedText
                                             )
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (fresh) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
                                         }
-                                    } else {
-                                        stringResource(badge.descRes)
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (fresh) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    // 未解锁：解锁条件 + 可量化进度的 x / y（有进度才显示，避免 0/7 式的沮丧）
+                                    val progress = badgeProgress[badge.id]
+                                    Column {
+                                        Text(
+                                            text = stringResource(badge.descRes),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (progress != null && progress.first > 0) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.badge_progress,
+                                                    progress.first,
+                                                    progress.second
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
-                                )
+                                }
                             }
                             if (unlocked) {
                                 Icon(

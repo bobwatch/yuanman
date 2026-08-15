@@ -180,7 +180,10 @@ fun HabitScreen(viewModel: MainViewModel) {
                     EmptyState(
                         emoji = "✅",
                         title = stringResource(R.string.habit_empty_title),
-                        subtitle = stringResource(R.string.habit_empty_sub)
+                        subtitle = stringResource(R.string.habit_empty_sub),
+                        // 空态直达创建：想动手时不用再找虚线卡
+                        actionLabel = stringResource(R.string.habit_add_new),
+                        onAction = { showCreate = true }
                     )
                 }
             }

@@ -65,6 +65,16 @@ private val AppShapes = Shapes(
 /** 当前主题是否深色（首页滚动时切换状态栏图标深浅需要）。 */
 val LocalDarkTheme = staticCompositionLocalOf { false }
 
+/** 支出金额文本色：按当前主题取对比度达标的一档（普通字号用，图形元素仍用 [ExpenseRed]）。 */
+@Composable
+fun expenseAmountColor(): Color =
+    if (LocalDarkTheme.current) ExpenseRedTextDark else ExpenseRedText
+
+/** 收入金额文本色：按当前主题取对比度达标的一档（普通字号用，图形元素仍用 [IncomeGreen]）。 */
+@Composable
+fun incomeAmountColor(): Color =
+    if (LocalDarkTheme.current) IncomeGreenTextDark else IncomeGreenText
+
 /** 沅满蓝 Material 3 主题。 */
 @Composable
 fun YuanmanTheme(

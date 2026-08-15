@@ -84,7 +84,8 @@ class ToastHostState {
         durationMillis: Long? = null
     ) {
         val toast = ToastData(idCounter.incrementAndGet(), message, variant, actionLabel, onAction)
-        _toasts.update { it + toast }
+        // 上限 3 条：连发操作时旧提示自然被顶走，避免遮满屏幕
+        _toasts.update { (it + toast).takeLast(3) }
         scope.launch {
             // 带操作按钮的提示给足反应时间（撤销/查看），纯通知 3.5s 即走
             delay(durationMillis ?: if (actionLabel != null) 5000L else 3500L)

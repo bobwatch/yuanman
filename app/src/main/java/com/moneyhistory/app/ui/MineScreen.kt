@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -93,6 +94,8 @@ fun MineScreen(
     var showImportChooser by remember { mutableStateOf(false) }
     var importMergeMode by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<String?>(null) }
+    // 覆盖导入进行中：确认后弹加载态，大备份文件解析期间不卡 UI
+    var importing by remember { mutableStateOf(false) }
 
     // 重复点击底部「我的」Tab：页面滚回顶部
     val scrollState = rememberScrollState()
@@ -367,11 +370,19 @@ fun MineScreen(
             confirmButton = {
                 TextButton(onClick = {
                     pendingImport = null
-                    val ok = viewModel.importJson(content)
-                    viewModel.postMessage(
-                        if (ok) successText else invalidText,
-                        if (ok) MessageVariant.SUCCESS else MessageVariant.ERROR
-                    )
+                    // 覆盖导入（解析 + 写入）走 IO 线程：大备份不冻结 UI，
+                    // 完成前弹「正在导入」加载态
+                    importing = true
+                    importScope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            viewModel.importJson(content)
+                        }
+                        importing = false
+                        viewModel.postMessage(
+                            if (ok) successText else invalidText,
+                            if (ok) MessageVariant.SUCCESS else MessageVariant.ERROR
+                        )
+                    }
                 }) {
                     Text(stringResource(R.string.import_confirm))
                 }
@@ -381,6 +392,19 @@ fun MineScreen(
                     Text(stringResource(R.string.common_cancel))
                 }
             }
+        )
+    }
+
+    if (importing) {
+        // 加载态弹窗：不可关闭，导入完成自动收起
+        AlertDialog(
+            onDismissRequest = {},
+            icon = {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            },
+            title = { Text(stringResource(R.string.importing)) },
+            text = {},
+            confirmButton = {}
         )
     }
 }

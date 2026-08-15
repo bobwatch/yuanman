@@ -39,12 +39,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneyhistory.app.Goal
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.dailySavingRate
-import com.moneyhistory.app.ui.theme.ExpenseRed
-import com.moneyhistory.app.ui.theme.IncomeGreen
+import com.moneyhistory.app.ui.theme.expenseAmountColor
+import com.moneyhistory.app.ui.theme.incomeAmountColor
 import kotlin.math.roundToInt
 
 /** 攒钱目标详情：大圆环 + 存入/取出 + 存入历史 + 删除目标。 */
@@ -52,7 +54,8 @@ import kotlin.math.roundToInt
 fun GoalDetailScreen(
     viewModel: MainViewModel,
     goalId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    toastHostState: ToastHostState
 ) {
     val goals by viewModel.goals.collectAsStateWithLifecycle()
 
@@ -62,10 +65,19 @@ fun GoalDetailScreen(
     var showWithdrawDialog by remember { mutableStateOf(false) }
     var recordExpense by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    // 删除的目标暂存：撤销删除时原样找回（id/存入记录/里程碑全保留）
+    var deletedGoal by remember { mutableStateOf<Goal?>(null) }
 
-    // 目标被删除后自动返回
+    val deletedText = stringResource(R.string.goal_deleted)
+    val undoText = stringResource(R.string.home_undo)
+    val notFoundText = stringResource(R.string.goal_not_found)
+
+    // 目标被删除后自动返回；异常 goalId（如直达链接指向已删目标）说明后返回
     LaunchedEffect(goal) {
-        if (goal == null) onBack()
+        if (goal == null && deletedGoal == null) {
+            viewModel.postMessage(notFoundText, MessageVariant.ERROR)
+            onBack()
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -237,7 +249,11 @@ fun GoalDetailScreen(
                                         MoneyUtils.formatCents(d.amountCents),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (d.isWithdraw) ExpenseRed else IncomeGreen
+                                    color = if (d.isWithdraw) {
+                                        expenseAmountColor()
+                                    } else {
+                                        incomeAmountColor()
+                                    }
                                 )
                             }
                         }
@@ -294,7 +310,15 @@ fun GoalDetailScreen(
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                    deletedGoal = goal
                     viewModel.deleteGoal(goalId)
+                    // 删除完成：全局 Toast 带撤销，误删可一键找回（与流水删除同一交互语言）
+                    toastHostState.show(
+                        message = deletedText,
+                        variant = MessageVariant.INFO,
+                        actionLabel = undoText,
+                        onAction = { deletedGoal?.let { viewModel.addGoal(it) } }
+                    )
                 }) {
                     Text(
                         stringResource(R.string.common_delete),

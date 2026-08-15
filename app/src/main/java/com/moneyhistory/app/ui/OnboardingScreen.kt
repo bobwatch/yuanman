@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.R
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.launch
 
 /** 首次启动引导（3 页 HorizontalPager，品牌渐变整屏）。 */
@@ -146,20 +147,26 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     index + 1,
                     pages.size
                 )
+                // 外层 36dp 触达区承载点击（远超 8dp 圆点本体），内层圆点只做动画视觉
                 Box(
                     Modifier
-                        .padding(6.dp)
-                        .size(dotSize)
+                        .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = dotAlpha))
-                        // 无障碍：读出「第几页，共几页」，并可聚焦点击跳页
                         .semantics { contentDescription = dotLabel }
                         .clickable {
                             scope.launch {
                                 pagerState.animateScrollToPage(index)
                             }
-                        }
-                )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .size(dotSize)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = dotAlpha))
+                    )
+                }
             }
         }
         Spacer(Modifier.height(24.dp))

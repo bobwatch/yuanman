@@ -65,6 +65,9 @@ import com.moneyhistory.app.goalEmojiCandidates
 import java.util.Calendar
 import kotlin.math.roundToInt
 
+// 目标名称上限：与 emoji 并排时一屏可读，输入时边输边显示计数
+private const val GOAL_NAME_MAX = 12
+
 /** 圆环进度（Canvas 自绘，animateFloatAsState 过渡动画），中心可放文字。 */
 @Composable
 fun ProgressRing(
@@ -380,13 +383,24 @@ fun GoalCreateSheet(
                     OutlinedTextField(
                         value = name,
                         onValueChange = {
-                            name = it.take(12)
+                            name = it.take(GOAL_NAME_MAX)
                             nameError = false
                         },
                         label = { Text(stringResource(R.string.goal_name_hint)) },
                         isError = nameError,
                         supportingText = {
-                            if (nameError) Text(stringResource(R.string.goal_name_error))
+                            if (nameError) {
+                                Text(stringResource(R.string.goal_name_error))
+                            } else if (name.isNotEmpty()) {
+                                // 边输边显示计数，避免「打字突然卡住」的错觉（与分类命名一致）
+                                Text(
+                                    stringResource(
+                                        R.string.goal_name_count,
+                                        name.length,
+                                        GOAL_NAME_MAX
+                                    )
+                                )
+                            }
                         },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()

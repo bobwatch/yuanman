@@ -41,6 +41,7 @@ import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ui.theme.IncomeGreen
+import com.moneyhistory.app.ui.theme.incomeAmountColor
 
 /** 家庭同步：配对码管理 + 设备列表 + 手动同步。 */
 @Composable

@@ -30,3 +30,11 @@ val DarkOnSurfaceVariant = Color(0xFF8FA1B3)
 val ExpenseRed = Color(0xFFE53935)
 val IncomeGreen = Color(0xFF34A853)
 val WarningOrange = Color(0xFFFF9800)
+
+// 语义色「文本」变体：浅色主题压深一档保证白底对比度（WCAG AA 4.5:1），
+// 深色主题提亮一档保证深底可读。亮色原版只留给色块/色条等图形元素
+// （进度条、Toast 色条、滑动删除底、收支药丸等）。
+val ExpenseRedText = Color(0xFFC62828)
+val IncomeGreenText = Color(0xFF1E8E3E)
+val ExpenseRedTextDark = Color(0xFFEF5350)
+val IncomeGreenTextDark = Color(0xFF66BB6A)
