@@ -1,5 +1,6 @@
 package com.moneyhistory.app.widget
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -19,6 +20,8 @@ import java.util.Calendar
  *
  * 框架自带 RemoteViews 实现（零第三方依赖）；
  * 数据直接读 [TransactionStore]，流水变更后由 [notifyChanged] 主动刷新。
+ * 跨天自动刷新：每天零点触发 [ACTION_MIDNIGHT] 重算「今日支出」，
+ * 开机后由 BOOT_COMPLETED 重排下一次零点闹钟（不依赖 30 分钟周期兜底）。
  */
 class SpendingWidgetProvider : AppWidgetProvider() {
 
@@ -28,9 +31,40 @@ class SpendingWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         updateAll(context, appWidgetManager, appWidgetIds)
+        scheduleMidnight(context)
+    }
+
+    override fun onEnabled(context: Context) {
+        // 首个 Widget 添加到桌面：排好零点刷新
+        scheduleMidnight(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        cancelMidnight(context)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            // 零点闹钟：重算「今日支出」，并排好下一个零点
+            ACTION_MIDNIGHT -> {
+                updateAll(
+                    context,
+                    AppWidgetManager.getInstance(context),
+                    AppWidgetManager.getInstance(context)
+                        .getAppWidgetIds(ComponentName(context, SpendingWidgetProvider::class.java))
+                )
+                scheduleMidnight(context)
+            }
+            // 开机重排（Widget 仍在桌面上，但闹钟随重启丢失）
+            Intent.ACTION_BOOT_COMPLETED -> scheduleMidnight(context)
+            else -> super.onReceive(context, intent)
+        }
     }
 
     companion object {
+
+        private const val ACTION_MIDNIGHT = "com.moneyhistory.app.action.MIDNIGHT"
+        private const val REQUEST_MIDNIGHT = 2
 
         /** 流水变更后调用：刷新全部 Widget 实例。 */
         fun notifyChanged(context: Context) {
@@ -39,6 +73,37 @@ class SpendingWidgetProvider : AppWidgetProvider() {
                 ComponentName(context, SpendingWidgetProvider::class.java)
             )
             if (ids.isNotEmpty()) updateAll(context, manager, ids)
+        }
+
+        /** 排下一个零点（本地时间）的闹钟；setWindow 不需要精确闹钟权限。 */
+        private fun scheduleMidnight(context: Context) {
+            val nextMidnight = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val pi = PendingIntent.getBroadcast(
+                context, REQUEST_MIDNIGHT,
+                Intent(context, SpendingWidgetProvider::class.java)
+                    .setAction(ACTION_MIDNIGHT),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            // 窗口 ±10 分钟：零点前后稍晚刷新无碍，免去 SCHEDULE_EXACT_ALARM
+            alarm.setWindow(AlarmManager.RTC, nextMidnight.timeInMillis, 10 * 60 * 1000L, pi)
+        }
+
+        private fun cancelMidnight(context: Context) {
+            val pi = PendingIntent.getBroadcast(
+                context, REQUEST_MIDNIGHT,
+                Intent(context, SpendingWidgetProvider::class.java)
+                    .setAction(ACTION_MIDNIGHT),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarm.cancel(pi)
         }
 
         private fun updateAll(
