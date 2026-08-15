@@ -3,6 +3,9 @@ package com.moneyhistory.app.ui
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -152,8 +155,8 @@ fun TransactionSheet(
     }
     var amountError by rememberSaveable { mutableStateOf(false) }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
-    // 数字键盘折叠：收起后分类宫格独占空间，选择大分类时不用滚动
-    var numpadCollapsed by rememberSaveable { mutableStateOf(false) }
+    // 数字键盘：默认收起让分类区独占空间，点金额输入框展开/收起
+    var numpadExpanded by rememberSaveable { mutableStateOf(false) }
 
     // 周期账单（仅新增支出时可用）
     var recurringEnabled by rememberSaveable { mutableStateOf(false) }
@@ -367,37 +370,54 @@ fun TransactionSheet(
                         )
                     }
                     Spacer(Modifier.width(12.dp))
-                    // 金额大号等宽显示 + 连加实时合计
-                    Column(
-                        Modifier.weight(1f),
-                        horizontalAlignment = Alignment.End
+                    // 金额输入框：点击展开/收起键盘，空时占位 0
+                    Surface(
+                        onClick = { numpadExpanded = !numpadExpanded },
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = segments.joinToString(" + ").ifEmpty { "0" },
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = if (amountError) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (amountError) {
-                                stringResource(R.string.sheet_amount_error)
-                            } else {
-                                "≈ ${MoneyUtils.formatCents(liveCents)}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (amountError) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                Modifier.weight(1f),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                Text(
+                                    text = segments.joinToString(" + ").ifEmpty { "0" },
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (amountError) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (amountError) {
+                                        stringResource(R.string.sheet_amount_error)
+                                    } else {
+                                        "≈ ${MoneyUtils.formatCents(liveCents)}"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (amountError) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
                             }
-                        )
+                            Text(
+                                text = "⌨️",
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -441,11 +461,7 @@ fun TransactionSheet(
                 CategoryGrid(
                     categories = categories,
                     selected = category,
-                    // 收起键盘浏览分类时，选中即自动展开，直接输金额少一步
-                    onSelect = {
-                        category = it
-                        if (numpadCollapsed) numpadCollapsed = false
-                    }
+                    onSelect = { category = it }
                 )
 
                 // 更多选项（默认收起）
@@ -499,31 +515,21 @@ fun TransactionSheet(
             }
         }
 
-        // 固定底部：数字键盘（备注编辑态隐藏，只留头部 完成/保存）
-        if (!noteFocused) {
-            Column(
-                Modifier
+        // 固定底部：数字键盘（数字键 + 连加 + 保存视为一个整体）。
+        // 默认收起让分类区独占空间，点金额输入框展开/收起；备注编辑态隐藏。
+        AnimatedVisibility(
+            visible = !noteFocused && numpadExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            NumPad(
+                onKey = { onNumKey(it) },
+                onCollapse = { numpadExpanded = false },
+                modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp)
-            ) {
-                if (initial == null) {
-                    Text(
-                        text = stringResource(R.string.sheet_hint_save),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // 「＋ 连加」与「保存」并排一行；键盘可折叠给分类区让空间
-                NumPad(
-                    onKey = { onNumKey(it) },
-                    collapsed = numpadCollapsed,
-                    onToggleCollapsed = { numpadCollapsed = !numpadCollapsed },
-                    footer = {
+                    .padding(bottom = 24.dp),
+                footer = {
                         Button(
                             onClick = { doSave() },
                             enabled = liveCents > 0,
@@ -540,7 +546,6 @@ fun TransactionSheet(
                     }
                 )
             }
-        }
         }
         }
     }
