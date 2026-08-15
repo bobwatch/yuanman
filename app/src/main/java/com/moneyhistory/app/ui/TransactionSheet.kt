@@ -676,6 +676,9 @@ private fun NoteEntryRow(note: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
+            // Surface 的圆角只裁背景不裁修饰符水波纹：先 clip 再 clickable，
+            // 否则按下去是方形涟漪
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
         Row(

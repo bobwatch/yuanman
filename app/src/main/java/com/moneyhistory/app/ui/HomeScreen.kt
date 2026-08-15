@@ -3,9 +3,11 @@ package com.moneyhistory.app.ui
 import android.app.Activity
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -110,13 +112,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(
     ExperimentalMaterial3Api::class,
-    ExperimentalFoundationApi::class,
-    ExperimentalAnimationApi::class
+    ExperimentalFoundationApi::class
 )
 @Composable
 fun HomeScreen(
@@ -605,7 +607,6 @@ fun HomeScreen(
  * 品牌蓝渐变大页头（随列表滚动）：时段问候 + 月份切换 + 本月支出大数字 +
  * 三个宽松小指标（收入 / 今日 / 连续）+ 激活时的搜索区。
  */
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun HomeHeader(
     month: YearMonth,
@@ -718,17 +719,27 @@ private fun HomeHeader(
                 color = Color.White.copy(alpha = 0.75f)
             )
             Spacer(Modifier.height(2.dp))
-            // 本月支出大数字：单独成行，突出主数字
-            AnimatedContent(targetState = expense, label = "headerExpense") { value ->
-                Text(
-                    text = MoneyUtils.formatCents(value),
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            // 本月支出大数字：进页从 0 滚到当前值，之后每次变化（记一笔/翻月/
+            // 删除撤销）都从旧值滚到新值——钱在动的实感。动画期间显示插值，
+            // 动画结束用精确值展示（滚动中间值不落屏）
+            val expenseAnim = remember { Animatable(0f) }
+            LaunchedEffect(expense) {
+                expenseAnim.animateTo(
+                    targetValue = expense.toFloat(),
+                    animationSpec = tween(520, easing = FastOutSlowInEasing)
                 )
             }
+            val rolling = expenseAnim.isRunning
+            Text(
+                text = MoneyUtils.formatCents(
+                    if (rolling.value) expenseAnim.value.roundToLong() else expense
+                ),
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(Modifier.height(18.dp))
             // 三个小指标：等宽三列，间距宽松，不再挤在数字右侧
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -939,17 +950,28 @@ private fun BudgetGoalCard(
                     Spacer(Modifier.width(12.dp))
                     val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
                     val overBudget = expense > budgetCents
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(CircleShape),
-                        color = when {
+                    // 记一笔后进度条平滑滚到新位置；超支瞬间变色也淡切而非「硬跳」
+                    val animatedFraction by animateFloatAsState(
+                        targetValue = fraction,
+                        animationSpec = tween(600, easing = FastOutSlowInEasing),
+                        label = "budgetFraction"
+                    )
+                    val barColor by animateColorAsState(
+                        targetValue = when {
                             overBudget -> ExpenseRed
                             fraction > 0.8f -> WarningOrange
                             else -> MaterialTheme.colorScheme.primary
                         },
+                        animationSpec = tween(350),
+                        label = "budgetBarColor"
+                    )
+                    LinearProgressIndicator(
+                        progress = { animatedFraction },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(6.dp)
+                            .clip(CircleShape),
+                        color = barColor,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         strokeCap = StrokeCap.Round
                     )
@@ -1256,17 +1278,17 @@ private fun TransactionRow(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .pressScale()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = { menuOpen = true }
-                )
+            modifier = Modifier.fillMaxWidth().pressScale()
         ) {
+            // 点击放内容 Row 上：Card 的圆角裁剪会顺带裁掉水波纹（挂在
+            // Card 修饰符上的 clickable 只裁背景不裁涟漪，按下去是方角）
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = { menuOpen = true }
+                    )
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

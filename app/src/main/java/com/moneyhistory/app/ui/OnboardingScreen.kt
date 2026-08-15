@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -75,7 +76,20 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         ) { page ->
             val (icon, titleRes, descRes) = pages[page]
             Column(
-                Modifier.fillMaxSize(),
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // 翻页视差：页面滑出时内容微微缩小 + 淡出 + 下浮，
+                        // 当前页完全回正——滑动不再是「贴纸平移」，有层次感
+                        val offset = ((page - pagerState.currentPage) +
+                            pagerState.currentPageOffsetFraction)
+                            .coerceIn(-1f, 1f)
+                        val distance = offset.absoluteValue
+                        scaleX = 1f - distance * 0.1f
+                        scaleY = 1f - distance * 0.1f
+                        alpha = 1f - distance * 0.35f
+                        translationY = distance * 28.dp.toPx()
+                    },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
