@@ -174,18 +174,23 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Box(Modifier.fillMaxSize()) {
+                        // 当前路由决定底部导航栏是否显示：Tab 页显示，子页（统计/详情等）隐藏
+                        val backStackEntry by navController
+                            .currentBackStackEntryAsState()
+                        val currentRoute = backStackEntry?.destination?.route
+                        val showBottomBar =
+                            currentRoute == null ||
+                                currentRoute in tabRoutes ||
+                                currentRoute == "settings"
                         Scaffold(
                             // 各页面自绘渐变页头（含状态栏），外层不再叠加系统 insets
                             contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
                             bottomBar = {
-                                NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 0.dp
-                                ) {
-                                    val backStackEntry by navController
-                                        .currentBackStackEntryAsState()
-                                    val currentRoute =
-                                        backStackEntry?.destination?.route
+                                if (showBottomBar) {
+                                    NavigationBar(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        tonalElevation = 0.dp
+                                    ) {
                                     bottomTabs.forEach { tab ->
                                         val tabLabel = stringResource(tab.labelRes)
                                         NavigationBarItem(
@@ -242,6 +247,7 @@ class MainActivity : ComponentActivity() {
                                                 )
                                         )
                                     }
+                                }
                                 }
                             }
                         ) { padding ->
