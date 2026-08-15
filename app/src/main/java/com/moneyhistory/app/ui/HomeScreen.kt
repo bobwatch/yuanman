@@ -604,7 +604,11 @@ private fun HomeHeader(
                 )
                 HeaderStat(
                     label = stringResource(R.string.home_header_streak),
-                    value = stringResource(R.string.home_header_streak_short, streak),
+                    value = if (streak > 0) {
+                        stringResource(R.string.home_header_streak_short, streak)
+                    } else {
+                        stringResource(R.string.home_header_today_none)
+                    },
                     modifier = Modifier.weight(1f)
                 )
             }
