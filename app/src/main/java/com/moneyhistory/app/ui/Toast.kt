@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,12 +80,13 @@ class ToastHostState {
         variant: MessageVariant = MessageVariant.INFO,
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
-        durationMillis: Long = 3500L
+        durationMillis: Long? = null
     ) {
         val toast = ToastData(idCounter.incrementAndGet(), message, variant, actionLabel, onAction)
         _toasts.update { it + toast }
         scope.launch {
-            delay(durationMillis)
+            // 带操作按钮的提示给足反应时间（撤销/查看），纯通知 3.5s 即走
+            delay(durationMillis ?: if (actionLabel != null) 5000L else 3500L)
             dismiss(toast.id)
         }
     }
@@ -213,10 +215,15 @@ private fun ToastItem(
                             modifier = Modifier.weight(1f)
                         )
                         if (toast.actionLabel != null) {
-                            TextButton(onClick = {
-                                toast.onAction?.invoke()
-                                onDismiss()
-                            }) {
+                            TextButton(
+                                onClick = {
+                                    toast.onAction?.invoke()
+                                    onDismiss()
+                                },
+                                // 操作按钮给足点按面积：撤销这种高频补救入口不能太小
+                                modifier = Modifier.height(48.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp)
+                            ) {
                                 Text(
                                     text = toast.actionLabel,
                                     color = variantColor,
