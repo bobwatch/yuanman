@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -109,7 +112,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             }
         }
 
-        // 页码指示点（当前页圆点放大 + 变亮，带过渡动画）
+        // 页码指示点（当前页圆点放大 + 变亮，带过渡动画；点击直接跳页）
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
@@ -124,12 +127,24 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     targetValue = if (active) 1f else 0.35f,
                     label = "onboardDotAlpha"
                 )
+                val dotLabel = stringResource(
+                    R.string.onboard_page_dot,
+                    index + 1,
+                    pages.size
+                )
                 Box(
                     Modifier
-                        .padding(4.dp)
+                        .padding(6.dp)
                         .size(dotSize)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = dotAlpha))
+                        // 无障碍：读出「第几页，共几页」，并可聚焦点击跳页
+                        .semantics { contentDescription = dotLabel }
+                        .clickable {
+                            scope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        }
                 )
             }
         }

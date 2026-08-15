@@ -220,6 +220,18 @@ fun MoodScreen(viewModel: MainViewModel) {
                                 label = {
                                     Text(stringResource(R.string.mood_note_hint))
                                 },
+                                // 边输边显示计数：不会「打字突然卡住」的错觉（与分类命名一致）
+                                supportingText = {
+                                    if (note.isNotEmpty()) {
+                                        Text(
+                                            stringResource(
+                                                R.string.mood_note_count,
+                                                note.length,
+                                                50
+                                            )
+                                        )
+                                    }
+                                },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )

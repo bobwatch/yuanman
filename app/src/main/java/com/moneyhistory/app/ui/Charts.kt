@@ -432,9 +432,13 @@ fun DailyLineChart(
             }
             dayLabels.forEach { day ->
                 val index = (day - 1).coerceIn(0, dailyCents.size - 1)
+                val label = day.toString()
+                // 首日/末日标签居中绘在画布边缘会被裁掉一半：横向内移半个字符宽
+                val halfW = textPaint.measureText(label) / 2f
+                val x = pointAt(index).x.coerceIn(halfW, size.width - halfW)
                 drawContext.canvas.nativeCanvas.drawText(
-                    day.toString(),
-                    pointAt(index).x,
+                    label,
+                    x,
                     size.height - 4f,
                     textPaint
                 )

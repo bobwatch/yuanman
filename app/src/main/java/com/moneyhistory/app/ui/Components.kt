@@ -72,6 +72,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -481,10 +484,16 @@ fun IconTile(
  *  TransactionSheet 与 GoalCreateSheet 共用的收口入口。 */
 @Composable
 fun SheetDragHandle(onDismiss: () -> Unit) {
+    val closeLabel = stringResource(R.string.sheet_close)
     Box(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp, bottom = 2.dp)
+            // 无障碍：整条手柄是一个「关闭」按钮，TalkBack 可聚焦并读出声
+            .semantics {
+                role = Role.Button
+                contentDescription = closeLabel
+            }
             .pointerInput(Unit) {
                 var dragTotal = 0f
                 var dismissed = false

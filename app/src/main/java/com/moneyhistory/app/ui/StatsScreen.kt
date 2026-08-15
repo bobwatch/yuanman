@@ -433,10 +433,11 @@ fun StatsScreen(
                         // 图例色块与环形图同源色板（含深色主题提亮版）
                         val palette = chartPalette()
                         slices.forEachIndexed { i, slice ->
+                            // 与洞察行的整数百分比口径一致（如 35%，不做 34.6% 混用）
                             val percent = if (currentTotal > 0) {
-                                slice.value / currentTotal * 100
+                                (slice.value / currentTotal * 100).roundToInt()
                             } else {
-                                0f
+                                0
                             }
                             Row(
                                 Modifier

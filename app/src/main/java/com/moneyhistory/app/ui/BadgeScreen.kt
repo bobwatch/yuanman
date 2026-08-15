@@ -116,7 +116,7 @@ fun BadgeScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconTile(

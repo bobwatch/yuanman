@@ -103,6 +103,7 @@
     <string name="sheet_note_hint">Note (optional)</string>
     <string name="sheet_done">Done</string>
     <string name="sheet_close">Close</string>
+    <string name="sheet_amount_approx">≈ %1$s</string>
     <string name="sheet_date">Date</string>
     <string name="sheet_hint_save">Enter an amount, pick a category, then tap Save</string>
     <string name="numpad_plus">＋ Add up</string>
@@ -152,7 +153,7 @@
     <string name="stats_insight_more">+%1$s (+%2$d%%)</string>
     <string name="stats_insight_less">-%1$s (-%2$d%%)</string>
     <string name="stats_insight_even">Same as last month</string>
-    <string name="stats_percent_format">%1$.1f%%</string>
+    <string name="stats_percent_format">%1$d%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
@@ -245,6 +246,7 @@
     <string name="mood_angry">Angry</string>
     <string name="mood_note_toggle">＋ Add a note…</string>
     <string name="mood_note_hint">One line about today (optional)</string>
+    <string name="mood_note_count">%1$d/%2$d</string>
     <string name="mood_note_save">Save note</string>
     <string name="mood_note_saved">Saved today\'s note ✨</string>
     <string name="mood_saved">Mood recorded ✓</string>
@@ -418,6 +420,7 @@
     <string name="onboard_start">Get started</string>
     <string name="onboard_next">Next</string>
     <string name="onboard_skip">Skip</string>
+    <string name="onboard_page_dot">Page %1$d of %2$d</string>
 
     <!-- widget -->
     <string name="widget_today">Today %1$s</string>

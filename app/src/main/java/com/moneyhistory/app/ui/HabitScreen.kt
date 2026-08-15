@@ -82,6 +82,9 @@ import kotlinx.coroutines.delay
 
 private data class HabitPreset(val emoji: String, val nameRes: Int, val type: Habit.Type)
 
+// 名称上限取英文预设最长（No staying up late = 18 字符），保证点选预设不被截断
+private const val HABIT_NAME_MAX = 18
+
 // 预设名称走字符串资源：点选后以当前语言写入（用户可见数据，不迁移历史）
 private val habitPresets = listOf(
     HabitPreset("💪", R.string.habit_preset_workout, Habit.Type.BUILD),
@@ -342,13 +345,24 @@ private fun InlineHabitForm(
             OutlinedTextField(
                 value = name,
                 onValueChange = {
-                    name = it.take(12)
+                    name = it.take(HABIT_NAME_MAX)
                     nameError = false
                 },
                 label = { Text(stringResource(R.string.habit_name_hint)) },
                 isError = nameError,
                 supportingText = {
-                    if (nameError) Text(stringResource(R.string.habit_name_error))
+                    if (nameError) {
+                        Text(stringResource(R.string.habit_name_error))
+                    } else if (name.isNotEmpty()) {
+                        // 边输边显示计数，避免「打字突然卡住」的错觉（与分类命名一致）
+                        Text(
+                            stringResource(
+                                R.string.habit_name_count,
+                                name.length,
+                                HABIT_NAME_MAX
+                            )
+                        )
+                    }
                 },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()

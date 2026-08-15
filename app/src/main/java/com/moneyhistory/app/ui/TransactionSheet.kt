@@ -410,7 +410,10 @@ fun TransactionSheet(
                                 text = if (amountError) {
                                     stringResource(R.string.sheet_amount_error)
                                 } else {
-                                    "≈ ${MoneyUtils.formatCents(liveCents)}"
+                                    stringResource(
+                                        R.string.sheet_amount_approx,
+                                        MoneyUtils.formatCents(liveCents)
+                                    )
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (amountError) {

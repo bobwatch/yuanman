@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -281,6 +283,7 @@ fun GoalDetailScreen(
     }
 
     if (showDeleteConfirm) {
+        val view = LocalView.current
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text(stringResource(R.string.goal_delete_title)) },
@@ -290,6 +293,7 @@ fun GoalDetailScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     viewModel.deleteGoal(goalId)
                 }) {
                     Text(

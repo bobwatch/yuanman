@@ -103,6 +103,7 @@
     <string name="sheet_note_hint">备注（可选）</string>
     <string name="sheet_done">完成</string>
     <string name="sheet_close">关闭</string>
+    <string name="sheet_amount_approx">≈ %1$s</string>
     <string name="sheet_date">日期</string>
     <string name="sheet_hint_save">输入金额，选择分类，点保存</string>
     <string name="numpad_plus">＋ 连加</string>
@@ -152,7 +153,7 @@
     <string name="stats_insight_more">+%1$s（+%2$d%%）</string>
     <string name="stats_insight_less">-%1$s（-%2$d%%）</string>
     <string name="stats_insight_even">与上月持平</string>
-    <string name="stats_percent_format">%1$.1f%%</string>
+    <string name="stats_percent_format">%1$d%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
     <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
@@ -245,6 +246,7 @@
     <string name="mood_angry">生气</string>
     <string name="mood_note_toggle">＋ 加一句话…</string>
     <string name="mood_note_hint">一句话记录今天（可选）</string>
+    <string name="mood_note_count">%1$d/%2$d</string>
     <string name="mood_note_save">保存备注</string>
     <string name="mood_note_saved">已保存今天的一句话 ✨</string>
     <string name="mood_saved">今天的心情已记下 ✓</string>
@@ -418,6 +420,7 @@
     <string name="onboard_start">开始记账</string>
     <string name="onboard_next">下一步</string>
     <string name="onboard_skip">跳过</string>
+    <string name="onboard_page_dot">第 %1$d 页，共 %2$d 页</string>
 
     <!-- widget -->
     <string name="widget_today">今日 %1$s</string>
