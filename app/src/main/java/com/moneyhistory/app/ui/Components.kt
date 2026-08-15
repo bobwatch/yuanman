@@ -9,8 +9,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.with
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -131,7 +133,12 @@ fun MonthSelector(
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.month_next),
-                tint = contentColor
+                // 显式 tint 覆盖了 M3 的 disabled 色，禁用时手动压暗提示不可点
+                tint = if (nextEnabled) {
+                    contentColor
+                } else {
+                    contentColor.copy(alpha = 0.35f)
+                }
             )
         }
     }
@@ -349,7 +356,7 @@ fun AppCard(
     }
 }
 
-/** 分区标题（用于列表分组，与卡片同宽对齐）。 */
+/** 分区标题（用于列表分组，与卡片 16dp 外边距同宽对齐）。 */
 @Composable
 fun SectionTitle(text: String) {
     Text(
@@ -357,7 +364,7 @@ fun SectionTitle(text: String) {
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
     )
 }
 
@@ -431,6 +438,42 @@ fun IconTile(
             contentDescription = null,
             tint = tint,
             modifier = Modifier.size(iconSize)
+        )
+    }
+}
+
+/** 底部弹层拖拽手柄：点击关闭，或下滑超过 96dp 关闭（不拦截无位移点击）。
+ *  TransactionSheet 与 GoalCreateSheet 共用的收口入口。 */
+@Composable
+fun SheetDragHandle(onDismiss: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 2.dp)
+            .pointerInput(Unit) {
+                var dragTotal = 0f
+                var dismissed = false
+                detectVerticalDragGestures(
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        if (!dismissed) {
+                            dragTotal += dragAmount
+                            if (dragTotal > 96.dp.toPx()) {
+                                dismissed = true
+                                onDismiss()
+                            }
+                        }
+                    }
+                )
+            }
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier
+                .size(width = 32.dp, height = 4.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.outlineVariant)
         )
     }
 }

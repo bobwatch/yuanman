@@ -49,19 +49,14 @@
     <string name="home_delete_confirm_title">删除这条记录？</string>
     <string name="home_delete_confirm_msg">将删除「%1$s %2$s」，此操作不可撤销。</string>
     <string name="home_overview_expense">本月支出</string>
-    <string name="home_overview_income_count">收入 %1$s · 共 %2$d 笔</string>
-    <string name="home_today">今日已花 %1$s · %2$d 笔</string>
     <string name="home_header_income">收入</string>
     <string name="home_header_today">今日</string>
     <string name="home_header_today_count">%1$d 笔</string>
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">连续</string>
     <string name="home_header_streak_short">🔥 %1$d 天</string>
-    <string name="home_budget_used">预算 %1$s · 已用 %2$d%%%3$s</string>
     <string name="home_budget_over">（已超支）</string>
     <string name="home_budget_set">设置月度预算 →</string>
-    <string name="home_streak">🔥 已连续记账 %d 天</string>
-    <string name="home_goals_guide">💎 定个小目标，开始攒钱 →</string>
     <string name="home_section_goal">攒钱目标</string>
     <string name="home_goal_set">定个小目标 →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>
@@ -135,7 +130,7 @@
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
     <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
-    <string name="chart_daily_desc">本月每日走势：%1$s</string>
+    <string name="chart_daily_desc">本月每日走势：共 %1$d 天有记录，合计 %2$s</string>
 
     <!-- budget dialog -->
     <string name="budget_title">月度预算</string>
@@ -388,4 +383,57 @@
     <!-- v0.0.2 polish -->
     <string name="record_saved">已记一笔 ✓</string>
     <string name="pad_amount_exceeds">超出可取出金额</string>
+
+    <!-- 预设分类显示名（存储数据保持原样） -->
+    <string name="cat_food">餐饮美食</string>
+    <string name="cat_transport">交通出行</string>
+    <string name="cat_car">爱车养车</string>
+    <string name="cat_utilities">充值缴费</string>
+    <string name="cat_clothing">服饰装扮</string>
+    <string name="cat_home">家居家装</string>
+    <string name="cat_digital">数码电器</string>
+    <string name="cat_sports">运动户外</string>
+    <string name="cat_beauty">美容美发</string>
+    <string name="cat_baby">母婴亲子</string>
+    <string name="cat_pet">宠物</string>
+    <string name="cat_housing">住房物业</string>
+    <string name="cat_travel">酒店旅游</string>
+    <string name="cat_leisure">文化休闲</string>
+    <string name="cat_education">教育培训</string>
+    <string name="cat_health">医疗健康</string>
+    <string name="cat_services">生活服务</string>
+    <string name="cat_social">人情往来</string>
+    <string name="cat_invest">投资理财</string>
+    <string name="cat_other">其他</string>
+    <string name="cat_salary">工资</string>
+    <string name="cat_redpacket">红包转账</string>
+    <string name="cat_invest_income">理财收益</string>
+    <string name="cat_parttime">兼职外快</string>
+    <string name="cat_refund">退款</string>
+
+    <!-- 习惯预设 -->
+    <string name="habit_preset_workout">健身运动</string>
+    <string name="habit_preset_study">学习打卡</string>
+    <string name="habit_preset_read">阅读</string>
+    <string name="habit_preset_early">早起</string>
+    <string name="habit_preset_no_soda">戒饮料</string>
+    <string name="habit_preset_no_alcohol">戒酒</string>
+    <string name="habit_preset_no_smoke">戒烟</string>
+    <string name="habit_preset_no_late">戒熬夜</string>
+
+    <!-- 周期账单 -->
+    <string name="recurring_default_note">周期账单</string>
+
+    <!-- 攒钱目标 -->
+    <string name="goal_deposit_category">💎 储蓄</string>
+    <string name="goal_deposit_note">存入「%1$s」</string>
+    <string name="goal_detail_saved_of">已存 %1$s / %2$s</string>
+
+    <!-- 图表 -->
+    <string name="chart_abbrev_wan">万</string>
+    <string name="chart_abbrev_k">k</string>
+
+    <!-- 无障碍 -->
+    <string name="habit_week_summary">近 7 天打卡 %1$d 天</string>
+    <string name="mood_day_semantics">第 %1$d 天，心情：%2$s</string>
 </resources>

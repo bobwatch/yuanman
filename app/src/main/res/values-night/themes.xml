@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 夜间窗口主题：深色底，防止 Compose 绘制前闪白 -->
+    <!-- 夜间窗口主题：深色底，防止 Compose 绘制前闪白。
+         启动屏保持品牌蓝（与 API 31+ windowSplashScreenBackground 行为一致）。 -->
     <style name="Theme.Yuanman" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@color/window_background</item>
+        <item name="android:statusBarColor">@color/splash_blue</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_blue</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="android:windowSplashScreenAnimationDuration">500</item>
     </style>
 </resources>

@@ -104,6 +104,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @OptIn(
@@ -138,6 +139,8 @@ fun HomeScreen(
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var duplicatingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showGoalSheet by rememberSaveable { mutableStateOf(false) }
+    // 多个目标时点目标行弹出的列表选择层
+    var showGoalList by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -165,7 +168,14 @@ fun HomeScreen(
     }
 
     val monthTransactions = remember(transactions, month) { transactions.ofMonth(month) }
-    val filteredTransactions = remember(monthTransactions, searchQuery, searchType) {
+    // 分类在界面显示本地化名称，但存储的是原名——预计算显示名，搜索时两者都匹配
+    val monthCategories = remember(monthTransactions) {
+        monthTransactions.map { it.category }.distinct()
+    }
+    val categoryDisplayNames = monthCategories.associateWith { Categories.displayName(it) }
+    val filteredTransactions = remember(
+        monthTransactions, searchQuery, searchType, categoryDisplayNames
+    ) {
         monthTransactions.filter { t ->
             if (searchType != null && t.type != searchType) return@filter false
             if (searchQuery.isBlank()) return@filter true
@@ -175,7 +185,8 @@ fun HomeScreen(
                 ?: false
             amountMatch ||
                 t.note.contains(q, ignoreCase = true) ||
-                t.category.contains(q, ignoreCase = true)
+                t.category.contains(q, ignoreCase = true) ||
+                categoryDisplayNames[t.category].orEmpty().contains(q, ignoreCase = true)
         }
     }
     var monthExpense = 0L
@@ -311,9 +322,12 @@ fun HomeScreen(
                     goals = goals,
                     onSetBudget = { showBudgetDialog = true },
                     onGoalClick = {
-                        // 无目标时引导新建；有目标时直达进度最高的目标详情
-                        if (goals.isEmpty()) showGoalSheet = true
-                        else onNavigateToGoal(goals.maxByOrNull { it.progress }!!.id)
+                        // 无目标时引导新建；单个目标直达详情；多个目标先弹列表选择
+                        when {
+                            goals.isEmpty() -> showGoalSheet = true
+                            goals.size == 1 -> onNavigateToGoal(goals.first().id)
+                            else -> showGoalList = true
+                        }
                     }
                 )
             }
@@ -471,6 +485,21 @@ fun HomeScreen(
             GoalCreateSheet(
                 onDismiss = { showGoalSheet = false },
                 onCreate = { viewModel.addGoal(it) }
+            )
+        }
+
+        if (showGoalList) {
+            GoalListSheet(
+                goals = goals,
+                onGoalClick = { id ->
+                    showGoalList = false
+                    onNavigateToGoal(id)
+                },
+                onCreateClick = {
+                    showGoalList = false
+                    showGoalSheet = true
+                },
+                onDismiss = { showGoalList = false }
             )
         }
 
@@ -780,6 +809,7 @@ private fun BudgetGoalCard(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .pressScale()
                     .clickable(onClick = onSetBudget)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -811,7 +841,7 @@ private fun BudgetGoalCard(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = (expense * 100 / budgetCents).toString() + "%" +
+                        text = Math.round(expense * 100f / budgetCents).toString() + "%" +
                             if (overBudget) {
                                 stringResource(R.string.home_budget_over)
                             } else {
@@ -843,6 +873,7 @@ private fun BudgetGoalCard(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .pressScale()
                     .clickable(onClick = onGoalClick)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -863,7 +894,7 @@ private fun BudgetGoalCard(
                         stringResource(
                             R.string.home_goal_progress,
                             topGoal.name,
-                            (topGoal.progress * 100).toInt().coerceAtMost(100)
+                            (topGoal.progress * 100).roundToInt().coerceAtMost(100)
                         )
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -925,7 +956,7 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1101,7 +1132,7 @@ private fun TransactionRow(
                 Spacer(Modifier.size(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = Categories.nameOf(t.category),
+                        text = Categories.displayName(t.category),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,

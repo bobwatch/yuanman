@@ -100,8 +100,13 @@ class RecurringStore private constructor(context: Context) {
     /**
      * 结算到期账单：对每条 nextDue <= now 的账单逐期补记支出流水，
      * 并把 nextDue 推进到未来。静默完成，返回补记的总笔数。
+     * [defaultNote] 为账单无备注时写入流水的默认备注（本地化文案由调用方传入）。
      */
-    fun settle(store: TransactionStore, now: Long = System.currentTimeMillis()): Int =
+    fun settle(
+        store: TransactionStore,
+        now: Long = System.currentTimeMillis(),
+        defaultNote: String = ""
+    ): Int =
         synchronized(lock) {
             var count = 0
             for (i in items.indices) {
@@ -112,7 +117,7 @@ class RecurringStore private constructor(context: Context) {
                             type = Transaction.Type.EXPENSE,
                             amountCents = cur.amountCents,
                             category = cur.category,
-                            note = cur.note.ifEmpty { "周期账单" },
+                            note = cur.note.ifEmpty { defaultNote },
                             timestamp = cur.nextDue
                         )
                     )

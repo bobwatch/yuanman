@@ -42,17 +42,16 @@ val ChartPalette = listOf(
 )
 
 /**
- * 金额缩写（图表标签用）：≥1 万显示 3.2万（中文环境），≥1000 显示 3.2k，否则取整。
- * 跟随设备语言：中文用「万」，其余用 k。
+ * 金额缩写（图表标签用）：≥1 万用 [wanUnit]（中文环境「万」），≥1000 用 [kUnit]（k），
+ * 否则取整。单位文案走字符串资源（英文环境 wanUnit 为空串，自动落到 k）。
  */
-internal fun abbrevYuan(cents: Long): String {
+internal fun abbrevYuan(cents: Long, wanUnit: String, kUnit: String): String {
     val yuan = cents / 100f
     val locale = Locale.getDefault()
-    val isChinese = locale.language.startsWith("zh")
     return when {
-        yuan >= 10000f && isChinese ->
-            String.format(locale, "%.1f万", yuan / 10000f)
-        yuan >= 1000f -> String.format(locale, "%.1fk", yuan / 1000f)
+        yuan >= 10000f && wanUnit.isNotEmpty() ->
+            String.format(locale, "%.1f%s", yuan / 10000f, wanUnit)
+        yuan >= 1000f -> String.format(locale, "%.1f%s", yuan / 1000f, kUnit)
         else -> String.format(locale, "%.0f", yuan)
     }
 }
@@ -63,13 +62,15 @@ data class ChartSlice(val label: String, val value: Float)
 /** 趋势柱状图的一个月份点。 */
 data class MonthPoint(val label: String, val amountCents: Long, val isCurrent: Boolean)
 
-/** 分类占比环形图（drawArc 描边成环，中心显示总额）。 */
+/** 分类占比环形图（drawArc 描边成环，中心显示总额）。[sliceColors] 可逐片指定配色，
+ *  缺省用 [ChartPalette]（默认图表色板）。 */
 @Composable
 fun DonutChart(
     slices: List<ChartSlice>,
     centerTitle: String,
     centerValue: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sliceColors: List<Color>? = null
 ) {
     // TalkBack 读出每类占比与合计
     val desc = stringResource(
@@ -102,7 +103,7 @@ fun DonutChart(
                 val sweep = slice.value / total * 360f * progress.value
                 if (sweep > 0f) {
                     drawArc(
-                        color = ChartPalette[i % ChartPalette.size],
+                        color = sliceColors?.getOrNull(i) ?: ChartPalette[i % ChartPalette.size],
                         startAngle = startAngle,
                         sweepAngle = sweep,
                         useCenter = false,
@@ -140,6 +141,8 @@ fun TrendBarChart(
     val primary = MaterialTheme.colorScheme.primary
     val barColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val wanUnit = stringResource(R.string.chart_abbrev_wan)
+    val kUnit = stringResource(R.string.chart_abbrev_k)
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
             color = labelColor.toArgb()
@@ -150,7 +153,7 @@ fun TrendBarChart(
     // TalkBack 读出各月金额
     val desc = stringResource(
         R.string.chart_trend_desc,
-        points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents)}" }
+        points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents, wanUnit, kUnit)}" }
     )
     // 柱生长动画：数据变化时从底部一起长高，金额标签跟随柱顶
     val progress = remember(points) { Animatable(0f) }
@@ -165,7 +168,6 @@ fun TrendBarChart(
         // 按 density 换算，适配不同屏幕文字密度
         textPaint.textSize = 10.sp.toPx()
         val max = points.maxOf { it.amountCents }
-        val hasData = max > 0L
         val anim = progress.value
         val topLabelHeight = 34f
         val bottomLabelHeight = 34f
@@ -173,8 +175,8 @@ fun TrendBarChart(
         val slotWidth = size.width / points.size
         val barWidth = slotWidth * 0.5f
         points.forEachIndexed { i, p ->
-            // 全 0 月份不画「假柱」（底部 3px 会被误读为有少量数据），只保留标签
-            if (hasData) {
+            // 0 金额月份不画「假柱」（底部 3px 会被误读为有少量数据），只保留月份标签
+            if (p.amountCents > 0L) {
                 val barHeight = p.amountCents.toFloat() / max * chartHeight * anim
                 val left = slotWidth * i + (slotWidth - barWidth) / 2f
                 val top = topLabelHeight + (chartHeight - barHeight)
@@ -185,7 +187,7 @@ fun TrendBarChart(
                     cornerRadius = CornerRadius(8f, 8f)
                 )
                 drawContext.canvas.nativeCanvas.drawText(
-                    abbrevYuan(p.amountCents),
+                    abbrevYuan(p.amountCents, wanUnit, kUnit),
                     left + barWidth / 2f,
                     top - 8f,
                     textPaint
@@ -220,8 +222,8 @@ fun DailyLineChart(
     // TalkBack 读出有记录的天数与合计（逐日数值太长，只报摘要）
     val desc = stringResource(
         R.string.chart_daily_desc,
-        "${dailyCents.count { it > 0L }} days, total " +
-            MoneyUtils.formatCents(dailyCents.sum())
+        dailyCents.count { it > 0L },
+        MoneyUtils.formatCents(dailyCents.sum())
     )
     // 从左向右展开动画：clip 宽度按进度增长，折线像被「画」出来
     val progress = remember(dailyCents) { Animatable(0f) }

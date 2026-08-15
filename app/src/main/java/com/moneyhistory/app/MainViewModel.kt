@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
+import kotlin.math.roundToInt
 
 /** 当前查看的月份（month 为 1~12）。 */
 data class YearMonth(val year: Int, val month: Int)
@@ -265,19 +266,20 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     ) {
         val updated = savingsStore.deposit(goalId, amountCents, isWithdraw) ?: return
         if (recordExpense && !isWithdraw) {
+            val app = getApplication<Application>()
             store.add(
                 Transaction(
                     type = Transaction.Type.EXPENSE,
                     amountCents = amountCents,
-                    category = "💎 储蓄",
-                    note = "存入「${updated.name}」"
+                    category = app.getString(R.string.goal_deposit_category),
+                    note = app.getString(R.string.goal_deposit_note, updated.name)
                 )
             )
             refresh()
         }
         _successNonce.value += 1
         if (!isWithdraw) {
-            val percent = (updated.progress * 100).toInt()
+            val percent = (updated.progress * 100).roundToInt()
             goalMilestones.forEach { m ->
                 if (percent >= m && m !in updated.celebratedMilestones) {
                     savingsStore.markCelebrated(goalId, m)
@@ -477,7 +479,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 进入前台：启动家庭同步 + 结算到期的周期账单 + 检查勋章 + 检查更新。 */
     fun onForeground() {
         syncManager.start()
-        val settled = recurringStore.settle(store)
+        val settled = recurringStore.settle(
+            store,
+            defaultNote = getApplication<Application>()
+                .getString(R.string.recurring_default_note)
+        )
         if (settled > 0) {
             refresh()
             _recurring.value = recurringStore.all()

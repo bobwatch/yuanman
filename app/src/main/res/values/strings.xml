@@ -49,19 +49,14 @@
     <string name="home_delete_confirm_title">Delete this record?</string>
     <string name="home_delete_confirm_msg">%1$s %2$s will be deleted. This cannot be undone.</string>
     <string name="home_overview_expense">Spent this month</string>
-    <string name="home_overview_income_count">Earned %1$s · %2$d entries</string>
-    <string name="home_today">Spent today %1$s · %2$d entries</string>
     <string name="home_header_income">Income</string>
     <string name="home_header_today">Today</string>
     <string name="home_header_today_count">%1$d entries</string>
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">Streak</string>
     <string name="home_header_streak_short">🔥 %1$d days</string>
-    <string name="home_budget_used">Budget %1$s · %2$d%% used%3$s</string>
     <string name="home_budget_over"> (over budget)</string>
     <string name="home_budget_set">Set monthly budget →</string>
-    <string name="home_streak">🔥 %d-day recording streak</string>
-    <string name="home_goals_guide">💎 Set a savings goal →</string>
     <string name="home_section_goal">Savings goals</string>
     <string name="home_goal_set">Set a goal →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>
@@ -135,7 +130,7 @@
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
-    <string name="chart_daily_desc">Daily trend this month: %1$s</string>
+    <string name="chart_daily_desc">Daily trend this month: %1$d days with records, total %2$s</string>
 
     <!-- budget dialog -->
     <string name="budget_title">Monthly budget</string>
@@ -388,4 +383,57 @@
     <!-- v0.0.2 polish -->
     <string name="record_saved">Recorded ✓</string>
     <string name="pad_amount_exceeds">Exceeds available balance</string>
+
+    <!-- preset category display names (stored data keeps the original names) -->
+    <string name="cat_food">Food</string>
+    <string name="cat_transport">Transport</string>
+    <string name="cat_car">Car</string>
+    <string name="cat_utilities">Utilities</string>
+    <string name="cat_clothing">Clothing</string>
+    <string name="cat_home">Home &amp; Decor</string>
+    <string name="cat_digital">Electronics</string>
+    <string name="cat_sports">Sports</string>
+    <string name="cat_beauty">Beauty</string>
+    <string name="cat_baby">Baby</string>
+    <string name="cat_pet">Pets</string>
+    <string name="cat_housing">Housing</string>
+    <string name="cat_travel">Travel</string>
+    <string name="cat_leisure">Leisure</string>
+    <string name="cat_education">Education</string>
+    <string name="cat_health">Health</string>
+    <string name="cat_services">Services</string>
+    <string name="cat_social">Gifts &amp; Social</string>
+    <string name="cat_invest">Investment</string>
+    <string name="cat_other">Other</string>
+    <string name="cat_salary">Salary</string>
+    <string name="cat_redpacket">Gifts &amp; Transfers</string>
+    <string name="cat_invest_income">Investment income</string>
+    <string name="cat_parttime">Side income</string>
+    <string name="cat_refund">Refund</string>
+
+    <!-- habit presets -->
+    <string name="habit_preset_workout">Workout</string>
+    <string name="habit_preset_study">Study check-in</string>
+    <string name="habit_preset_read">Reading</string>
+    <string name="habit_preset_early">Early rising</string>
+    <string name="habit_preset_no_soda">No soda</string>
+    <string name="habit_preset_no_alcohol">No alcohol</string>
+    <string name="habit_preset_no_smoke">No smoking</string>
+    <string name="habit_preset_no_late">No staying up late</string>
+
+    <!-- recurring -->
+    <string name="recurring_default_note">Recurring bill</string>
+
+    <!-- savings goals -->
+    <string name="goal_deposit_category">💎 Savings</string>
+    <string name="goal_deposit_note">Deposited to "%1$s"</string>
+    <string name="goal_detail_saved_of">Saved %1$s / %2$s</string>
+
+    <!-- charts -->
+    <string name="chart_abbrev_wan"></string>
+    <string name="chart_abbrev_k">k</string>
+
+    <!-- accessibility -->
+    <string name="habit_week_summary">Checked in %1$d of the last 7 days</string>
+    <string name="mood_day_semantics">Day %1$d, mood: %2$s</string>
 </resources>

@@ -4,9 +4,9 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,7 +58,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -292,39 +291,8 @@ fun TransactionSheet(
             tonalElevation = 3.dp
         ) {
         Column(Modifier.fillMaxSize()) {
-            // 拖动手柄：下滑（超过 96dp）或点击关闭弹窗。
-            // detectVerticalDragGestures 不拦截无位移的点击，clickable 正常响应；
-            // 手柄只有 ~40dp 高，与中部滚动区互不干扰
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp, bottom = 2.dp)
-                    .pointerInput(Unit) {
-                        var dragTotal = 0f
-                        var dismissed = false
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { change, dragAmount ->
-                                change.consume()
-                                if (!dismissed) {
-                                    dragTotal += dragAmount
-                                    if (dragTotal > 96.dp.toPx()) {
-                                        dismissed = true
-                                        onDismiss()
-                                    }
-                                }
-                            }
-                        )
-                    }
-                    .clickable(onClick = onDismiss),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 32.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
-                )
-            }
+            // 拖动手柄：下滑（超过 96dp）或点击关闭弹窗（与 GoalCreateSheet 共用）
+            SheetDragHandle(onDismiss = onDismiss)
             // 固定头部：标题（编辑备注时右侧带 完成/保存）+（收支/金额）+ 备注
             Column(
                 Modifier
@@ -613,7 +581,7 @@ fun TransactionSheet(
                     Text(
                         stringResource(
                             R.string.home_delete_confirm_msg,
-                            Categories.nameOf(initial?.category ?: ""),
+                            Categories.displayName(initial?.category ?: ""),
                             MoneyUtils.formatCents(initial?.amountCents ?: 0L)
                         )
                     )
@@ -756,9 +724,31 @@ private fun CategoryTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 选中态颜色过渡 + 按压缩放（与全局 pressScale 体系一致），最常点的元素不「干跳」
+    val circleColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        },
+        label = "catCircle"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+        label = "catIcon"
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "catLabel"
+    )
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
+            .pressScale()
             .clickable(onClick = onClick)
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -767,34 +757,24 @@ private fun CategoryTile(
             Modifier
                 .size(46.dp)
                 .clip(CircleShape)
-                .background(
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                    }
-                ),
+                .background(circleColor),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = categoryIcon(category),
                 contentDescription = null,
-                tint = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+                tint = iconTint,
                 modifier = Modifier.size(22.dp)
             )
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = Categories.nameOf(category),
+            text = Categories.displayName(category),
             style = MaterialTheme.typography.bodySmall,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
+            color = labelColor
         )
     }
 }
@@ -808,20 +788,27 @@ private fun SheetTypePill(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val container = if (selected) {
-        accent.copy(alpha = 0.14f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-    val content = if (selected) {
-        accent
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val container by animateColorAsState(
+        targetValue = if (selected) {
+            accent.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        label = "pillContainer"
+    )
+    val content by animateColorAsState(
+        targetValue = if (selected) {
+            accent
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "pillContent"
+    )
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(container)
+            .pressScale()
             .clickable(onClick = onClick)
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center

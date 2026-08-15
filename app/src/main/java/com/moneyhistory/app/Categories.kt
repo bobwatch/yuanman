@@ -1,5 +1,8 @@
 package com.moneyhistory.app
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+
 /**
  * 预设分类（emoji + 名称），硬编码常量。
  * 分类以完整字符串（含 emoji）存储在流水记录里。
@@ -53,4 +56,41 @@ object Categories {
     /** 从「emoji 名称」中取出名称部分（无空格时原样返回）。 */
     fun nameOf(category: String): String =
         category.substringAfter(" ", category)
+
+    // 预设分类显示名 → 字符串资源 key。存储值保持中文原样（老数据不迁移），
+    // 显示时按当前语言映射；自定义分类不在表中，原样显示
+    private val displayNameKeys: Map<String, Int> = mapOf(
+        "餐饮美食" to R.string.cat_food,
+        "交通出行" to R.string.cat_transport,
+        "爱车养车" to R.string.cat_car,
+        "充值缴费" to R.string.cat_utilities,
+        "服饰装扮" to R.string.cat_clothing,
+        "家居家装" to R.string.cat_home,
+        "数码电器" to R.string.cat_digital,
+        "运动户外" to R.string.cat_sports,
+        "美容美发" to R.string.cat_beauty,
+        "母婴亲子" to R.string.cat_baby,
+        "宠物" to R.string.cat_pet,
+        "住房物业" to R.string.cat_housing,
+        "酒店旅游" to R.string.cat_travel,
+        "文化休闲" to R.string.cat_leisure,
+        "教育培训" to R.string.cat_education,
+        "医疗健康" to R.string.cat_health,
+        "生活服务" to R.string.cat_services,
+        "人情往来" to R.string.cat_social,
+        "投资理财" to R.string.cat_invest,
+        "工资" to R.string.cat_salary,
+        "红包转账" to R.string.cat_redpacket,
+        "理财收益" to R.string.cat_invest_income,
+        "兼职外快" to R.string.cat_parttime,
+        "退款" to R.string.cat_refund,
+        "其他" to R.string.cat_other
+    )
+
+    /** 分类显示名：预设分类按当前语言显示，自定义分类原样返回。 */
+    @Composable
+    fun displayName(category: String): String {
+        val key = displayNameKeys[nameOf(category)]
+        return if (key != null) stringResource(key) else nameOf(category)
+    }
 }

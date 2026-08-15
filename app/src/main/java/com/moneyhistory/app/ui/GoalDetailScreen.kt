@@ -42,6 +42,7 @@ import com.moneyhistory.app.R
 import com.moneyhistory.app.dailySavingRate
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
+import kotlin.math.roundToInt
 
 /** 攒钱目标详情：大圆环 + 存入/取出 + 存入历史 + 删除目标。 */
 @Composable
@@ -103,7 +104,7 @@ fun GoalDetailScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "${(goal.progress * 100).toInt().coerceAtMost(100)}%",
+                        text = "${(goal.progress * 100).roundToInt().coerceAtMost(100)}%",
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -113,9 +114,10 @@ fun GoalDetailScreen(
             Spacer(Modifier.height(12.dp))
             Text(
                 text = stringResource(
-                    R.string.goal_card_saved,
-                    MoneyUtils.formatCents(goal.savedCents)
-                ) + " / " + MoneyUtils.formatCents(goal.targetCents),
+                    R.string.goal_detail_saved_of,
+                    MoneyUtils.formatCents(goal.savedCents),
+                    MoneyUtils.formatCents(goal.targetCents)
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )

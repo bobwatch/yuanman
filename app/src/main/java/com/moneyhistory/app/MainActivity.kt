@@ -179,9 +179,7 @@ class MainActivity : ComponentActivity() {
                             .currentBackStackEntryAsState()
                         val currentRoute = backStackEntry?.destination?.route
                         val showBottomBar =
-                            currentRoute == null ||
-                                currentRoute in tabRoutes ||
-                                currentRoute == "settings"
+                            currentRoute == null || currentRoute in tabRoutes
                         Scaffold(
                             // 各页面自绘渐变页头（含状态栏），外层不再叠加系统 insets
                             contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
@@ -290,24 +288,6 @@ class MainActivity : ComponentActivity() {
                                     MoodScreen(viewModel = viewModel)
                                 }
                                 composable("mine") {
-                                    MineScreen(
-                                        viewModel = viewModel,
-                                        onNavigateToBadges = {
-                                            navController.navigate("badges")
-                                        },
-                                        onNavigateToFamily = {
-                                            navController.navigate("family")
-                                        },
-                                        onNavigateToRecurring = {
-                                            navController.navigate("recurring")
-                                        },
-                                        onNavigateToCategories = {
-                                            navController.navigate("categories")
-                                        }
-                                    )
-                                }
-                                // 兼容保留的旧入口路由
-                                composable("settings") {
                                     MineScreen(
                                         viewModel = viewModel,
                                         onNavigateToBadges = {

@@ -70,11 +70,13 @@ fun FamilySyncScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SettingsCard(title = stringResource(R.string.family_title)) {
+            // 页头已显示「家庭同步」，此处不再重复标题
+            AppCard {
                 Text(
                     text = stringResource(R.string.family_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
                 )
             }
 

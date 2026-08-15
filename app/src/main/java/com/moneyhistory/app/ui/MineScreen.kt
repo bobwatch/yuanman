@@ -142,16 +142,11 @@ fun MineScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 勋章墙
+            // 勋章墙（页头已显示解锁进度，行内不再重复）
             SettingsCard(title = stringResource(R.string.mine_section_achievement)) {
                 SettingRow(
                     icon = Icons.Filled.Star,
                     title = stringResource(R.string.mine_badges),
-                    subtitle = stringResource(
-                        R.string.mine_badges_sub,
-                        badgeUnlocks.size,
-                        allBadges.size
-                    ),
                     onClick = onNavigateToBadges
                 )
             }

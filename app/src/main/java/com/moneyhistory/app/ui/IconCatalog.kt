@@ -91,7 +91,8 @@ private val categoryIcons = mapOf(
     "🧧" to Icons.Outlined.Redeem,
     "📈" to Icons.AutoMirrored.Outlined.TrendingUp,
     "💼" to Icons.Outlined.Work,
-    "🔄" to Icons.Outlined.Refresh
+    "🔄" to Icons.Outlined.Refresh,
+    "💎" to Icons.Outlined.Savings
 )
 
 /** 分类 → 矢量图标（自定义分类未匹配时用通用分类图标）。 */

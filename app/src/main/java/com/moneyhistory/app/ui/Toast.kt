@@ -55,13 +55,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 一条 Toast。 */
+/** 一条 Toast。[leaving] 为 true 表示已进入退场动画，播完才真正移除。 */
 data class ToastData(
     val id: Long,
     val message: String,
     val variant: MessageVariant = MessageVariant.INFO,
     val actionLabel: String? = null,
-    val onAction: (() -> Unit)? = null
+    val onAction: (() -> Unit)? = null,
+    val leaving: Boolean = false
 )
 
 /**
@@ -88,7 +89,14 @@ class ToastHostState {
         }
     }
 
+    /** 标记退场：ToastItem 播完退出动画后调 [remove] 真正移除。 */
     fun dismiss(id: Long) {
+        _toasts.update { list ->
+            list.map { if (it.id == id) it.copy(leaving = true) else it }
+        }
+    }
+
+    fun remove(id: Long) {
         _toasts.update { list -> list.filterNot { it.id == id } }
     }
 }
@@ -106,7 +114,11 @@ fun ToastHost(
     ) {
         toasts.forEach { toast ->
             key(toast.id) {
-                ToastItem(toast, onDismiss = { state.dismiss(toast.id) })
+                ToastItem(
+                    toast = toast,
+                    onDismiss = { state.dismiss(toast.id) },
+                    onRemoved = { state.remove(toast.id) }
+                )
             }
         }
     }
@@ -114,7 +126,11 @@ fun ToastHost(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ToastItem(toast: ToastData, onDismiss: () -> Unit) {
+private fun ToastItem(
+    toast: ToastData,
+    onDismiss: () -> Unit,
+    onRemoved: () -> Unit
+) {
     // 深浅色取应用主题（非系统）：用户手动切换主题时 Toast 也要跟着换
     val darkTheme = LocalDarkTheme.current
     val container = if (darkTheme) Color(0xFFF2F4F8) else Color(0xFF232A35)
@@ -129,6 +145,15 @@ private fun ToastItem(toast: ToastData, onDismiss: () -> Unit) {
 
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
+    // 收到退场标记：先播退出动画（默认 300ms 淡出），播完再真正移除，
+    // 不会「啪」地消失
+    LaunchedEffect(toast.leaving) {
+        if (toast.leaving) {
+            visible = false
+            delay(400)
+            onRemoved()
+        }
+    }
 
     // 横向滑动关闭
     val dismissState = rememberSwipeToDismissBoxState(

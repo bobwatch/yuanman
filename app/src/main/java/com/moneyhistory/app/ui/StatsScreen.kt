@@ -326,7 +326,7 @@ fun StatsScreen(
                                 )
                                 Spacer(Modifier.size(8.dp))
                                 Text(
-                                    text = Categories.nameOf(slice.label),
+                                    text = Categories.displayName(slice.label),
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f)
                                 )

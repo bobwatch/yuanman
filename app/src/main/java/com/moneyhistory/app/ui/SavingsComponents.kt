@@ -1,16 +1,22 @@
 package com.moneyhistory.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,12 +30,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,12 +49,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.moneyhistory.app.Goal
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.dailySavingRate
 import com.moneyhistory.app.goalEmojiCandidates
 import java.util.Calendar
+import kotlin.math.roundToInt
 
 /** 圆环进度（Canvas 自绘，animateFloatAsState 过渡动画），中心可放文字。 */
 @Composable
@@ -111,7 +119,7 @@ fun ProgressRing(
 /** 目标卡片的预测文案（按近 30 天存入速度推算）。 */
 @Composable
 private fun goalPredictionText(goal: Goal): String {
-    val percent = (goal.progress * 100).toInt().coerceAtMost(100)
+    val percent = (goal.progress * 100).roundToInt().coerceAtMost(100)
     if (goal.savedCents >= goal.targetCents) {
         return stringResource(R.string.goal_prediction_done)
     }
@@ -167,7 +175,7 @@ fun GoalCard(goal: Goal, onClick: () -> Unit) {
                     modifier = Modifier.size(56.dp)
                 ) {
                     Text(
-                        text = "${(goal.progress * 100).toInt().coerceAtMost(100)}%",
+                        text = "${(goal.progress * 100).roundToInt().coerceAtMost(100)}%",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -237,7 +245,72 @@ fun AddGoalCard(onClick: () -> Unit) {
     }
 }
 
-/** 新建攒钱目标 BottomSheet：名称 + 目标金额 + emoji + 可选目标日期。 */
+/**
+ * 目标列表弹层：多个目标时点首页「攒钱目标」行弹出，横向滑动选目标或新建。
+ * 与 GoalCreateSheet 同款底部 Dialog（M3 sheet 与输入法问题见 GoalCreateSheet 注释）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GoalListSheet(
+    goals: List<Goal>,
+    onGoalClick: (String) -> Unit,
+    onCreateClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .imePadding(),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 28.dp)
+                ) {
+                    SheetDragHandle(onDismiss = onDismiss)
+                    Text(
+                        text = stringResource(R.string.home_section_goal),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(goals, key = { it.id }) { goal ->
+                            GoalCard(goal = goal, onClick = { onGoalClick(goal.id) })
+                        }
+                        item {
+                            AddGoalCard(onClick = onCreateClick)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 新建攒钱目标底部弹层：名称 + 目标金额 + emoji + 可选目标日期。
+ * 用 Dialog 而非 ModalBottomSheet：M3 1.2.1 的 sheet 与输入法互相踩坏
+ * （见 TransactionSheet 注释），Dialog + decorFitsSystemWindows=false
+ * 能收到 IME inset，配合 imePadding 键盘弹起时弹层自动上移。
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun GoalCreateSheet(
@@ -252,119 +325,139 @@ fun GoalCreateSheet(
     var deadlineEnabled by rememberSaveable { mutableStateOf(false) }
     var deadlineMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        Column(
+        Box(
             Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
+                .fillMaxSize()
+                .imePadding(),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Text(
-                stringResource(R.string.goal_create_title),
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    name = it.take(12)
-                    nameError = false
-                },
-                label = { Text(stringResource(R.string.goal_name_hint)) },
-                isError = nameError,
-                supportingText = {
-                    if (nameError) Text(stringResource(R.string.goal_name_error))
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = amount,
-                onValueChange = {
-                    amount = it
-                    amountError = false
-                },
-                label = { Text(stringResource(R.string.goal_target_hint)) },
-                isError = amountError,
-                supportingText = {
-                    if (amountError) Text(stringResource(R.string.sheet_amount_error))
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                stringResource(R.string.goal_emoji_pick),
-                style = MaterialTheme.typography.titleSmall
-            )
-            Spacer(Modifier.height(8.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
             ) {
-                goalEmojiCandidates.forEach { candidate ->
-                    FilterChip(
-                        selected = emoji == candidate,
-                        onClick = { emoji = candidate },
-                        label = { Text(candidate) }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    SheetDragHandle(onDismiss = onDismiss)
+
+                    Text(
+                        stringResource(R.string.goal_create_title),
+                        style = MaterialTheme.typography.titleLarge
                     )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(16.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.goal_deadline_toggle),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = deadlineEnabled,
-                    onCheckedChange = { deadlineEnabled = it }
-                )
-            }
-            if (deadlineEnabled) {
-                DatePickerButton(
-                    label = stringResource(R.string.goal_deadline_label),
-                    millis = deadlineMillis,
-                    onDateSelected = { deadlineMillis = it }
-                )
-            }
-            Spacer(Modifier.height(20.dp))
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it.take(12)
+                            nameError = false
+                        },
+                        label = { Text(stringResource(R.string.goal_name_hint)) },
+                        isError = nameError,
+                        supportingText = {
+                            if (nameError) Text(stringResource(R.string.goal_name_error))
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
 
-            Button(
-                onClick = {
-                    val cents = MoneyUtils.parseToCents(amount)
-                    when {
-                        name.isBlank() -> nameError = true
-                        cents == null -> amountError = true
-                        else -> {
-                            onCreate(
-                                Goal(
-                                    name = name.trim(),
-                                    emoji = emoji,
-                                    targetCents = cents,
-                                    deadlineMillis =
-                                    if (deadlineEnabled) deadlineMillis else null
-                                )
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = {
+                            amount = it
+                            amountError = false
+                        },
+                        label = { Text(stringResource(R.string.goal_target_hint)) },
+                        isError = amountError,
+                        supportingText = {
+                            if (amountError) Text(stringResource(R.string.sheet_amount_error))
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        stringResource(R.string.goal_emoji_pick),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        goalEmojiCandidates.forEach { candidate ->
+                            FilterChip(
+                                selected = emoji == candidate,
+                                onClick = { emoji = candidate },
+                                label = { Text(candidate) }
                             )
-                            onDismiss()
                         }
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.common_create))
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stringResource(R.string.goal_deadline_toggle),
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = deadlineEnabled,
+                            onCheckedChange = { deadlineEnabled = it }
+                        )
+                    }
+                    if (deadlineEnabled) {
+                        DatePickerButton(
+                            label = stringResource(R.string.goal_deadline_label),
+                            millis = deadlineMillis,
+                            onDateSelected = { deadlineMillis = it }
+                        )
+                    }
+                    Spacer(Modifier.height(20.dp))
+
+                    Button(
+                        onClick = {
+                            val cents = MoneyUtils.parseToCents(amount)
+                            when {
+                                name.isBlank() -> nameError = true
+                                // 目标金额必须大于 0：0 元目标会让进度恒满、永远「已完成」
+                                cents == null || cents <= 0 -> amountError = true
+                                else -> {
+                                    onCreate(
+                                        Goal(
+                                            name = name.trim(),
+                                            emoji = emoji,
+                                            targetCents = cents,
+                                            deadlineMillis =
+                                            if (deadlineEnabled) deadlineMillis else null
+                                        )
+                                    )
+                                    onDismiss()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.common_create))
+                    }
+                }
             }
         }
     }

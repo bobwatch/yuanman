@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -103,19 +104,23 @@ fun CategoriesScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.size(8.dp))
-                            Button(onClick = {
-                                val trimmed = name.trim()
-                                when {
-                                    trimmed.isEmpty() ->
-                                        viewModel.postMessage(errorEmptyText, MessageVariant.ERROR)
-                                    !viewModel.addCustomCategory("$selectedEmoji $trimmed") ->
-                                        viewModel.postMessage(errorDupText, MessageVariant.WARNING)
-                                    else -> {
-                                        name = ""
-                                        viewModel.postMessage(addedText, MessageVariant.SUCCESS)
+                            // 与输入框（56dp 含 label）同高，行内不「吊高」
+                            Button(
+                                onClick = {
+                                    val trimmed = name.trim()
+                                    when {
+                                        trimmed.isEmpty() ->
+                                            viewModel.postMessage(errorEmptyText, MessageVariant.ERROR)
+                                        !viewModel.addCustomCategory("$selectedEmoji $trimmed") ->
+                                            viewModel.postMessage(errorDupText, MessageVariant.WARNING)
+                                        else -> {
+                                            name = ""
+                                            viewModel.postMessage(addedText, MessageVariant.SUCCESS)
+                                        }
                                     }
-                                }
-                            }) {
+                                },
+                                modifier = Modifier.height(56.dp)
+                            ) {
                                 Text(stringResource(R.string.common_add))
                             }
                         }
@@ -128,8 +133,8 @@ fun CategoriesScreen(
                 item(key = "custom_header") {
                     SectionHeader(stringResource(R.string.cats_custom))
                 }
-                items(customCategories.size, key = { "custom_$it" }) { index ->
-                    val category = customCategories[index]
+                // 自定义分类可删，以分类名作 key（名称唯一），删除后列表项身份不漂移
+                items(customCategories, key = { it }) { category ->
                     CategoryRow(
                         category = category,
                         deletable = true,
@@ -146,7 +151,7 @@ fun CategoriesScreen(
                 CategoryRow(
                     category = Categories.expense[index],
                     deletable = false,
-                    onDelete = {}
+                    onDelete = null
                 )
             }
             item(key = "preset_income_header") {
@@ -156,7 +161,7 @@ fun CategoriesScreen(
                 CategoryRow(
                     category = Categories.income[index],
                     deletable = false,
-                    onDelete = {}
+                    onDelete = null
                 )
             }
         }
@@ -170,7 +175,7 @@ fun CategoriesScreen(
                 Text(
                     stringResource(
                         R.string.cats_delete_confirm_msg,
-                        Categories.nameOf(category)
+                        Categories.displayName(category)
                     )
                 )
             },
@@ -204,7 +209,7 @@ private fun SectionHeader(title: String) {
 private fun CategoryRow(
     category: String,
     deletable: Boolean,
-    onDelete: () -> Unit
+    onDelete: (() -> Unit)?
 ) {
     Row(
         Modifier
@@ -221,11 +226,11 @@ private fun CategoryRow(
         )
         Spacer(Modifier.size(12.dp))
         Text(
-            text = Categories.nameOf(category),
+            text = Categories.displayName(category),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )
-        if (deletable) {
+        if (deletable && onDelete != null) {
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Filled.Delete,

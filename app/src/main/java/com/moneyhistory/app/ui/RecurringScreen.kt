@@ -104,7 +104,7 @@ fun RecurringScreen(
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    text = Categories.nameOf(r.category) +
+                                    text = Categories.displayName(r.category) +
                                         if (r.note.isNotEmpty()) " · ${r.note}" else "",
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
@@ -153,7 +153,7 @@ fun RecurringScreen(
                 Text(
                     stringResource(
                         R.string.recurring_delete_confirm_msg,
-                        Categories.nameOf(r.category),
+                        Categories.displayName(r.category),
                         MoneyUtils.formatCents(r.amountCents)
                     )
                 )

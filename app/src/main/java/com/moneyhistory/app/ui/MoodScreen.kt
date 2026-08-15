@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +65,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 /** 心情名称文案。 */
 @Composable
@@ -82,8 +86,17 @@ fun MoodScreen(viewModel: MainViewModel) {
     val moods by viewModel.moods.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
 
-    val today = remember { DateUtils.today() }
-    val monthPrefix = remember { DateUtils.monthPrefix() }
+    // 「今天 / 本月」随真实时间推进（每 30 秒校一次）：跨零点/跨月后自动切换，
+    // 心情打卡不会落在昨天；值未变时不触发重组
+    var today by remember { mutableStateOf(DateUtils.today()) }
+    var monthPrefix by remember { mutableStateOf(DateUtils.monthPrefix()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            today = DateUtils.today()
+            monthPrefix = DateUtils.monthPrefix()
+        }
+    }
     val noteSavedText = stringResource(R.string.mood_note_saved)
     val todayEntry = moods[today]
     var note by remember(today, todayEntry?.note) {
@@ -122,8 +135,8 @@ fun MoodScreen(viewModel: MainViewModel) {
         }
     }
 
-    // 本月网格数据
-    val daysInMonth = remember {
+    // 本月网格数据（跨月后按新月份重算天数）
+    val daysInMonth = remember(monthPrefix) {
         Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
     }
     // 心情日历点击回看 / 补记：选中的日期 key（yyyy-MM-dd）
@@ -244,20 +257,23 @@ fun MoodScreen(viewModel: MainViewModel) {
                         )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 切片按各情绪本色着色（与选择器/月历一致），非通用图表色板
+                                val moodSlices = Mood.entries.mapNotNull { mood ->
+                                    val count = monthEntries.count {
+                                        it.value.mood == mood
+                                    }
+                                    if (count > 0) {
+                                        ChartSlice(
+                                            moodLabel(mood),
+                                            count.toFloat()
+                                        ) to Color(mood.colorValue)
+                                    } else {
+                                        null
+                                    }
+                                }
                                 DonutChart(
-                                    slices = Mood.entries.mapNotNull { mood ->
-                                        val count = monthEntries.count {
-                                            it.value.mood == mood
-                                        }
-                                        if (count > 0) {
-                                            ChartSlice(
-                                                moodLabel(mood),
-                                                count.toFloat()
-                                            )
-                                        } else {
-                                            null
-                                        }
-                                    },
+                                    slices = moodSlices.map { it.first },
+                                    sliceColors = moodSlices.map { it.second },
                                 centerTitle = stringResource(R.string.mood_donut_center),
                                 centerValue = "$angryDays",
                                 modifier = Modifier.size(120.dp)
@@ -425,7 +441,8 @@ private fun MoodButton(
                 .clip(CircleShape)
                 .background(
                     if (selected) {
-                        MaterialTheme.colorScheme.primary
+                        // 选中按该情绪本色填充，与月历/回填选择器一致
+                        Color(mood.colorValue)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     }
@@ -554,12 +571,24 @@ private fun MoodGrid(
                     } else {
                         val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
                         val entry = moods[key]
-                        // 整格可点（44dp 高触达区），圆点只做视觉
+                        // 整格可点（44dp 高触达区），圆点只做视觉；
+                        // 无障碍读出当天心情（未记录也有明确说明）
+                        val cellDesc = if (entry != null) {
+                            stringResource(
+                                R.string.mood_day_semantics,
+                                day,
+                                moodLabel(entry.mood)
+                            )
+                        } else {
+                            stringResource(R.string.mood_day_none)
+                        }
                         Box(
                             Modifier
                                 .weight(1f)
                                 .height(44.dp)
                                 .clip(CircleShape)
+                                .pressScale()
+                                .clearAndSetSemantics { contentDescription = cellDesc }
                                 .clickable { onDayClick(key) },
                             contentAlignment = Alignment.Center
                         ) {

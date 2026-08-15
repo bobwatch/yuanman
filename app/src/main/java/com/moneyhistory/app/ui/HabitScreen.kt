@@ -1,5 +1,9 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,11 +27,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -38,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +56,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,19 +74,20 @@ import com.moneyhistory.app.buildStreak
 import com.moneyhistory.app.checkedOn
 import com.moneyhistory.app.habitEmojiCandidates
 import com.moneyhistory.app.quitDays
+import kotlinx.coroutines.delay
 
-private data class HabitPreset(val emoji: String, val name: String, val type: Habit.Type)
+private data class HabitPreset(val emoji: String, val nameRes: Int, val type: Habit.Type)
 
-// 预设为「用户可见数据」（填充后即存库），保持中文原样
+// 预设名称走字符串资源：点选后以当前语言写入（用户可见数据，不迁移历史）
 private val habitPresets = listOf(
-    HabitPreset("💪", "健身运动", Habit.Type.BUILD),
-    HabitPreset("📚", "学习打卡", Habit.Type.BUILD),
-    HabitPreset("📖", "阅读", Habit.Type.BUILD),
-    HabitPreset("🌅", "早起", Habit.Type.BUILD),
-    HabitPreset("🥤", "戒饮料", Habit.Type.QUIT),
-    HabitPreset("🍺", "戒酒", Habit.Type.QUIT),
-    HabitPreset("🚬", "戒烟", Habit.Type.QUIT),
-    HabitPreset("🌙", "戒熬夜", Habit.Type.QUIT)
+    HabitPreset("💪", R.string.habit_preset_workout, Habit.Type.BUILD),
+    HabitPreset("📚", R.string.habit_preset_study, Habit.Type.BUILD),
+    HabitPreset("📖", R.string.habit_preset_read, Habit.Type.BUILD),
+    HabitPreset("🌅", R.string.habit_preset_early, Habit.Type.BUILD),
+    HabitPreset("🥤", R.string.habit_preset_no_soda, Habit.Type.QUIT),
+    HabitPreset("🍺", R.string.habit_preset_no_alcohol, Habit.Type.QUIT),
+    HabitPreset("🚬", R.string.habit_preset_no_smoke, Habit.Type.QUIT),
+    HabitPreset("🌙", R.string.habit_preset_no_late, Habit.Type.QUIT)
 )
 
 /** 打卡 Tab：习惯列表 + 行内新建表单（不再用弹窗，缩短操作路径）。 */
@@ -89,7 +95,15 @@ private val habitPresets = listOf(
 @Composable
 fun HabitScreen(viewModel: MainViewModel) {
     val habits by viewModel.habits.collectAsStateWithLifecycle()
-    val today = remember { DateUtils.today() }
+    // 「今天」随真实时间推进（每 30 秒校一次）：跨零点后自动切到新的一天，
+    // 打卡按钮与「今天已打卡」状态不会停留在昨天；值未变时不触发重组
+    var today by remember { mutableStateOf(DateUtils.today()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            today = DateUtils.today()
+        }
+    }
     val context = LocalContext.current
     val deletedText = stringResource(R.string.common_deleted)
     val resetDoneText = stringResource(R.string.habit_reset_done)
@@ -275,14 +289,15 @@ private fun InlineHabitForm(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 habitPresets.filter { it.type == type }.forEach { preset ->
+                    val presetName = stringResource(preset.nameRes)
                     FilterChip(
-                        selected = name == preset.name,
+                        selected = name == presetName,
                         onClick = {
-                            name = preset.name
+                            name = presetName
                             emoji = preset.emoji
                             nameError = false
                         },
-                        label = { Text("${preset.emoji} ${preset.name}") }
+                        label = { Text("${preset.emoji} $presetName") }
                     )
                 }
             }
@@ -408,34 +423,20 @@ private fun HabitCard(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 已打卡：图标右下角叠对勾角标，一眼可辨今日状态
+                    // 已打卡：图标右下角叠对勾角标，打卡瞬间弹入
                     Box {
-                        IconTile(
-                            icon = habitIcon(habit.emoji),
-                            tint = habitIconColor(habit),
-                            container = habitIconColor(habit).copy(alpha = if (checked) 0.2f else 0.12f),
-                            size = 46.dp,
-                            iconSize = 22.dp
-                        )
-                        if (checked) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                            }
+                            IconTile(
+                                icon = habitIcon(habit.emoji),
+                                tint = habitIconColor(habit),
+                                container = habitIconColor(habit).copy(alpha = if (checked) 0.2f else 0.12f),
+                                size = 46.dp,
+                                iconSize = 22.dp
+                            )
+                            CheckBadge(
+                                checked = checked,
+                                modifier = Modifier.align(Alignment.BottomEnd)
+                            )
                         }
-                    }
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -570,28 +571,42 @@ private fun HabitCard(
     }
 }
 
-/** 卡片右上角「⋯」操作按钮（菜单锚定在按钮上，不跑到屏幕角落）。 */
+/** 卡片右上角删除按钮：直接弹确认框（与全局删除交互一致，少一次点击）。 */
 @Composable
 private fun HabitMenuButton(onDelete: () -> Unit) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { menuOpen = true }) {
-            Icon(
-                Icons.Filled.MoreVert,
-                contentDescription = stringResource(R.string.home_menu),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false }
+    IconButton(onClick = onDelete) {
+        Icon(
+            Icons.Filled.Delete,
+            contentDescription = stringResource(R.string.habit_delete_title),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** 打卡对勾角标：打卡瞬间以弹簧动画弹入图标右下角。 */
+@Composable
+private fun CheckBadge(checked: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = checked,
+        modifier = modifier,
+        enter = scaleIn(
+            initialScale = 0.3f,
+            animationSpec = spring(stiffness = Spring.StiffnessMedium)
+        )
+    ) {
+        Box(
+            Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.habit_delete_title)) },
-                onClick = {
-                    menuOpen = false
-                    onDelete()
-                }
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(11.dp)
             )
         }
     }
@@ -604,9 +619,16 @@ private fun LastSevenDots(
     today: String,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        (6 downTo 0).forEach { back ->
-            val day = DateUtils.addDays(today, -back)
+    val days = (6 downTo 0).map { DateUtils.addDays(today, -it) }
+    val checkedCount = days.count { habit.checkedOn(it) }
+    val weekDesc = stringResource(R.string.habit_week_summary, checkedCount)
+    Row(
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = weekDesc
+        },
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        days.forEach { day ->
             val checked = habit.checkedOn(day)
             Box(
                 Modifier

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 品牌启动背景：沅满蓝底 + 居中 logo（API 31 之前由 windowBackground 呈现） -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_blue" />
+    <item
+        android:width="120dp"
+        android:height="120dp"
+        android:gravity="center"
+        android:drawable="@drawable/splash_logo" />
+</layer-list>
