@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -406,7 +407,9 @@ private fun HabitCard(
                         Text(
                             text = habit.name,
                             style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = stringResource(R.string.habit_build_streak, streak),
@@ -420,54 +423,66 @@ private fun HabitCard(
                         today = today,
                         modifier = Modifier.padding(end = 4.dp)
                     )
-                    // 打卡按钮：整块右侧大按钮，单手拇指可达
-                    if (checked) {
-                        OutlinedButton(
-                            onClick = onCheckin,
-                            modifier = Modifier.heightIn(min = 52.dp)
-                        ) {
-                            Text(stringResource(R.string.habit_checked_today))
-                        }
-                    } else {
-                        Button(
-                            onClick = onCheckin,
-                            modifier = Modifier.heightIn(min = 52.dp)
-                        ) {
-                            Text(stringResource(R.string.habit_checkin_today))
-                        }
-                    }
                     HabitMenuButton(onDelete = onDelete)
+                }
+                Spacer(Modifier.height(10.dp))
+                // 打卡按钮：整行宽，窄屏/大字号下始终可点
+                if (checked) {
+                    OutlinedButton(
+                        onClick = onCheckin,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Text(stringResource(R.string.habit_checked_today))
+                    }
+                } else {
+                    Button(
+                        onClick = onCheckin,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Text(stringResource(R.string.habit_checkin_today))
+                    }
                 }
             }
         } else {
             // 戒断卡片：超大坚持天数为主视觉
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconTile(
-                    icon = habitIcon(habit.emoji),
-                    tint = habitIconColor(habit),
-                    container = habitIconColor(habit).copy(alpha = 0.12f),
-                    size = 46.dp,
-                    iconSize = 22.dp
-                )
-                Spacer(Modifier.size(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = habit.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
+            Column(Modifier.padding(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconTile(
+                        icon = habitIcon(habit.emoji),
+                        tint = habitIconColor(habit),
+                        container = habitIconColor(habit).copy(alpha = 0.12f),
+                        size = 46.dp,
+                        iconSize = 22.dp
                     )
-                    Text(
-                        text = stringResource(R.string.habit_quit_since),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(Modifier.size(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = habit.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = stringResource(R.string.habit_quit_since),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HabitMenuButton(onDelete = onDelete)
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = stringResource(
                             R.string.habit_quit_days_big,
@@ -475,13 +490,15 @@ private fun HabitCard(
                         ),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                     OutlinedButton(onClick = onReset) {
                         Text(stringResource(R.string.habit_relapse))
                     }
                 }
-                HabitMenuButton(onDelete = onDelete)
             }
         }
     }

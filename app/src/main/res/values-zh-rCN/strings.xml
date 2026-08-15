@@ -54,8 +54,6 @@
     <string name="home_item_delete">删除</string>
     <string name="summary_title">📊 上月小结</string>
     <string name="summary_totals">总支出 %1$s · 总收入 %2$s</string>
-    <string name="summary_max_single">最大单笔：%1$s %2$s</string>
-    <string name="summary_top_category">最常消费分类：%1$s</string>
     <string name="summary_close">关闭</string>
 
     <!-- weekdays -->
@@ -78,6 +76,7 @@
     <string name="sheet_more">更多选项 ▾</string>
     <string name="sheet_less">收起 ▴</string>
     <string name="sheet_note_hint">备注（可选）</string>
+    <string name="sheet_done">完成</string>
     <string name="sheet_date">日期</string>
     <string name="sheet_hint_save">输入金额，选择分类，点保存</string>
     <string name="numpad_plus">＋ 连加</string>
@@ -341,6 +340,6 @@
     <string name="widget_month">本月 %1$s</string>
 
     <!-- v0.0.2 polish -->
-    <string name="record_saved">已保存</string>
+    <string name="record_saved">已记一笔 ✓</string>
     <string name="pad_amount_exceeds">超出可取出金额</string>
 </resources>

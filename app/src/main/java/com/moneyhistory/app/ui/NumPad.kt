@@ -39,11 +39,11 @@ fun NumPad(
         listOf("7", "8", "9"),
         listOf(".", "0", "⌫")
     )
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { row ->
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { key ->
                     NumKey(
@@ -57,7 +57,7 @@ fun NumPad(
         // 底部一行：「＋ 连加」与「保存」并排
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
                 onClick = { onKey("+") },
@@ -66,12 +66,12 @@ fun NumPad(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier
                     .weight(1f)
-                    .height(56.dp)
+                    .height(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = stringResource(R.string.numpad_plus),
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -90,16 +90,16 @@ private fun NumKey(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.height(56.dp)
+        modifier = modifier.height(46.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
-                fontSize = 22.sp
+                fontSize = 20.sp
             )
         }
     }

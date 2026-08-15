@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,7 +67,7 @@ import com.moneyhistory.app.ThemeMode
 import com.moneyhistory.app.allBadges
 
 /** 我的 Tab：勋章墙 + 外观/记账/数据/关于全部设置项。 */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MineScreen(
     viewModel: MainViewModel,
@@ -160,7 +162,10 @@ fun MineScreen(
                     title = stringResource(R.string.mine_dark_mode)
                 )
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 主题三选：窄屏/大字号放不下时自动换行
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     FilterChip(
                         selected = themeMode == ThemeMode.SYSTEM,
                         onClick = { viewModel.settings.setThemeMode(ThemeMode.SYSTEM) },

@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,27 +10,33 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,14 +45,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
@@ -54,13 +69,22 @@ import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
 import java.util.Calendar
+import kotlinx.coroutines.delay
 
 /**
- * 记账 / 编辑 BottomSheet —— 九宫格输金额 → 选分类 → 点「保存」。
+ * 记账 / 编辑 全屏底部对话框 —— 九宫格输金额 → 选分类 → 点「保存」。
+ *
+ * 布局（参考支付宝）：固定头部 = 标题 / 收支切换+金额同排 / 紧凑备注框；
+ * 中间整块（分类宫格 + 更多选项）独占剩余空间并滚动，不挤压；
+ * 底部数字键盘固定。窄屏 / 大字号下分类区始终可见可滚，不会缩成一条缝。
+ * 备注聚焦时隐藏收支/金额行与数字键盘（给键盘让位），分类区保留可滚动；
+ * 键盘收起后自动退出备注态，恢复完整布局。
  *
  * 备注 / 日期 / 周期账单 / 收支切换折叠在「更多选项」里（默认收起）。
- * 有已输入内容时，关闭（下滑/点外部/返回）弹「放弃 / 继续编辑」确认，
- * 确认弹窗的每条出路都会收起或重新展开 Sheet，不会残留卡死的弹窗。
+ * 用全屏 Dialog 而非 ModalBottomSheet：M3 1.2.1 的 sheet 是 Popup 窗口，
+ * 实测与输入法互相踩坏（键盘收起后 sheet 卡成底部一条 / 键盘弹出时窗口
+ * 不调整大小），Dialog 配合 decorFitsSystemWindows=false 能收到 IME inset，
+ * 再靠 imePadding 正确收缩，规避整条问题链。
  * 输入状态用 rememberSaveable，进程重建不丢。
  *
  * @param initial  编辑模式：预填原数据，保存为更新
@@ -73,6 +97,7 @@ fun TransactionSheet(
     prefill: Transaction?,
     expenseCategories: List<String>,
     incomeCategories: List<String>,
+    recentCategories: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (Transaction) -> Unit,
     onAddRecurring: (RecurringExpense) -> Unit
@@ -94,8 +119,13 @@ fun TransactionSheet(
         (if (t == Transaction.Type.EXPENSE) expenseCategories else incomeCategories)
             .first()
 
-    val categories =
-        if (type == Transaction.Type.EXPENSE) expenseCategories else incomeCategories
+    // 分类宫格：最近用过的分类置顶（稳定排序，其余按原顺序），减少翻找
+    val categories = remember(type, expenseCategories, incomeCategories, recentCategories) {
+        val base =
+            if (type == Transaction.Type.EXPENSE) expenseCategories else incomeCategories
+        val recent = recentCategories.filter { it in base }
+        if (recent.isEmpty()) base else recent + base.filter { it !in recent }
+    }
     var category by rememberSaveable {
         mutableStateOf(
             template?.category
@@ -194,68 +224,148 @@ fun TransactionSheet(
         }
     }
 
-    // 关闭（下滑/点外部/返回）：一律直接收起，不残留窗口、不卡死。
+    // 关闭（点外部/返回）：一律直接收起，不残留窗口、不卡死。
     // 保存动作由底部「保存」按钮显式完成。
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = { onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            // 让 Dialog 收到 IME inset：键盘弹起/收起有感知，备注态才能自动退出
+            decorFitsSystemWindows = false
+        )
     ) {
-        // 整块内容随键盘上移，备注输入不被遮挡
-        Column(Modifier.fillMaxWidth().imePadding()) {
+        // Dialog 是独立窗口（内部 Popup 布局），有自己的一套焦点系统：
+        // 焦点操作必须取本窗口的 LocalFocusManager / LocalView（主页窗口的
+        // FocusOwner 管不到 Dialog 里的文本域，实测 clearFocus 无效果）
+        val dialogView = LocalView.current
+        val dialogFocusManager = LocalFocusManager.current
+
+        fun exitNoteMode() {
+            if (noteFocused) dialogFocusManager.clearFocus(true)
+            val imm = dialogView.context.getSystemService(
+                Context.INPUT_METHOD_SERVICE
+            ) as? android.view.inputmethod.InputMethodManager
+            imm?.hideSoftInputFromWindow(dialogView.windowToken, 0)
+        }
+
+        // 键盘收起（IME inset 归零）→ 自动退出备注态，恢复完整布局。
+        // 信号读自窗口 rootView 的 rootWindowInsets（键盘弹出 1236px / 收起 0，
+        // 实测可靠）；Compose 的 WindowInsets.ime 在 Dialog 里组合期读取恒为 0，
+        // 不可用。M3 sheet 的 Popup 窗口收不到任何 inset，键盘收起后无从感知，
+        // 是「备注态卡死」的根因。
+        // 用 delay 轮询而非 withFrameNanos：Dialog 窗口不保证逐帧回调（实测键盘
+        // 弹出期间帧回调停摆），delay 与帧生产无关，100ms 粒度足够捕捉收键盘。
+        LaunchedEffect(Unit) {
+            var lastIme = -1
+            while (true) {
+                val ime = dialogView.rootView.rootWindowInsets
+                    ?.getInsets(android.view.WindowInsets.Type.ime())?.bottom ?: -1
+                // 先判断「有键盘 → 无键盘」的跳变，再更新 lastIme（顺序不能反）
+                if (lastIme > 0 && ime == 0 && noteFocused) {
+                    exitNoteMode()
+                }
+                lastIme = ime
+                delay(100)
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.statusBars),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 3.dp
+        ) {
+        Column(Modifier.fillMaxSize()) {
+            // 装饰性拖动手柄（仅视觉，Dialog 不支持下滑关闭）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier
+                        .size(width = 32.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
+            }
+            // 固定头部：标题（编辑备注时右侧带 完成/保存）+（收支/金额）+ 备注
             Column(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .padding(top = 8.dp)
             ) {
-            Text(
-                text = stringResource(
-                    when {
-                        initial != null -> R.string.sheet_title_edit
-                        prefill != null -> R.string.sheet_title_duplicate
-                        else -> R.string.sheet_title_new
-                    }
-                ),
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(Modifier.height(12.dp))
-
-            // 收支切换：置顶一屏可见，减少进「更多选项」的步骤
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SheetTypePill(
-                    selected = type == Transaction.Type.EXPENSE,
-                    label = stringResource(R.string.sheet_type_expense),
-                    accent = ExpenseRed,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        type = Transaction.Type.EXPENSE
-                        if (category !in expenseCategories) {
-                            category = defaultCategoryFor(Transaction.Type.EXPENSE)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(
+                        when {
+                            initial != null -> R.string.sheet_title_edit
+                            prefill != null -> R.string.sheet_title_duplicate
+                            else -> R.string.sheet_title_new
                         }
-                    }
+                    ),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f)
                 )
-                SheetTypePill(
-                    selected = type == Transaction.Type.INCOME,
-                    label = stringResource(R.string.sheet_type_income),
-                    accent = IncomeGreen,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        type = Transaction.Type.INCOME
-                        if (category !in incomeCategories) {
-                            category = defaultCategoryFor(Transaction.Type.INCOME)
-                        }
-                        recurringEnabled = false
+                if (noteFocused) {
+                    TextButton(
+                        onClick = { exitNoteMode() }
+                    ) {
+                        Text(stringResource(R.string.sheet_done))
                     }
-                )
+                    Spacer(Modifier.width(4.dp))
+                    Button(
+                        onClick = { doSave() },
+                        // 金额为空禁用：灰色按钮比红字报错更先一步给出反馈
+                        enabled = liveCents > 0,
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.height(40.dp)
+                    ) {
+                        Text(stringResource(R.string.common_save))
+                    }
+                }
             }
-            Spacer(Modifier.height(12.dp))
 
-            // 金额大号等宽显示 + 连加实时合计；键盘弹起（编辑备注）时隐藏省空间
+            // 收支切换 + 金额：同排（参考支付宝），编辑备注时隐藏给键盘让位
             if (!noteFocused) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SheetTypePill(
+                            selected = type == Transaction.Type.EXPENSE,
+                            label = stringResource(R.string.sheet_type_expense),
+                            accent = ExpenseRed,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                type = Transaction.Type.EXPENSE
+                                if (category !in expenseCategories) {
+                                    category = defaultCategoryFor(Transaction.Type.EXPENSE)
+                                }
+                            }
+                        )
+                        SheetTypePill(
+                            selected = type == Transaction.Type.INCOME,
+                            label = stringResource(R.string.sheet_type_income),
+                            accent = IncomeGreen,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                type = Transaction.Type.INCOME
+                                if (category !in incomeCategories) {
+                                    category = defaultCategoryFor(Transaction.Type.INCOME)
+                                }
+                                recurringEnabled = false
+                            }
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    // 金额大号等宽显示 + 连加实时合计
                     Column(
                         Modifier.weight(1f),
                         horizontalAlignment = Alignment.End
@@ -288,146 +398,303 @@ fun TransactionSheet(
                         )
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
             }
 
-            // 备注：常驻可见，聚焦时随键盘上移不遮挡
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(stringResource(R.string.sheet_note_hint)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { noteFocused = it.isFocused }
-            )
-            Spacer(Modifier.height(12.dp))
-
-            // 分类（选中即可，不再点分类即保存）
-            Text(
-                text = stringResource(R.string.sheet_category),
-                style = MaterialTheme.typography.titleSmall
-            )
+            // 备注：非聚焦时一行入口（点击展开），聚焦时展开输入框。
+            // 键盘弹出时金额行隐藏给键盘让位，分类区始终独占剩余空间。
+            if (!noteFocused) {
+                NoteEntryRow(
+                    note = note,
+                    onClick = { noteFocused = true }
+                )
+            } else {
+                CompactNoteField(
+                    value = note,
+                    onValueChange = { note = it },
+                    focused = noteFocused,
+                    onFocusChanged = { noteFocused = it }
+                )
+            }
         }
 
-        // 可滚动中部：分类 + 更多选项
+        // 可滚动中部：分类宫格 + 更多选项，独占剩余高度。
+        // 备注聚焦时也保留（不隐藏）：weight 撑满让窗口始终全高，
+        // 键盘弹出时窗口随 IME 收缩、中间区吸收高度差，布局不跳变
         Column(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(top = 8.dp)
         ) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                categories.forEach { c ->
-                    FilterChip(
-                        selected = category == c,
-                        onClick = { category = c },
-                        label = { Text(Categories.nameOf(c)) },
-                        leadingIcon = {
-                            Icon(
-                                categoryIcon(c),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                // 分类
+                Text(
+                    text = stringResource(R.string.sheet_category),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(Modifier.height(8.dp))
+                CategoryGrid(
+                    categories = categories,
+                    selected = category,
+                    onSelect = { category = it }
+                )
+
+                // 更多选项（默认收起）
+                TextButton(onClick = { moreOpen = !moreOpen }) {
+                    Text(
+                        stringResource(
+                            if (moreOpen) R.string.sheet_less else R.string.sheet_more
+                        )
+                    )
+                }
+                if (moreOpen) {
+                    DatePickerButton(
+                        label = stringResource(R.string.sheet_date),
+                        millis = dateMillis,
+                        onDateSelected = { dateMillis = it }
+                    )
+
+                    // 周期账单开关（仅新增支出）
+                    if (initial == null && type == Transaction.Type.EXPENSE) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.recurring_toggle),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = recurringEnabled,
+                                onCheckedChange = { recurringEnabled = it }
                             )
                         }
-                    )
-                }
-            }
-
-            // 更多选项（默认收起）
-            TextButton(onClick = { moreOpen = !moreOpen }) {
-                Text(
-                    stringResource(
-                        if (moreOpen) R.string.sheet_less else R.string.sheet_more
-                    )
-                )
-            }
-            if (moreOpen) {
-                DatePickerButton(
-                    label = stringResource(R.string.sheet_date),
-                    millis = dateMillis,
-                    onDateSelected = { dateMillis = it }
-                )
-
-                // 周期账单开关（仅新增支出）
-                if (initial == null && type == Transaction.Type.EXPENSE) {
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = stringResource(R.string.recurring_toggle),
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = recurringEnabled,
-                            onCheckedChange = { recurringEnabled = it }
-                        )
-                    }
-                    if (recurringEnabled) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            RecurringExpense.Cycle.entries.forEach { c ->
-                                FilterChip(
-                                    selected = cycle == c,
-                                    onClick = { cycle = c },
-                                    label = { Text(cycleLabel(c)) }
-                                )
+                        if (recurringEnabled) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                RecurringExpense.Cycle.entries.forEach { c ->
+                                    FilterChip(
+                                        selected = cycle == c,
+                                        onClick = { cycle = c },
+                                        label = { Text(cycleLabel(c)) }
+                                    )
+                                }
                             }
+                            Spacer(Modifier.height(8.dp))
+                            DatePickerButton(
+                                label = stringResource(R.string.recurring_next_due),
+                                millis = dueMillis,
+                                onDateSelected = { dueMillis = it }
+                            )
                         }
-                        Spacer(Modifier.height(8.dp))
-                        DatePickerButton(
-                            label = stringResource(R.string.recurring_next_due),
-                            millis = dueMillis,
-                            onDateSelected = { dueMillis = it }
-                        )
                     }
-                }
             }
         }
 
-        // 固定底部：提示 + 键盘 + 保存（始终可见，不被长分类列表挤出）
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp)
-        ) {
-            if (initial == null) {
-                Text(
-                    text = stringResource(R.string.sheet_hint_save),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+        // 固定底部：数字键盘（备注编辑态隐藏，只留头部 完成/保存）
+        if (!noteFocused) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp)
+            ) {
+                if (initial == null) {
+                    Text(
+                        text = stringResource(R.string.sheet_hint_save),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // 「＋ 连加」与「保存」并排一行
+                NumPad(
+                    onKey = { onNumKey(it) },
+                    footer = {
+                        Button(
+                            onClick = { doSave() },
+                            enabled = liveCents > 0,
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_save),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
                 )
             }
-            Spacer(Modifier.height(8.dp))
+        }
+        }
+        }
+    }
+}
 
-            // 「＋ 连加」与「保存」并排一行
-            NumPad(
-                onKey = { onNumKey(it) },
-                footer = {
-                    Button(
-                        onClick = { doSave() },
-                        shape = MaterialTheme.shapes.large,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.common_save),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
+/** 备注输入框：圆角浅底 + 占位提示，比 M3 OutlinedTextField 矮一截，给分类区让高度。 */
+@Composable
+private fun CompactNoteField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    focused: Boolean,
+    onFocusChanged: (Boolean) -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    // 输入框仅在备注态才进入组合：进入即自动聚焦拉起键盘
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { onFocusChanged(it.isFocused) }
             )
+            if (value.isEmpty() && !focused) {
+                Text(
+                    text = stringResource(R.string.sheet_note_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+    }
+}
+
+/** 备注入口行：非聚焦态的轻量入口，有内容时高亮显示预览。 */
+@Composable
+private fun NoteEntryRow(note: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (note.isNotEmpty()) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "📝", fontSize = 15.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = note.ifEmpty { stringResource(R.string.sheet_note_hint) },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (note.isNotEmpty()) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** 分类宫格（参考支付宝：圆底图标 + 小字标签，紧凑多列）。 */
+@Composable
+private fun CategoryGrid(
+    categories: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    categories.chunked(4).forEach { row ->
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            row.forEach { c ->
+                CategoryTile(
+                    category = c,
+                    selected = selected == c,
+                    onClick = { onSelect(c) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            repeat(4 - row.size) {
+                Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryTile(
+    category: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = categoryIcon(category),
+                contentDescription = null,
+                tint = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = Categories.nameOf(category),
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
     }
 }
 
@@ -462,7 +729,8 @@ private fun SheetTypePill(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = content
+            color = content,
+            maxLines = 1
         )
     }
 }

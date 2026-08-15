@@ -54,8 +54,6 @@
     <string name="home_item_delete">Delete</string>
     <string name="summary_title">📊 Last month at a glance</string>
     <string name="summary_totals">Spent %1$s · Earned %2$s</string>
-    <string name="summary_max_single">Largest expense: %1$s %2$s</string>
-    <string name="summary_top_category">Top category: %1$s</string>
     <string name="summary_close">Dismiss</string>
 
     <!-- weekdays -->
@@ -78,6 +76,7 @@
     <string name="sheet_more">More options ▾</string>
     <string name="sheet_less">Less ▴</string>
     <string name="sheet_note_hint">Note (optional)</string>
+    <string name="sheet_done">Done</string>
     <string name="sheet_date">Date</string>
     <string name="sheet_hint_save">Enter an amount, pick a category, then tap Save</string>
     <string name="numpad_plus">＋ Add up</string>
@@ -341,6 +340,6 @@
     <string name="widget_month">This month %1$s</string>
 
     <!-- v0.0.2 polish -->
-    <string name="record_saved">Saved</string>
+    <string name="record_saved">Recorded ✓</string>
     <string name="pad_amount_exceeds">Exceeds available balance</string>
 </resources>

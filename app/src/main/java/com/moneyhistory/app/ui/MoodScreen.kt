@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
@@ -65,6 +68,7 @@ private fun moodLabel(mood: Mood): String = stringResource(
 )
 
 /** 心情 Tab：今日记录 + 鼓励卡 + 本月统计 + 心情网格 + 心情×消费交叉卡。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MoodScreen(viewModel: MainViewModel) {
     val moods by viewModel.moods.collectAsStateWithLifecycle()
@@ -142,14 +146,20 @@ fun MoodScreen(viewModel: MainViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 5 枚心情按钮：均分行宽，放不下自动换行（窄屏/大字号不溢出）
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        maxItemsInEachRow = 5,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Mood.entries.forEach { mood ->
                             MoodButton(
                                 mood = mood,
                                 selected = todayEntry?.mood == mood,
                                 onClick = {
                                     viewModel.setMood(today, mood, note.trim())
-                                }
+                                },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -232,10 +242,10 @@ fun MoodScreen(viewModel: MainViewModel) {
                                     },
                                 centerTitle = stringResource(R.string.mood_donut_center),
                                 centerValue = "$angryDays",
-                                modifier = Modifier.size(140.dp)
+                                modifier = Modifier.size(120.dp)
                             )
-                            Spacer(Modifier.size(16.dp))
-                            Column {
+                            Spacer(Modifier.size(12.dp))
+                            Column(Modifier.weight(1f)) {
                                 Text(
                                     text = stringResource(
                                         R.string.mood_angry_days, angryDays
@@ -246,7 +256,9 @@ fun MoodScreen(viewModel: MainViewModel) {
                                         Color(Mood.ANGRY.colorValue)
                                     } else {
                                         MaterialTheme.colorScheme.onSurface
-                                    }
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
@@ -307,7 +319,8 @@ fun MoodScreen(viewModel: MainViewModel) {
 private fun MoodButton(
     mood: Mood,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val borderWidth by animateDpAsState(
         targetValue = if (selected) 2.dp else 0.dp,
@@ -319,11 +332,11 @@ private fun MoodButton(
     )
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.scale(scale)
+        modifier = modifier.scale(scale)
     ) {
         Box(
             Modifier
-                .size(52.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(
                     if (selected) {
@@ -340,7 +353,7 @@ private fun MoodButton(
                 imageVector = moodIcon(mood),
                 contentDescription = null,
                 tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
         Spacer(Modifier.height(2.dp))
@@ -352,7 +365,8 @@ private fun MoodButton(
                 MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
-            }
+            },
+            maxLines = 1
         )
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
@@ -211,7 +212,9 @@ fun StatsScreen(
                             text = MoneyUtils.formatCents(totalExpense),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = ExpenseRed
+                            color = ExpenseRed,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -224,7 +227,9 @@ fun StatsScreen(
                             text = MoneyUtils.formatCents(totalIncome),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = IncomeGreen
+                            color = IncomeGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

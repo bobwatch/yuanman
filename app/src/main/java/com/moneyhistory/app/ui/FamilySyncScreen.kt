@@ -85,7 +85,8 @@ fun FamilySyncScreen(
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 8.sp
+                        letterSpacing = 4.sp,
+                        maxLines = 1
                     )
                     TextButton(onClick = {
                         sync.regeneratePairingCode()

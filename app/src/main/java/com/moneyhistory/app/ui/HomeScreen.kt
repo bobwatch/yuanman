@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -216,11 +217,6 @@ fun HomeScreen(
                 onPrev = viewModel::prevMonth,
                 onNext = viewModel::nextMonth,
                 nextEnabled = !isAtCurrentMonth,
-                expense = monthExpense,
-                income = monthIncome,
-                todayExpense = todayStats.first,
-                todayCount = todayStats.second,
-                streak = streak,
                 onSearch = {
                     searchActive = !searchActive
                     if (!searchActive) searchQuery = ""
@@ -263,6 +259,17 @@ fun HomeScreen(
                     .weight(1f),
                 contentPadding = PaddingValues(bottom = 96.dp)
             ) {
+                // 本月统计卡：随列表滚动（不固定），点击进统计页
+                item(key = "stats") {
+                    CompactMonthStats(
+                        expense = monthExpense,
+                        income = monthIncome,
+                        todayCount = todayStats.second,
+                        streak = streak,
+                        onClick = onNavigateToStats
+                    )
+                }
+
                 if (summaryDismissed != summaryKey &&
                     lastMonthTransactions.isNotEmpty()
                 ) {
@@ -403,11 +410,19 @@ fun HomeScreen(
         }
 
         if (sheetOpen) {
+            // 最近使用的分类（时间倒序去重前 6）：记账页分类宫格置顶
+            val recentCategories = remember(transactions) {
+                transactions.sortedByDescending { it.timestamp }
+                    .map { it.category }
+                    .distinct()
+                    .take(6)
+            }
             TransactionSheet(
                 initial = editing,
                 prefill = duplicating,
                 expenseCategories = expenseCategories,
                 incomeCategories = incomeCategories,
+                recentCategories = recentCategories,
                 onDismiss = { sheetOpen = false },
                 onSave = { t ->
                     if (editing == null) viewModel.add(t) else viewModel.update(t)
@@ -438,19 +453,13 @@ fun HomeScreen(
     }
 }
 
-/** 品牌蓝渐变大页头：标题 + 月份切换 + 本月支出大数字 + 快速指标。 */
-@OptIn(ExperimentalAnimationApi::class)
+/** 品牌蓝渐变大页头：标题 + 月份切换。统计数字在滚动区的 CompactMonthStats 卡里。 */
 @Composable
 private fun HomeHeader(
     month: YearMonth,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     nextEnabled: Boolean,
-    expense: Long,
-    income: Long,
-    todayExpense: Long,
-    todayCount: Int,
-    streak: Int,
     onSearch: () -> Unit,
     onMenu: () -> Unit,
     menuOpen: Boolean,
@@ -512,137 +521,127 @@ private fun HomeHeader(
             nextEnabled = nextEnabled,
             contentColor = Color.White
         )
+    }
+}
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenStats)
-                .padding(horizontal = 20.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.home_overview_expense),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-            AnimatedContent(targetState = expense, label = "headerExpense") { value ->
+/** 本月统计卡（随列表滚动）：本月支出大数字 + 收入 / 今日 / 连续小指标。 */
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun CompactMonthStats(
+    expense: Long,
+    income: Long,
+    todayCount: Int,
+    streak: Int,
+    onClick: () -> Unit
+) {
+    AppCard(
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = MoneyUtils.formatCents(value),
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    text = stringResource(R.string.home_overview_expense),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = stringResource(R.string.home_header_today) +
+                        if (todayCount > 0) " · $todayCount" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
             }
-        }
-
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            QuickStat(
-                label = stringResource(R.string.home_header_income),
-                value = MoneyUtils.formatCents(income),
-                modifier = Modifier.weight(1f)
-            )
-            QuickStat(
-                label = stringResource(R.string.home_header_today),
-                value = MoneyUtils.formatCents(todayExpense) +
-                    if (todayCount > 0) " · $todayCount" else "",
-                modifier = Modifier.weight(1f)
-            )
-            QuickStat(
-                label = stringResource(R.string.home_header_streak),
-                value = stringResource(R.string.home_header_streak_short, streak),
-                modifier = Modifier.weight(1f)
-            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                AnimatedContent(targetState = expense, label = "statsExpense") { value ->
+                    Text(
+                        text = MoneyUtils.formatCents(value),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                QuickStat(
+                    label = stringResource(R.string.home_header_income),
+                    value = MoneyUtils.formatCents(income)
+                )
+                Spacer(Modifier.width(12.dp))
+                QuickStat(
+                    label = stringResource(R.string.home_header_streak),
+                    value = stringResource(R.string.home_header_streak_short, streak)
+                )
+            }
         }
     }
 }
 
-/** 渐变大页头上的小指标列。 */
+/** 小指标列（浅色卡片上用）。 */
 @Composable
 private fun QuickStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Text(
             text = value,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
 
-/** 上月小结卡（可关闭）。 */
+/** 上月小结卡（可关闭，压缩为一行）。 */
 @Composable
 private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
     var expense = 0L
     var income = 0L
-    var maxSingle: Transaction? = null
     list.forEach {
         if (it.type == Transaction.Type.EXPENSE) {
             expense += it.amountCents
-            if (maxSingle == null || it.amountCents > maxSingle!!.amountCents) {
-                maxSingle = it
-            }
         } else {
             income += it.amountCents
         }
     }
-    val topCategory = list
-        .filter { it.type == Transaction.Type.EXPENSE }
-        .groupBy { it.category }
-        .maxByOrNull { it.value.size }
-        ?.key
 
     AppCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.summary_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    fontWeight = FontWeight.Bold
                 )
-                IconButton(onClick = onClose) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.summary_close),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Text(
-                text = stringResource(
-                    R.string.summary_totals,
-                    MoneyUtils.formatCents(expense),
-                    MoneyUtils.formatCents(income)
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            maxSingle?.let {
                 Text(
                     text = stringResource(
-                        R.string.summary_max_single,
-                        it.category,
-                        MoneyUtils.formatCents(it.amountCents)
+                        R.string.summary_totals,
+                        MoneyUtils.formatCents(expense),
+                        MoneyUtils.formatCents(income)
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            topCategory?.let {
-                Text(
-                    text = stringResource(R.string.summary_top_category, it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.summary_close),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -760,7 +759,8 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = stringResource(
@@ -770,13 +770,18 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
                 weekdayName(list.first().timestamp, weekdays)
             ),
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
-        Spacer(Modifier.weight(1f))
         Text(
             text = subtotal,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }
@@ -893,13 +898,18 @@ private fun TransactionRow(
                         )
                     }
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                Column(
+                    Modifier.weight(1f, fill = false),
+                    horizontalAlignment = Alignment.End
+                ) {
                     Text(
                         text = (if (isExpense) "-" else "+") +
                             MoneyUtils.formatCents(t.amountCents),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
-                        color = if (isExpense) ExpenseRed else IncomeGreen
+                        color = if (isExpense) ExpenseRed else IncomeGreen,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = formatTime(t.timestamp),
