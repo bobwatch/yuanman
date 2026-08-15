@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -106,6 +107,7 @@ fun TransactionSheet(
     recentCategories: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (Transaction) -> Unit,
+    onDelete: () -> Unit,
     onAddRecurring: (RecurringExpense) -> Unit
 ) {
     // 预填来源：编辑 > 再记一笔 > 无
@@ -158,6 +160,8 @@ fun TransactionSheet(
     }
     var amountError by rememberSaveable { mutableStateOf(false) }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
+    // 编辑态删除：确认后由外部执行（走撤销 Toast）
+    var deleteConfirm by rememberSaveable { mutableStateOf(false) }
     // 数字键盘：默认收起让分类区独占空间，点金额输入框展开/收起
     var numpadExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -520,6 +524,19 @@ fun TransactionSheet(
                             )
                         }
                     }
+                    // 编辑态删除：不想翻回列表左滑时，在这里直接删
+                    if (initial != null) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { deleteConfirm = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.home_item_delete),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
             }
         }
 
@@ -557,6 +574,39 @@ fun TransactionSheet(
                 )
             }
         }
+        }
+
+        // 编辑态删除确认（复用首页同款文案）
+        if (deleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { deleteConfirm = false },
+                title = { Text(stringResource(R.string.home_delete_confirm_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.home_delete_confirm_msg,
+                            Categories.nameOf(initial?.category ?: ""),
+                            MoneyUtils.formatCents(initial?.amountCents ?: 0L)
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        deleteConfirm = false
+                        onDelete()
+                    }) {
+                        Text(
+                            stringResource(R.string.common_delete),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteConfirm = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
         }
     }
 }

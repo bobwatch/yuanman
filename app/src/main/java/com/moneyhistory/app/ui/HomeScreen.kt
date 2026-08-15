@@ -438,6 +438,19 @@ fun HomeScreen(
                     viewModel.postMessage(savedText, MessageVariant.SUCCESS)
                     sheetOpen = false
                 },
+                onDelete = {
+                    val target = editing
+                    if (target != null) {
+                        viewModel.delete(target.id)
+                        toastHostState.show(
+                            message = deletedText,
+                            variant = MessageVariant.INFO,
+                            actionLabel = undoText,
+                            onAction = { viewModel.restore(target) }
+                        )
+                    }
+                    sheetOpen = false
+                },
                 onAddRecurring = { viewModel.addRecurring(it) }
             )
         }
