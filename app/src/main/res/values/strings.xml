@@ -125,6 +125,7 @@
     <string name="stats_total_income">Total</string>
     <string name="stats_trend_expense">6-month spending trend</string>
     <string name="stats_trend_income">6-month income trend</string>
+    <string name="stats_trend_empty">No records in the past 6 months</string>
     <string name="stats_daily_expense">Daily spending this month</string>
     <string name="stats_daily_income">Daily income this month</string>
     <string name="stats_total_expense_label">Total spending</string>
@@ -299,6 +300,8 @@
     <string name="family_desc">Devices on the same Wi-Fi discover each other and merge ledgers both ways. Data stays in your LAN — no server, no account. Devices sharing the same pairing code form a family group.</string>
     <string name="family_code_title">My pairing code</string>
     <string name="family_regenerate">Regenerate</string>
+    <string name="family_regenerate_confirm_title">Regenerate pairing code?</string>
+    <string name="family_regenerate_confirm_msg">All paired devices will be disconnected and need to pair again. Continue?</string>
     <string name="family_regenerated">New code generated; the old group is no longer valid</string>
     <string name="family_join_title">Join a family</string>
     <string name="family_join_hint">Enter the 6-digit family code</string>

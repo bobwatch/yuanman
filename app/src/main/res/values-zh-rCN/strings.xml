@@ -125,6 +125,7 @@
     <string name="stats_total_income">总收入</string>
     <string name="stats_trend_expense">近 6 个月支出趋势</string>
     <string name="stats_trend_income">近 6 个月收入趋势</string>
+    <string name="stats_trend_empty">近 6 个月暂无记录</string>
     <string name="stats_daily_expense">本月每日支出走势</string>
     <string name="stats_daily_income">本月每日收入走势</string>
     <string name="stats_total_expense_label">支出总额</string>
@@ -299,6 +300,8 @@
     <string name="family_desc">同一 Wi-Fi 下的家庭设备会自动发现并双向合并账本。数据只在局域网内传输，不经过任何服务器、无需账号。两台设备使用相同配对码即组成家庭组。</string>
     <string name="family_code_title">本机配对码</string>
     <string name="family_regenerate">重新生成</string>
+    <string name="family_regenerate_confirm_title">重新生成配对码？</string>
+    <string name="family_regenerate_confirm_msg">已配对的设备将全部断开，需要重新配对。确定继续吗？</string>
     <string name="family_regenerated">已生成新配对码，旧家庭组将失效</string>
     <string name="family_join_title">加入家庭</string>
     <string name="family_join_hint">输入家人的 6 位配对码</string>

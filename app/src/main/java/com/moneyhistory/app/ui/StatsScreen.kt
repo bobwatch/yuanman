@@ -146,7 +146,21 @@ fun StatsScreen(
         arr.toList()
     }
     val dayLabels = remember(dailyValues) {
-        listOf(1, 5, 10, 15, 20, 25, 30).filter { it <= dailyValues.size }
+        // 均匀抽样约 6 个标签，保证首日与月末最后一天都在
+        val n = dailyValues.size
+        if (n <= 7) {
+            (1..n).toList()
+        } else {
+            val step = (n - 1) / 5
+            buildList {
+                var i = 1
+                while (i <= n) {
+                    add(i)
+                    i += step
+                }
+                if (last() != n) add(n)
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -349,12 +363,20 @@ fun StatsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(12.dp))
-                    TrendBarChart(
-                        points = trendPoints,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                    )
+                    if (trendPoints.all { it.amountCents == 0L }) {
+                        Text(
+                            text = stringResource(R.string.stats_trend_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        TrendBarChart(
+                            points = trendPoints,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                        )
+                    }
                 }
             }
 
@@ -373,13 +395,21 @@ fun StatsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(12.dp))
-                    DailyLineChart(
-                        dailyCents = dailyValues,
-                        dayLabels = dayLabels,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                    )
+                    if (dailyValues.all { it == 0L }) {
+                        Text(
+                            text = stringResource(R.string.stats_empty_month),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        DailyLineChart(
+                            dailyCents = dailyValues,
+                            dayLabels = dayLabels,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                        )
+                    }
                 }
             }
 

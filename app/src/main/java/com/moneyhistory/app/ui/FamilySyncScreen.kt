@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +49,8 @@ fun FamilySyncScreen(
     var inputCode by remember { mutableStateOf("") }
     // 配对码操作结果：text + 是否错误（失败用错误红而非品牌蓝）
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    // 重新生成配对码不可逆（全部已配对设备失效），先确认
+    var confirmRegenerate by remember { mutableStateOf(false) }
 
     val regeneratedText = stringResource(R.string.family_regenerated)
     val joinedText = stringResource(R.string.family_joined)
@@ -89,10 +92,7 @@ fun FamilySyncScreen(
                         letterSpacing = 4.sp,
                         maxLines = 1
                     )
-                    TextButton(onClick = {
-                        sync.regeneratePairingCode()
-                        message = regeneratedText to false
-                    }) {
+                    TextButton(onClick = { confirmRegenerate = true }) {
                         Text(stringResource(R.string.family_regenerate))
                     }
                 }
@@ -194,5 +194,30 @@ fun FamilySyncScreen(
                 }
             }
         }
+    }
+
+    if (confirmRegenerate) {
+        AlertDialog(
+            onDismissRequest = { confirmRegenerate = false },
+            title = { Text(stringResource(R.string.family_regenerate_confirm_title)) },
+            text = { Text(stringResource(R.string.family_regenerate_confirm_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRegenerate = false
+                    sync.regeneratePairingCode()
+                    message = regeneratedText to false
+                }) {
+                    Text(
+                        stringResource(R.string.common_confirm),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRegenerate = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }

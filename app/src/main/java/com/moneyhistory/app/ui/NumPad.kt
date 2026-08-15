@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,8 @@ fun NumPad(
     plusEnabled: Boolean = true,
     footer: @Composable RowScope.() -> Unit = {}
 ) {
+    // 按键轻震动：数字输入是高频操作，触感确认比纯视觉反馈更跟手
+    val view = LocalView.current
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onCollapse != null) {
             // 键盘顶部细条：点中间箭头收起键盘（整条 40dp 高，够得着）
@@ -76,7 +80,10 @@ fun NumPad(
                 row.forEach { key ->
                     NumKey(
                         label = key,
-                        onClick = { onKey(key) },
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            onKey(key)
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -99,7 +106,10 @@ fun NumPad(
                     .weight(1f)
                     .height(48.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(enabled = plusEnabled) { onKey("+") }
+                    .clickable(enabled = plusEnabled) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onKey("+")
+                    }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(

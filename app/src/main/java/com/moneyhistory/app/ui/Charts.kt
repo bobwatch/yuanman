@@ -1,11 +1,15 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
@@ -76,6 +81,12 @@ fun DonutChart(
         modifier = modifier.semantics { contentDescription = desc },
         contentAlignment = Alignment.Center
     ) {
+        // 扫入动画：数据变化（切 Tab / 换月）时整环从 0 转到 1
+        val progress = remember(slices) { Animatable(0f) }
+        LaunchedEffect(slices) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
+        }
         Canvas(Modifier.matchParentSize()) {
             val total = slices.sumOf { it.value.toDouble() }.toFloat()
             if (total <= 0f) return@Canvas
@@ -88,7 +99,7 @@ fun DonutChart(
             val arcSize = Size(diameter, diameter)
             var startAngle = -90f
             slices.forEachIndexed { i, slice ->
-                val sweep = slice.value / total * 360f
+                val sweep = slice.value / total * 360f * progress.value
                 if (sweep > 0f) {
                     drawArc(
                         color = ChartPalette[i % ChartPalette.size],
@@ -100,7 +111,7 @@ fun DonutChart(
                         style = Stroke(width = strokeWidth)
                     )
                 }
-                startAngle += sweep
+                startAngle += slice.value / total * 360f
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -141,6 +152,12 @@ fun TrendBarChart(
         R.string.chart_trend_desc,
         points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents)}" }
     )
+    // 柱生长动画：数据变化时从底部一起长高，金额标签跟随柱顶
+    val progress = remember(points) { Animatable(0f) }
+    LaunchedEffect(points) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(600, easing = FastOutSlowInEasing))
+    }
     Canvas(
         modifier.semantics { contentDescription = desc }
     ) {
@@ -149,6 +166,7 @@ fun TrendBarChart(
         textPaint.textSize = 10.sp.toPx()
         val max = points.maxOf { it.amountCents }
         val hasData = max > 0L
+        val anim = progress.value
         val topLabelHeight = 34f
         val bottomLabelHeight = 34f
         val chartHeight = (size.height - topLabelHeight - bottomLabelHeight).coerceAtLeast(1f)
@@ -157,7 +175,7 @@ fun TrendBarChart(
         points.forEachIndexed { i, p ->
             // 全 0 月份不画「假柱」（底部 3px 会被误读为有少量数据），只保留标签
             if (hasData) {
-                val barHeight = p.amountCents.toFloat() / max * chartHeight
+                val barHeight = p.amountCents.toFloat() / max * chartHeight * anim
                 val left = slotWidth * i + (slotWidth - barWidth) / 2f
                 val top = topLabelHeight + (chartHeight - barHeight)
                 drawRoundRect(
@@ -205,6 +223,12 @@ fun DailyLineChart(
         "${dailyCents.count { it > 0L }} days, total " +
             MoneyUtils.formatCents(dailyCents.sum())
     )
+    // 从左向右展开动画：clip 宽度按进度增长，折线像被「画」出来
+    val progress = remember(dailyCents) { Animatable(0f) }
+    LaunchedEffect(dailyCents) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(650, easing = FastOutSlowInEasing))
+    }
     Canvas(
         modifier.semantics { contentDescription = desc }
     ) {
@@ -238,27 +262,29 @@ fun DailyLineChart(
             lineTo(0f, chartHeight)
             close()
         }
-        drawPath(
-            path = fillPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(primary.copy(alpha = 0.3f), primary.copy(alpha = 0f)),
-                startY = 0f,
-                endY = chartHeight
+        clipRect(right = size.width * progress.value) {
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(primary.copy(alpha = 0.3f), primary.copy(alpha = 0f)),
+                    startY = 0f,
+                    endY = chartHeight
+                )
             )
-        )
-        drawPath(
-            path = linePath,
-            color = primary,
-            style = Stroke(width = 4f, cap = StrokeCap.Round)
-        )
-        dayLabels.forEach { day ->
-            val index = (day - 1).coerceIn(0, dailyCents.size - 1)
-            drawContext.canvas.nativeCanvas.drawText(
-                day.toString(),
-                pointAt(index).x,
-                size.height - 4f,
-                textPaint
+            drawPath(
+                path = linePath,
+                color = primary,
+                style = Stroke(width = 4f, cap = StrokeCap.Round)
             )
+            dayLabels.forEach { day ->
+                val index = (day - 1).coerceIn(0, dailyCents.size - 1)
+                drawContext.canvas.nativeCanvas.drawText(
+                    day.toString(),
+                    pointAt(index).x,
+                    size.height - 4f,
+                    textPaint
+                )
+            }
         }
     }
 }

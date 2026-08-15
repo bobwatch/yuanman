@@ -14,20 +14,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import java.util.Random
+import kotlin.math.sin
 
 private data class ConfettiParticle(
-    val x: Float,      // 屏宽比例 0..1
-    val y: Float,      // 屏高比例
-    val vx: Float,     // 屏宽比例 / 秒
-    val vy: Float,     // 屏高比例 / 秒
+    val x: Float,        // 屏宽比例 0..1
+    val y: Float,        // 屏高比例
+    val vx: Float,       // 屏宽比例 / 秒
+    val vy: Float,       // 屏高比例 / 秒
     val color: Color,
-    val sizePx: Float
+    val sizePx: Float,
+    val rotation: Float,  // 当前旋转角（弧度）
+    val angularVel: Float, // 角速度（弧度 / 秒）
+    val swayPhase: Float, // 水平摆动相位
+    val swayAmp: Float,   // 摆动幅度（屏宽比例）
+    val round: Boolean    // 圆形粒子（与矩形混搭）
 )
 
 /**
  * 目标达成的全屏撒花动画：Canvas 自绘粒子，withFrameMillis 驱动，
- * 2 秒自动消失（后半程渐隐）。
+ * 2 秒自动消失（后半程渐隐）。粒子旋转下落 + 水平摆动，矩形/圆形混搭。
  */
 @Composable
 fun ConfettiOverlay(
@@ -49,7 +58,12 @@ fun ConfettiOverlay(
                 vx = (random.nextFloat() - 0.5f) * 0.15f,
                 vy = 0.35f + random.nextFloat() * 0.45f,
                 color = ChartPalette[random.nextInt(ChartPalette.size)],
-                sizePx = 12f + random.nextFloat() * 14f
+                sizePx = 10f + random.nextFloat() * 14f,
+                rotation = random.nextFloat() * 6.28f,
+                angularVel = (random.nextFloat() - 0.5f) * 12f,
+                swayPhase = random.nextFloat() * 6.28f,
+                swayAmp = 0.01f + random.nextFloat() * 0.03f,
+                round = random.nextBoolean()
             )
         }
         val startTime = withFrameMillis { it }
@@ -61,7 +75,11 @@ fun ConfettiOverlay(
                 val elapsed = (frameTime - startTime) / 2000f
                 alpha = (1f - elapsed).coerceIn(0f, 1f)
                 particles = particles.map { p ->
-                    p.copy(x = p.x + p.vx * dt, y = p.y + p.vy * dt)
+                    p.copy(
+                        x = p.x + p.vx * dt,
+                        y = p.y + p.vy * dt,
+                        rotation = p.rotation + p.angularVel * dt
+                    )
                 }
             }
         }
@@ -70,12 +88,28 @@ fun ConfettiOverlay(
 
     Canvas(modifier.fillMaxSize()) {
         particles.forEach { p ->
-            drawRect(
-                color = p.color,
-                topLeft = Offset(p.x * size.width, p.y * size.height),
-                size = Size(p.sizePx, p.sizePx * 0.6f),
-                alpha = alpha
-            )
+            // 水平正弦摆动，下落轨迹更自然
+            val drawX = (p.x + sin(p.swayPhase + p.y * 30f) * p.swayAmp) * size.width
+            val drawY = p.y * size.height
+            withTransform({
+                translate(drawX, drawY)
+                rotate(p.rotation * 57.29578f)
+            }) {
+                if (p.round) {
+                    drawCircle(
+                        color = p.color,
+                        radius = p.sizePx / 2f,
+                        alpha = alpha
+                    )
+                } else {
+                    drawRect(
+                        color = p.color,
+                        topLeft = Offset(-p.sizePx / 2f, -p.sizePx * 0.3f),
+                        size = Size(p.sizePx, p.sizePx * 0.6f),
+                        alpha = alpha
+                    )
+                }
+            }
         }
     }
 }
