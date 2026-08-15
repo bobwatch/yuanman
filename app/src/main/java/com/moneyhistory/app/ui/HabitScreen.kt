@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -117,6 +118,14 @@ fun HabitScreen(viewModel: MainViewModel) {
     var deleteTarget by remember { mutableStateOf<Habit?>(null) }
     var resetTarget by remember { mutableStateOf<Habit?>(null) }
 
+    // 重复点击底部「打卡」Tab：列表滚回顶部
+    val listState = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        viewModel.tabReclick.collect { route ->
+            if (route == "habits") listState.animateScrollToItem(0)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         YuanmanHeader(
             title = stringResource(R.string.tab_habits),
@@ -124,7 +133,8 @@ fun HabitScreen(viewModel: MainViewModel) {
         )
 
         LazyColumn(
-            Modifier
+            state = listState,
+            modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .imePadding()

@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,6 +91,14 @@ fun MineScreen(
     var showImportChooser by remember { mutableStateOf(false) }
     var importMergeMode by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<String?>(null) }
+
+    // 重复点击底部「我的」Tab：页面滚回顶部
+    val scrollState = rememberScrollState()
+    LaunchedEffect(Unit) {
+        viewModel.tabReclick.collect { route ->
+            if (route == "mine") scrollState.animateScrollTo(0)
+        }
+    }
 
     val readFailedText = stringResource(R.string.import_read_failed)
     val invalidText = stringResource(R.string.import_invalid)
@@ -154,7 +163,7 @@ fun MineScreen(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

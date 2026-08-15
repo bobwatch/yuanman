@@ -51,7 +51,6 @@
     <string name="home_overview_expense">Spent this month</string>
     <string name="home_header_income">Income</string>
     <string name="home_header_today">Today</string>
-    <string name="home_header_today_count">%1$d entries</string>
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">Streak</string>
     <string name="home_header_streak_short">🔥 %1$d days</string>
@@ -61,6 +60,8 @@
     <string name="home_goal_set">Set a goal →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>
     <string name="home_day_header">%3$s, %1$d/%2$d</string>
+    <string name="home_day_today">Today</string>
+    <string name="home_day_yesterday">Yesterday</string>
     <string name="home_day_sub_expense">Spent %1$s</string>
     <string name="home_day_sub_income">Earned %1$s</string>
     <string name="home_item_duplicate">Duplicate</string>

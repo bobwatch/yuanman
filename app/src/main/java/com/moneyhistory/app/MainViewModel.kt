@@ -115,6 +115,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 当前数据条数（导入覆盖前的确认提示用）。 */
     val count: Int get() = store.all().size
 
+    /** 底部 Tab 被重复点击（当前已在该页）：页面收到后滚动回顶部。 */
+    private val _tabReclick = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val tabReclick: SharedFlow<String> = _tabReclick.asSharedFlow()
+
+    fun onTabReclick(route: String) {
+        _tabReclick.tryEmit(route)
+    }
+
     init {
         // 流水变更后刷新桌面 Widget
         store.onChanged = { SpendingWidgetProvider.notifyChanged(app) }

@@ -110,6 +110,14 @@ fun MoodScreen(viewModel: MainViewModel) {
         mutableStateOf(!todayEntry?.note.isNullOrEmpty())
     }
 
+    // 重复点击底部「心情」Tab：页面滚回顶部
+    val scrollState = rememberScrollState()
+    LaunchedEffect(Unit) {
+        viewModel.tabReclick.collect { route ->
+            if (route == "mood") scrollState.animateScrollTo(0)
+        }
+    }
+
     // 本月记录
     val monthEntries = remember(moods, monthPrefix) {
         moods.filterKeys { it.startsWith(monthPrefix) }
@@ -156,7 +164,7 @@ fun MoodScreen(viewModel: MainViewModel) {
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

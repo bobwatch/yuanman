@@ -4,8 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -30,6 +32,10 @@ import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -87,14 +93,28 @@ import com.moneyhistory.app.ui.theme.YuanmanTheme
 private data class BottomTab(
     val route: String,
     val labelRes: Int,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val selectedIcon: ImageVector
 )
 
+// M3 规范：未选中用描边图标，选中用实心图标（同形切换，切页时 Crossfade 过渡）
 private val bottomTabs = listOf(
-    BottomTab("home", R.string.tab_record, Icons.Filled.Receipt),
-    BottomTab("habits", R.string.tab_habits, Icons.Filled.CheckCircle),
-    BottomTab("mood", R.string.tab_mood, Icons.Filled.Face),
-    BottomTab("mine", R.string.tab_mine, Icons.Filled.Person)
+    BottomTab(
+        "home", R.string.tab_record,
+        Icons.Outlined.Receipt, Icons.Filled.Receipt
+    ),
+    BottomTab(
+        "habits", R.string.tab_habits,
+        Icons.Outlined.CheckCircle, Icons.Filled.CheckCircle
+    ),
+    BottomTab(
+        "mood", R.string.tab_mood,
+        Icons.Outlined.Face, Icons.Filled.Face
+    ),
+    BottomTab(
+        "mine", R.string.tab_mine,
+        Icons.Outlined.Person, Icons.Filled.Person
+    )
 )
 
 private val tabRoutes = bottomTabs.map { it.route }
@@ -191,26 +211,43 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                     bottomTabs.forEach { tab ->
                                         val tabLabel = stringResource(tab.labelRes)
+                                        val selected = currentRoute == tab.route
                                         NavigationBarItem(
-                                            selected = currentRoute == tab.route,
+                                            selected = selected,
                                             onClick = {
-                                                navController.navigate(tab.route) {
-                                                    popUpTo(
-                                                        navController.graph
-                                                            .findStartDestination().id
-                                                    ) {
-                                                        saveState = true
+                                                // 重复点击当前 Tab：通知页面滚回顶部（微信/支付宝式）
+                                                if (selected) {
+                                                    viewModel.onTabReclick(tab.route)
+                                                } else {
+                                                    navController.navigate(tab.route) {
+                                                        popUpTo(
+                                                            navController.graph
+                                                                .findStartDestination().id
+                                                        ) {
+                                                            saveState = true
+                                                        }
+                                                        launchSingleTop = true
+                                                        restoreState = true
                                                     }
-                                                    launchSingleTop = true
-                                                    restoreState = true
                                                 }
                                             },
                                             icon = {
-                                                Icon(
-                                                    tab.icon,
-                                                    contentDescription = tabLabel,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
+                                                // 描边 ⇄ 实心淡切：选中状态变化不「干跳」
+                                                Crossfade(
+                                                    targetState = selected,
+                                                    animationSpec = tween(220),
+                                                    label = "tabIcon"
+                                                ) { isSelected ->
+                                                    Icon(
+                                                        if (isSelected) {
+                                                            tab.selectedIcon
+                                                        } else {
+                                                            tab.icon
+                                                        },
+                                                        contentDescription = tabLabel,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                }
                                             },
                                             label = {
                                                 Text(

@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import android.app.Activity
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -195,18 +196,16 @@ fun HomeScreen(
         if (it.type == Transaction.Type.EXPENSE) monthExpense += it.amountCents
         else monthIncome += it.amountCents
     }
-    // 今日支出
-    val todayStats = remember(transactions) {
+    // 今日支出金额（页头「今日」指标用，取代笔数：钱的事看钱更直观）
+    val todayExpense = remember(transactions) {
         val key = dayKeyOf(System.currentTimeMillis())
         var sum = 0L
-        var n = 0
         transactions.forEach {
             if (it.type == Transaction.Type.EXPENSE && dayKeyOf(it.timestamp) == key) {
                 sum += it.amountCents
-                n++
             }
         }
-        sum to n
+        sum
     }
     val streak = remember(transactions) { streakOf(transactions) }
     val grouped = remember(filteredTransactions) {
@@ -282,6 +281,13 @@ fun HomeScreen(
         }
     }
 
+    // 重复点击底部「记一笔」Tab：整页滚回顶部（微信/支付宝式）
+    LaunchedEffect(Unit) {
+        viewModel.tabReclick.collect { route ->
+            if (route == "home") listState.animateScrollToItem(0)
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -296,7 +302,7 @@ fun HomeScreen(
                     nextEnabled = !isAtCurrentMonth,
                     expense = monthExpense,
                     income = monthIncome,
-                    todayCount = todayStats.second,
+                    todayExpense = todayExpense,
                     streak = streak,
                     onSearch = {
                         searchActive = !searchActive
@@ -425,6 +431,8 @@ fun HomeScreen(
         )
         FloatingActionButton(
             onClick = {
+                // 高频入口加轻触感：按下的「咯噔」让开记一笔更跟手
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 editingId = null
                 duplicatingId = null
                 sheetOpen = true
@@ -526,7 +534,7 @@ private fun HomeHeader(
     nextEnabled: Boolean,
     expense: Long,
     income: Long,
-    todayCount: Int,
+    todayExpense: Long,
     streak: Int,
     onSearch: () -> Unit,
     onMenu: () -> Unit,
@@ -624,11 +632,7 @@ private fun HomeHeader(
                 )
                 HeaderStat(
                     label = stringResource(R.string.home_header_today),
-                    value = if (todayCount > 0) {
-                        stringResource(R.string.home_header_today_count, todayCount)
-                    } else {
-                        stringResource(R.string.home_header_today_none)
-                    },
+                    value = MoneyUtils.formatCents(todayExpense),
                     modifier = Modifier.weight(1f)
                 )
                 HeaderStat(
@@ -914,7 +918,7 @@ private fun BudgetGoalCard(
     }
 }
 
-/** 日期分组头：日期 + 星期 + 当日小计（日期小字，弱化视觉层级）。 */
+/** 日期分组头：日期 + 星期 + 当日小计（今天/昨天用相对文案，快速定位）。 */
 @Composable
 private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     val weekdays = listOf(
@@ -928,6 +932,21 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
     )
     val month = dayKey / 100 % 100
     val day = dayKey % 100
+    // 今天/昨天显示相对文案，其余日期显示「周几, 月/日」
+    val cal = Calendar.getInstance()
+    val todayKey = dayKeyOf(cal.timeInMillis)
+    cal.add(Calendar.DAY_OF_YEAR, -1)
+    val yesterdayKey = dayKeyOf(cal.timeInMillis)
+    val dayLabel = when (dayKey) {
+        todayKey -> stringResource(R.string.home_day_today)
+        yesterdayKey -> stringResource(R.string.home_day_yesterday)
+        else -> stringResource(
+            R.string.home_day_header,
+            month,
+            day,
+            weekdayName(list.first().timestamp, weekdays)
+        )
+    }
     var expense = 0L
     var income = 0L
     list.forEach {
@@ -961,12 +980,7 @@ private fun DayHeader(dayKey: Int, list: List<Transaction>) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = stringResource(
-                R.string.home_day_header,
-                month,
-                day,
-                weekdayName(list.first().timestamp, weekdays)
-            ),
+            text = dayLabel,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
