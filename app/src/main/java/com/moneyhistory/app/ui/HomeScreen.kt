@@ -53,10 +53,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxDefaults
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +76,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -1009,7 +1011,20 @@ private fun SwipeToDismissItem(
     onClick: () -> Unit,
     onDuplicate: () -> Unit
 ) {
-    val dismissState = rememberSwipeToDismissBoxState()
+    // 不用 rememberSwipeToDismissBoxState（它走 rememberSaveable）：撤销删除后
+    // 同 id 的条目重新进列表时，saveable 会把「已滑出」状态一并恢复——条目以
+    // 滑出形态回归（不可见）并再次弹出删除确认框，看起来像撤销无效。
+    // 改成随条目组合存在的普通状态：条目被移除即销毁，恢复的条目总是初始状态。
+    val density = LocalDensity.current
+    val defaultThreshold = SwipeToDismissBoxDefaults.positionalThreshold
+    val dismissState = remember(t.id) {
+        SwipeToDismissBoxState(
+            initialValue = SwipeToDismissBoxValue.Settled,
+            density = density,
+            confirmValueChange = { true },
+            positionalThreshold = defaultThreshold
+        )
+    }
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
 
