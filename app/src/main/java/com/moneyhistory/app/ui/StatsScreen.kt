@@ -295,6 +295,8 @@ fun StatsScreen(
                                 .height(200.dp)
                         )
                         Spacer(Modifier.height(12.dp))
+                        // 图例色块与环形图同源色板（含深色主题提亮版）
+                        val palette = chartPalette()
                         slices.forEachIndexed { i, slice ->
                             val percent = if (currentTotal > 0) {
                                 slice.value / currentTotal * 100
@@ -311,7 +313,7 @@ fun StatsScreen(
                                     Modifier
                                         .size(10.dp)
                                         .clip(CircleShape)
-                                        .background(ChartPalette[i % ChartPalette.size])
+                                        .background(palette[i % palette.size])
                                 )
                                 Spacer(Modifier.size(8.dp))
                                 Text(

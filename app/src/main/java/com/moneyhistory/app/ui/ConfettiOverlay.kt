@@ -48,6 +48,8 @@ fun ConfettiOverlay(
 
     var particles by remember { mutableStateOf(emptyList<ConfettiParticle>()) }
     var alpha by remember { mutableFloatStateOf(1f) }
+    // 撒花颜色走主题色板：深色主题用提亮版，彩纸在深底上同样醒目
+    val palette = chartPalette()
 
     LaunchedEffect(Unit) {
         val random = Random()
@@ -57,7 +59,7 @@ fun ConfettiOverlay(
                 y = -random.nextFloat() * 0.3f,
                 vx = (random.nextFloat() - 0.5f) * 0.15f,
                 vy = 0.35f + random.nextFloat() * 0.45f,
-                color = ChartPalette[random.nextInt(ChartPalette.size)],
+                color = palette[random.nextInt(palette.size)],
                 sizePx = 10f + random.nextFloat() * 14f,
                 rotation = random.nextFloat() * 6.28f,
                 angularVel = (random.nextFloat() - 0.5f) * 12f,

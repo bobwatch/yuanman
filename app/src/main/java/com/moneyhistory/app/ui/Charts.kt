@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
+import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.Locale
 
 /** 图表分类配色（10 色，循环使用）。 */
@@ -40,6 +41,18 @@ val ChartPalette = listOf(
     Color(0xFF9C27B0), Color(0xFF00BCD4), Color(0xFFFFC107), Color(0xFF795548),
     Color(0xFF607D8B), Color(0xFFEC407A)
 )
+
+/** 深色主题专用：整体提亮一档，深底上保持可读（默认色板棕/蓝灰在深底对比不足）。 */
+private val ChartPaletteDark = listOf(
+    Color(0xFF4FC3F7), Color(0xFF66BB6A), Color(0xFFFFB74D), Color(0xFFEF5350),
+    Color(0xFFBA68C8), Color(0xFF4DD0E1), Color(0xFFFFD54F), Color(0xFFA1887F),
+    Color(0xFF90A4AE), Color(0xFFF06292)
+)
+
+/** 按当前主题取图表色板。 */
+@Composable
+fun chartPalette(): List<Color> =
+    if (LocalDarkTheme.current) ChartPaletteDark else ChartPalette
 
 /**
  * 金额缩写（图表标签用）：≥1 万用 [wanUnit]（中文环境「万」），≥1000 用 [kUnit]（k），
@@ -88,6 +101,8 @@ fun DonutChart(
             progress.snapTo(0f)
             progress.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
         }
+        // 色板在组合期取好（Canvas 绘制 lambda 里不能调组合函数）
+        val palette = sliceColors ?: chartPalette()
         Canvas(Modifier.matchParentSize()) {
             val total = slices.sumOf { it.value.toDouble() }.toFloat()
             if (total <= 0f) return@Canvas
@@ -103,7 +118,7 @@ fun DonutChart(
                 val sweep = slice.value / total * 360f * progress.value
                 if (sweep > 0f) {
                     drawArc(
-                        color = sliceColors?.getOrNull(i) ?: ChartPalette[i % ChartPalette.size],
+                        color = palette[i % palette.size],
                         startAngle = startAngle,
                         sweepAngle = sweep,
                         useCenter = false,
