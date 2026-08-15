@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,6 +56,7 @@ fun CategoriesScreen(
     var selectedEmoji by remember { mutableStateOf(Categories.emojiCandidates.first()) }
     var name by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<String?>(null) }
+    val view = LocalView.current
 
     val errorEmptyText = stringResource(R.string.cats_error_empty)
     val errorDupText = stringResource(R.string.cats_error_dup)
@@ -117,7 +120,8 @@ fun CategoriesScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.size(8.dp))
-                            // 最小与输入框同高；大字号下随内容自然长高，不会「吊高」
+                            // 最小与输入框同高；大字号下随内容自然长高，不会「吊高」；
+                            // 名称为空时禁按，比点了再报错更先一步给出反馈
                             Button(
                                 onClick = {
                                     val trimmed = name.trim()
@@ -132,6 +136,7 @@ fun CategoriesScreen(
                                         }
                                     }
                                 },
+                                enabled = name.isNotBlank(),
                                 modifier = Modifier.heightIn(min = 56.dp)
                             ) {
                                 Text(stringResource(R.string.common_add))
@@ -144,7 +149,7 @@ fun CategoriesScreen(
             // 自定义分类（可删）
             if (customCategories.isNotEmpty()) {
                 item(key = "custom_header") {
-                    SectionHeader(stringResource(R.string.cats_custom))
+                    SectionTitle(stringResource(R.string.cats_custom))
                 }
                 // 自定义分类可删，以分类名作 key（名称唯一），删除后列表项身份不漂移
                 items(customCategories, key = { it }) { category ->
@@ -158,7 +163,7 @@ fun CategoriesScreen(
 
             // 预设分类（不可删）
             item(key = "preset_expense_header") {
-                SectionHeader(stringResource(R.string.cats_preset_expense))
+                SectionTitle(stringResource(R.string.cats_preset_expense))
             }
             items(Categories.expense.size, key = { "preset_e_$it" }) { index ->
                 CategoryRow(
@@ -168,7 +173,7 @@ fun CategoriesScreen(
                 )
             }
             item(key = "preset_income_header") {
-                SectionHeader(stringResource(R.string.cats_preset_income))
+                SectionTitle(stringResource(R.string.cats_preset_income))
             }
             items(Categories.income.size, key = { "preset_i_$it" }) { index ->
                 CategoryRow(
@@ -194,6 +199,8 @@ fun CategoriesScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // 删除成功反馈与全 App 一致：轻震动确认
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     viewModel.removeCustomCategory(category)
                     viewModel.postMessage(deletedText, MessageVariant.INFO)
                     deleteTarget = null
@@ -211,11 +218,6 @@ fun CategoriesScreen(
             }
         )
     }
-}
-
-@Composable
-private fun SectionHeader(title: String) {
-    SectionTitle(title)
 }
 
 @Composable
