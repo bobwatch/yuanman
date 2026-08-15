@@ -70,8 +70,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -243,6 +246,9 @@ fun HomeScreen(
     val lightStatusIcons = !darkTheme && scrolledPastHeader.value
     val view = LocalView.current
     val window = (view.context as Activity).window
+    // 搜索框自动聚焦（打开即弹键盘，关闭即收起）
+    val searchFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(lightStatusIcons) {
         WindowCompat.getInsetsController(window, view)
             .isAppearanceLightStatusBars = lightStatusIcons
@@ -257,7 +263,12 @@ fun HomeScreen(
 
     // 打开搜索时回到顶部，让搜索框出现在页头下方
     LaunchedEffect(searchActive) {
-        if (searchActive) listState.animateScrollToItem(0)
+        if (searchActive) {
+            listState.animateScrollToItem(0)
+            searchFocus.requestFocus()
+        } else {
+            focusManager.clearFocus()
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -288,7 +299,8 @@ fun HomeScreen(
                     searchQuery = searchQuery,
                     onSearchQueryChange = { searchQuery = it },
                     searchType = searchType,
-                    onSearchTypeChange = { searchType = it }
+                    onSearchTypeChange = { searchType = it },
+                    searchFocus = searchFocus
                 )
             }
 
@@ -496,7 +508,8 @@ private fun HomeHeader(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     searchType: Transaction.Type?,
-    onSearchTypeChange: (Transaction.Type?) -> Unit
+    onSearchTypeChange: (Transaction.Type?) -> Unit,
+    searchFocus: FocusRequester
 ) {
     Column(
         Modifier
@@ -629,6 +642,7 @@ private fun HomeHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
+                    .focusRequester(searchFocus)
             )
             Spacer(Modifier.height(10.dp))
             Row(
