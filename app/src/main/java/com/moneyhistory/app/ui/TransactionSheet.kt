@@ -469,6 +469,13 @@ fun TransactionSheet(
                     text = stringResource(R.string.sheet_category),
                     style = MaterialTheme.typography.titleSmall
                 )
+                if (liveCents <= 0) {
+                    Text(
+                        text = stringResource(R.string.sheet_hint_save),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 CategoryGrid(
                     categories = categories,
