@@ -4,13 +4,18 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -20,10 +25,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -34,6 +41,7 @@ import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** 图表分类配色（10 色，循环使用）。 */
 val ChartPalette = listOf(
@@ -153,7 +161,8 @@ fun DonutChart(
     }
 }
 
-/** 近 6 个月趋势柱状图：当前月主色高亮，柱顶显示金额缩写。 */
+/** 近 6 个月趋势柱状图：当前月主色高亮，柱顶显示金额缩写。
+ *  触控柱子弹出完整金额气泡（手指按住/拖动跟随）。 */
 @Composable
 fun TrendBarChart(
     points: List<MonthPoint>,
@@ -162,6 +171,8 @@ fun TrendBarChart(
     val primary = MaterialTheme.colorScheme.primary
     val barColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val wanUnit = stringResource(R.string.chart_abbrev_wan)
     val kUnit = stringResource(R.string.chart_abbrev_k)
     val textPaint = remember(labelColor) {
@@ -169,6 +180,15 @@ fun TrendBarChart(
             color = labelColor.toArgb()
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
+        }
+    }
+    // 气泡里的完整金额：主色加粗，与缩写标签区分开
+    val amountPaint = remember(primary) {
+        android.graphics.Paint().apply {
+            color = primary.toArgb()
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+            isFakeBoldText = true
         }
     }
     // TalkBack 读出各月金额
@@ -182,12 +202,34 @@ fun TrendBarChart(
         progress.snapTo(0f)
         progress.animateTo(1f, tween(600, easing = FastOutSlowInEasing))
     }
+    // 触控选中的月份（按住/拖动跟随，松手后保留；数据变化时重置）
+    var selectedIndex by remember(points) { mutableStateOf<Int?>(null) }
     Canvas(
-        modifier.semantics { contentDescription = desc }
+        modifier
+            .semantics { contentDescription = desc }
+            .pointerInput(points) {
+                if (points.isEmpty()) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    // 不消费事件：页面纵向滚动不受影响（拖动只取 x 定位柱位）
+                    val slotW = size.width.toFloat() / points.size
+                    selectedIndex = (down.position.x / slotW).toInt()
+                        .coerceIn(0, points.size - 1)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                            ?: break
+                        if (!change.pressed) break
+                        selectedIndex = (change.position.x / slotW).toInt()
+                            .coerceIn(0, points.size - 1)
+                    }
+                }
+            }
     ) {
         if (points.isEmpty()) return@Canvas
         // 按 density 换算，适配不同屏幕文字密度
         textPaint.textSize = 10.sp.toPx()
+        amountPaint.textSize = 12.sp.toPx()
         val max = points.maxOf { it.amountCents }
         val anim = progress.value
         val topLabelHeight = 34f
@@ -221,11 +263,40 @@ fun TrendBarChart(
                 textPaint
             )
         }
+        // 选中月份：柱描主色边 + 顶部气泡显示完整金额
+        selectedIndex?.let { sel ->
+            if (sel in points.indices) {
+                val p = points[sel]
+                if (p.amountCents > 0L) {
+                    val barHeight = p.amountCents.toFloat() / max * chartHeight * anim
+                    val left = slotWidth * sel + (slotWidth - barWidth) / 2f
+                    val top = topLabelHeight + (chartHeight - barHeight)
+                    drawRoundRect(
+                        color = primary,
+                        topLeft = Offset(left - 2f, top - 2f),
+                        size = Size(barWidth + 4f, barHeight + 4f),
+                        cornerRadius = CornerRadius(8f, 8f),
+                        style = Stroke(width = 2f)
+                    )
+                    drawValueCallout(
+                        centerX = left + barWidth / 2f,
+                        anchorY = top,
+                        line1 = MoneyUtils.formatCents(p.amountCents),
+                        line2 = p.label,
+                        amountPaint = amountPaint,
+                        textPaint = textPaint,
+                        fill = surfaceColor,
+                        border = outlineColor
+                    )
+                }
+            }
+        }
     }
 }
 
 /** 本月每日走势：折线 + 渐变填充面积图，X 轴抽样日期标签。
- *  [todayIndex] 非空时在该数据点画主色实心圆（查看当月时标记「今天」）。 */
+ *  [todayIndex] 非空时在该数据点画主色实心圆（查看当月时标记「今天」）。
+ *  触控任意日期弹出当日金额气泡（手指按住/拖动跟随）。 */
 @Composable
 fun DailyLineChart(
     dailyCents: List<Long>,
@@ -236,6 +307,7 @@ fun DailyLineChart(
     val primary = MaterialTheme.colorScheme.primary
     val surfaceColor = MaterialTheme.colorScheme.surface
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val textPaint = remember(labelColor) {
         android.graphics.Paint().apply {
             color = labelColor.toArgb()
@@ -243,6 +315,16 @@ fun DailyLineChart(
             isAntiAlias = true
         }
     }
+    // 气泡里的金额：主色加粗，与日期行区分开
+    val amountPaint = remember(primary) {
+        android.graphics.Paint().apply {
+            color = primary.toArgb()
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+            isFakeBoldText = true
+        }
+    }
+    val daySuffix = stringResource(R.string.chart_touch_day)
     // TalkBack 读出有记录的天数与合计（逐日数值太长，只报摘要）
     val desc = stringResource(
         R.string.chart_daily_desc,
@@ -255,12 +337,37 @@ fun DailyLineChart(
         progress.snapTo(0f)
         progress.animateTo(1f, tween(650, easing = FastOutSlowInEasing))
     }
+    // 触控选中的日期（按住/拖动跟随，松手后保留；数据变化时重置）
+    var selectedIndex by remember(dailyCents) { mutableStateOf<Int?>(null) }
     Canvas(
-        modifier.semantics { contentDescription = desc }
+        modifier
+            .semantics { contentDescription = desc }
+            .pointerInput(dailyCents) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    // 不消费事件：页面纵向滚动不受影响（拖动只取 x 定位日期）
+                    fun indexAt(x: Float): Int {
+                        val n = dailyCents.size
+                        if (n <= 1) return 0
+                        return (x / (size.width.toFloat() / (n - 1)))
+                            .roundToInt()
+                            .coerceIn(0, n - 1)
+                    }
+                    selectedIndex = indexAt(down.position.x)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                            ?: break
+                        if (!change.pressed) break
+                        selectedIndex = indexAt(change.position.x)
+                    }
+                }
+            }
     ) {
         if (dailyCents.isEmpty()) return@Canvas
         // 按 density 换算，适配不同屏幕文字密度
         textPaint.textSize = 9.sp.toPx()
+        amountPaint.textSize = 11.sp.toPx()
         val max = (dailyCents.maxOrNull() ?: 0L).coerceAtLeast(1L)
         val labelHeight = 32f
         val chartHeight = (size.height - labelHeight).coerceAtLeast(1f)
@@ -317,6 +424,75 @@ fun DailyLineChart(
                     textPaint
                 )
             }
+            // 选中日期：竖向参考线 + 高亮圆 + 金额气泡
+            selectedIndex?.let { sel ->
+                if (sel in dailyCents.indices) {
+                    val p = pointAt(sel)
+                    drawLine(
+                        color = primary.copy(alpha = 0.35f),
+                        start = Offset(p.x, 0f),
+                        end = Offset(p.x, chartHeight),
+                        strokeWidth = 2f
+                    )
+                    drawCircle(color = surfaceColor, radius = 9f, center = p)
+                    drawCircle(color = primary, radius = 6f, center = p)
+                    drawValueCallout(
+                        centerX = p.x,
+                        anchorY = p.y,
+                        line1 = MoneyUtils.formatCents(dailyCents[sel]),
+                        line2 = String.format(Locale.getDefault(), daySuffix, sel + 1),
+                        amountPaint = amountPaint,
+                        textPaint = textPaint,
+                        fill = surfaceColor,
+                        border = outlineColor
+                    )
+                }
+            }
         }
     }
+}
+
+/** 图表触控值气泡：圆角底 + 金额/日期两行文字，自动避开画布左右边缘，贴顶时翻到下方。 */
+private fun DrawScope.drawValueCallout(
+    centerX: Float,
+    anchorY: Float,
+    line1: String,
+    line2: String,
+    amountPaint: android.graphics.Paint,
+    textPaint: android.graphics.Paint,
+    fill: Color,
+    border: Color
+) {
+    val paddingH = 10f
+    val paddingV = 6f
+    val lineGap = 2f
+    val w1 = amountPaint.measureText(line1)
+    val w2 = textPaint.measureText(line2)
+    val width = maxOf(w1, w2) + paddingH * 2
+    val height = amountPaint.textSize + textPaint.textSize + lineGap + paddingV * 2
+    val left = (centerX - width / 2f).coerceIn(6f, size.width - width - 6f)
+    // 默认在锚点上方，贴顶时翻到下方（气泡不越出画布）
+    var top = anchorY - height - 12f
+    if (top < 4f) top = anchorY + 14f
+    drawRoundRect(
+        color = fill,
+        topLeft = Offset(left, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(10f, 10f)
+    )
+    drawRoundRect(
+        color = border,
+        topLeft = Offset(left, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(10f, 10f),
+        style = Stroke(width = 1f)
+    )
+    val line1Baseline = top + paddingV + amountPaint.textSize
+    drawContext.canvas.nativeCanvas.drawText(line1, left + width / 2f, line1Baseline, amountPaint)
+    drawContext.canvas.nativeCanvas.drawText(
+        line2,
+        left + width / 2f,
+        line1Baseline + lineGap + textPaint.textSize,
+        textPaint
+    )
 }

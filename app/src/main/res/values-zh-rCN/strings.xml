@@ -156,6 +156,8 @@
     <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
     <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
     <string name="chart_daily_desc">本月每日走势：共 %1$d 天有记录，合计 %2$s</string>
+    <!-- 触控气泡：每日图中的几号 -->
+    <string name="chart_touch_day">%1$d日</string>
 
     <!-- budget dialog -->
     <string name="budget_title">月度预算</string>

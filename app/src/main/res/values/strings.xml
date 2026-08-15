@@ -156,6 +156,8 @@
     <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
     <string name="chart_daily_desc">Daily trend this month: %1$d days with records, total %2$s</string>
+    <!-- touch callout: day-of-month in the daily chart -->
+    <string name="chart_touch_day">%1$d</string>
 
     <!-- budget dialog -->
     <string name="budget_title">Monthly budget</string>
