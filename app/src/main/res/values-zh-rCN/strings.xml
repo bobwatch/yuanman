@@ -414,6 +414,7 @@
 
     <!-- v0.0.2 polish -->
     <string name="record_saved">已记一笔 ✓</string>
+    <string name="record_again">再记一笔</string>
     <string name="pad_amount_exceeds">超出可取出金额</string>
 
     <!-- 预设分类显示名（存储数据保持原样） -->

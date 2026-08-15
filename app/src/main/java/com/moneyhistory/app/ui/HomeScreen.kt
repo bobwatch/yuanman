@@ -239,6 +239,7 @@ fun HomeScreen(
     val deletedText = stringResource(R.string.home_deleted)
     val undoText = stringResource(R.string.home_undo)
     val savedText = stringResource(R.string.record_saved)
+    val recordAgainText = stringResource(R.string.record_again)
 
     // 下月按钮到达当前月后禁用
     val isAtCurrentMonth = remember(month) {
@@ -490,9 +491,24 @@ fun HomeScreen(
                 recentCategories = recentCategories,
                 onDismiss = { sheetOpen = false },
                 onSave = { t ->
-                    if (editing == null) viewModel.add(t) else viewModel.update(t)
+                    val isNew = editing == null
+                    if (isNew) viewModel.add(t) else viewModel.update(t)
                     viewModel.onTransactionSaved(t)
-                    viewModel.postMessage(savedText, MessageVariant.SUCCESS)
+                    if (isNew) {
+                        // 成功 Toast 带「再记一笔」：连续记账不打断节奏（参考支付宝）
+                        toastHostState.show(
+                            message = savedText,
+                            variant = MessageVariant.SUCCESS,
+                            actionLabel = recordAgainText,
+                            onAction = {
+                                editingId = null
+                                duplicatingId = t.id
+                                sheetOpen = true
+                            }
+                        )
+                    } else {
+                        viewModel.postMessage(savedText, MessageVariant.SUCCESS)
+                    }
                     // 记完跳到这笔所在月份：历史月补记/改日期后，新记录立刻可见
                     val cal = Calendar.getInstance().apply { timeInMillis = t.timestamp }
                     val targetMonth = YearMonth(

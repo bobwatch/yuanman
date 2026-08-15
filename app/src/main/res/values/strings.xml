@@ -414,6 +414,7 @@
 
     <!-- v0.0.2 polish -->
     <string name="record_saved">Recorded ✓</string>
+    <string name="record_again">Record again</string>
     <string name="pad_amount_exceeds">Exceeds available balance</string>
 
     <!-- preset category display names (stored data keeps the original names) -->
