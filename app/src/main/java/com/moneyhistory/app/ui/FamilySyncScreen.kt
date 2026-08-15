@@ -1,5 +1,9 @@
 package com.moneyhistory.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +52,8 @@ fun FamilySyncScreen(
     val devices by sync.devices.collectAsStateWithLifecycle()
     val status by sync.status.collectAsStateWithLifecycle()
     val myCode by sync.pairingCode.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val view = LocalView.current
 
     var inputCode by remember { mutableStateOf("") }
     // 配对码操作结果：text + 是否错误（失败用错误红而非品牌蓝）
@@ -56,6 +64,7 @@ fun FamilySyncScreen(
     val regeneratedText = stringResource(R.string.family_regenerated)
     val joinedText = stringResource(R.string.family_joined)
     val joinInvalidText = stringResource(R.string.family_join_invalid)
+    val copiedText = stringResource(R.string.family_copied)
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
@@ -81,7 +90,7 @@ fun FamilySyncScreen(
                 )
             }
 
-            // 本机配对码
+            // 本机配对码：发给家人前先复制，免手抄
             SettingsCard(title = stringResource(R.string.family_code_title)) {
                 Column(
                     Modifier.fillMaxWidth(),
@@ -95,8 +104,22 @@ fun FamilySyncScreen(
                         letterSpacing = 4.sp,
                         maxLines = 1
                     )
-                    TextButton(onClick = { confirmRegenerate = true }) {
-                        Text(stringResource(R.string.family_regenerate))
+                    Row {
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(
+                                Context.CLIPBOARD_SERVICE
+                            ) as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("pairingCode", myCode)
+                            )
+                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            viewModel.postMessage(copiedText, MessageVariant.SUCCESS)
+                        }) {
+                            Text(stringResource(R.string.family_copy))
+                        }
+                        TextButton(onClick = { confirmRegenerate = true }) {
+                            Text(stringResource(R.string.family_regenerate))
+                        }
                     }
                 }
             }
@@ -119,13 +142,17 @@ fun FamilySyncScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Button(onClick = {
-                        message = if (sync.setPairingCode(inputCode)) {
-                            joinedText to false
-                        } else {
-                            joinInvalidText to true
-                        }
-                    }) {
+                    Button(
+                        onClick = {
+                            message = if (sync.setPairingCode(inputCode)) {
+                                joinedText to false
+                            } else {
+                                joinInvalidText to true
+                            }
+                        },
+                        // 不满 6 位禁按：比点了再报错更先一步给出反馈
+                        enabled = inputCode.length == 6
+                    ) {
                         Text(stringResource(R.string.common_confirm))
                     }
                 }

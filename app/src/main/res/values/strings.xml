@@ -334,6 +334,8 @@
     <string name="family_title">Family sync</string>
     <string name="family_desc">Devices on the same Wi-Fi discover each other and merge ledgers both ways. Data stays in your LAN — no server, no account. Devices sharing the same pairing code form a family group.</string>
     <string name="family_code_title">My pairing code</string>
+    <string name="family_copy">Copy</string>
+    <string name="family_copied">Code copied</string>
     <string name="family_regenerate">Regenerate</string>
     <string name="family_regenerate_confirm_title">Regenerate pairing code?</string>
     <string name="family_regenerate_confirm_msg">All paired devices will be disconnected and need to pair again. Continue?</string>
