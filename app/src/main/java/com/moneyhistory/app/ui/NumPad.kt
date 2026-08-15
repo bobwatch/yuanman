@@ -52,11 +52,11 @@ fun NumPad(
     val view = LocalView.current
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onCollapse != null) {
-            // 键盘顶部细条：点中间箭头收起键盘（整条 40dp 高，够得着）
+            // 键盘顶部细条：点中间箭头收起键盘（整条 48dp 高，满足触达下限）
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(48.dp)
                     .clickable(onClick = onCollapse),
                 contentAlignment = Alignment.Center
             ) {

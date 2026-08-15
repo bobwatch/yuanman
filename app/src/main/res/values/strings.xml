@@ -151,6 +151,7 @@
     <string name="stats_insight_more">+%1$s (+%2$d%%)</string>
     <string name="stats_insight_less">-%1$s (-%2$d%%)</string>
     <string name="stats_insight_even">Same as last month</string>
+    <string name="stats_percent_format">%1$.1f%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
@@ -174,6 +175,7 @@
     <string name="goal_card_target">of %1$s</string>
     <string name="goal_prediction_done">100% achieved 🎉</string>
     <string name="goal_prediction_percent">%1$d%% done</string>
+    <string name="goal_progress_percent">%1$d%%</string>
     <string name="goal_prediction_date">Est. done on %1$d/%2$d</string>
     <string name="goal_add_card">New goal</string>
     <string name="goal_detail_deadline">Target date: %1$s</string>
@@ -366,6 +368,7 @@
     <string name="badge_screen_title">Badges (%1$d / %2$d)</string>
     <string name="badge_unlocked">🏅 Badge unlocked: %1$s</string>
     <string name="badge_obtained">Earned on %1$s</string>
+    <string name="badge_obtained_today">Unlocked today 🎉</string>
     <string name="badge_cat_record">Money</string>
     <string name="badge_cat_habit">Habits</string>
     <string name="badge_cat_mood">Mood</string>

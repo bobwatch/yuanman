@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -186,7 +188,10 @@ fun GoalCard(goal: Goal, onClick: () -> Unit) {
                     modifier = Modifier.size(56.dp)
                 ) {
                     Text(
-                        text = "${(goal.progress * 100).roundToInt().coerceAtMost(100)}%",
+                        text = stringResource(
+                            R.string.goal_progress_percent,
+                            (goal.progress * 100).roundToInt().coerceAtMost(100)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -492,6 +497,7 @@ fun AmountPadDialog(
     var segments by rememberSaveable { mutableStateOf(listOf("")) }
     var errorRes by remember { mutableStateOf<Int?>(null) }
     val liveCents = segments.mapNotNull { MoneyUtils.parseToCents(it) }.sum()
+    val view = LocalView.current
 
     fun onNumKey(key: String) {
         errorRes = null
@@ -565,7 +571,11 @@ fun AmountPadDialog(
                     liveCents <= 0 -> errorRes = R.string.sheet_amount_error
                     maxCents != null && liveCents > maxCents ->
                         errorRes = R.string.pad_amount_exceeds
-                    else -> onConfirm(liveCents)
+                    else -> {
+                        // 钱动了：确认触感让「存入/取出」这个动作落定
+                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        onConfirm(liveCents)
+                    }
                 }
             }) {
                 Text(stringResource(R.string.common_confirm))

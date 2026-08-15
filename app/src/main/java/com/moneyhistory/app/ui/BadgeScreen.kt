@@ -1,5 +1,8 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,15 +20,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
@@ -78,6 +84,21 @@ fun BadgeScreen(
                             }
                         } ?: ""
                     }
+                    // 今天刚解锁的勋章：进页时弹一下——努力被看见的时刻值得一个仪式感
+                    val fresh = unlocked && unlockedDate == DateUtils.today()
+                    val popScale = remember { Animatable(1f) }
+                    LaunchedEffect(fresh) {
+                        if (fresh) {
+                            popScale.snapTo(0.6f)
+                            popScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                )
+                            )
+                        }
+                    }
                     Card(
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
@@ -87,6 +108,10 @@ fun BadgeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .graphicsLayer {
+                                scaleX = popScale.value
+                                scaleY = popScale.value
+                            }
                     ) {
                         Row(
                             Modifier
@@ -124,15 +149,23 @@ fun BadgeScreen(
                                 )
                                 Text(
                                     text = if (unlocked) {
-                                        stringResource(
-                                            R.string.badge_obtained,
-                                            obtainedText
-                                        )
+                                        if (fresh) {
+                                            stringResource(R.string.badge_obtained_today)
+                                        } else {
+                                            stringResource(
+                                                R.string.badge_obtained,
+                                                obtainedText
+                                            )
+                                        }
                                     } else {
                                         stringResource(badge.descRes)
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (fresh) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
                                 )
                             }
                             if (unlocked) {

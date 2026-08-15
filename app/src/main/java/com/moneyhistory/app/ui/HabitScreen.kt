@@ -1,9 +1,11 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -92,7 +95,11 @@ private val habitPresets = listOf(
 )
 
 /** 打卡 Tab：习惯列表 + 行内新建表单（不再用弹窗，缩短操作路径）。 */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalLayoutApi::class,
+    ExperimentalFoundationApi::class
+)
 @Composable
 fun HabitScreen(viewModel: MainViewModel) {
     val habits by viewModel.habits.collectAsStateWithLifecycle()
@@ -106,6 +113,7 @@ fun HabitScreen(viewModel: MainViewModel) {
         }
     }
     val context = LocalContext.current
+    val view = LocalView.current
     val deletedText = stringResource(R.string.common_deleted)
     val resetDoneText = stringResource(R.string.habit_reset_done)
 
@@ -175,22 +183,27 @@ fun HabitScreen(viewModel: MainViewModel) {
             }
 
             items(sortedHabits, key = { it.id }) { habit ->
-                HabitCard(
-                    habit = habit,
-                    today = today,
-                    onCheckin = {
-                        // 打卡成功有对勾+连续天数反馈；取消也轻声告知，两条路都有回应
-                        val checked = viewModel.toggleCheckin(habit.id)
-                        if (!checked) {
-                            viewModel.postMessage(
-                                context.getString(R.string.habit_unchecked),
-                                MessageVariant.INFO
-                            )
-                        }
-                    },
-                    onReset = { resetTarget = habit },
-                    onDelete = { deleteTarget = habit }
-                )
+                Box(Modifier.animateItemPlacement()) {
+                    HabitCard(
+                        habit = habit,
+                        today = today,
+                        onCheckin = {
+                            // 打卡成功是今天的「小成就」：重触感确认；取消打卡轻触感告知
+                            val checked = viewModel.toggleCheckin(habit.id)
+                            if (checked) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            } else {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.postMessage(
+                                    context.getString(R.string.habit_unchecked),
+                                    MessageVariant.INFO
+                                )
+                            }
+                        },
+                        onReset = { resetTarget = habit },
+                        onDelete = { deleteTarget = habit }
+                    )
+                }
             }
 
             if (!showCreate) {
@@ -215,6 +228,8 @@ fun HabitScreen(viewModel: MainViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // 删除是不可逆动作：确认时给重触感，动作「落定」
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     viewModel.removeHabit(habit.id)
                     viewModel.postMessage(deletedText, MessageVariant.INFO)
                     deleteTarget = null
@@ -248,6 +263,8 @@ fun HabitScreen(viewModel: MainViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // 破戒重置会清零坚持天数：重触感确认，避免误触后追悔
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     viewModel.resetHabit(habit.id)
                     viewModel.postMessage(resetDoneText, MessageVariant.SUCCESS)
                     resetTarget = null

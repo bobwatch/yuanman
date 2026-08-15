@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -104,7 +105,10 @@ fun GoalDetailScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "${(goal.progress * 100).roundToInt().coerceAtMost(100)}%",
+                        text = stringResource(
+                            R.string.goal_progress_percent,
+                            (goal.progress * 100).roundToInt().coerceAtMost(100)
+                        ),
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -172,21 +176,26 @@ fun GoalDetailScreen(
             )
 
             Spacer(Modifier.height(16.dp))
-            // 两按钮均分整行：窄屏/大字号下不会溢出换位
+            // 两按钮均分整行：窄屏/大字号下不会溢出换位；
+            // heightIn(48dp) 与全 App 触达下限一致（默认 40dp 偏小）
             Row(Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
                         recordExpense = false
                         showDepositDialog = true
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
                 ) {
                     Text(stringResource(R.string.goal_deposit))
                 }
                 Spacer(Modifier.width(12.dp))
                 OutlinedButton(
                     onClick = { showWithdrawDialog = true },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
                 ) {
                     Text(stringResource(R.string.goal_withdraw))
                 }
