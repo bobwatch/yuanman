@@ -58,7 +58,6 @@ fun CategoriesScreen(
     var deleteTarget by remember { mutableStateOf<String?>(null) }
     val view = LocalView.current
 
-    val errorEmptyText = stringResource(R.string.cats_error_empty)
     val errorDupText = stringResource(R.string.cats_error_dup)
     val addedText = stringResource(R.string.cats_added)
     val deletedText = stringResource(R.string.common_deleted)
@@ -121,19 +120,15 @@ fun CategoriesScreen(
                             )
                             Spacer(Modifier.size(8.dp))
                             // 最小与输入框同高；大字号下随内容自然长高，不会「吊高」；
-                            // 名称为空时禁按，比点了再报错更先一步给出反馈
+                            // 名称为空（含纯空格）时禁按，比点了再报错更先一步给出反馈
                             Button(
                                 onClick = {
                                     val trimmed = name.trim()
-                                    when {
-                                        trimmed.isEmpty() ->
-                                            viewModel.postMessage(errorEmptyText, MessageVariant.ERROR)
-                                        !viewModel.addCustomCategory("$selectedEmoji $trimmed") ->
-                                            viewModel.postMessage(errorDupText, MessageVariant.WARNING)
-                                        else -> {
-                                            name = ""
-                                            viewModel.postMessage(addedText, MessageVariant.SUCCESS)
-                                        }
+                                    if (!viewModel.addCustomCategory("$selectedEmoji $trimmed")) {
+                                        viewModel.postMessage(errorDupText, MessageVariant.WARNING)
+                                    } else {
+                                        name = ""
+                                        viewModel.postMessage(addedText, MessageVariant.SUCCESS)
                                     }
                                 },
                                 enabled = name.isNotBlank(),

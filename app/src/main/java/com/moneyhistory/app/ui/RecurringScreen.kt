@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -81,16 +79,7 @@ fun RecurringScreen(
                     .padding(top = 4.dp)
             ) {
                 items(recurring, key = { it.id }) { r ->
-                    Card(
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
+                    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -133,14 +122,16 @@ fun RecurringScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            // 金额完整展示，绝不截断（标题列可截断，弹性让位）
+                            // 金额优先占位（标题列弹性让位，常规宽度完整展示）；
+                            // 极端窄屏/超大字号下兜底省略号，不与删除键重叠
                             Text(
                                 text = MoneyUtils.formatCents(r.amountCents),
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
-                                softWrap = false
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             IconButton(onClick = { deleteTarget = r }) {
                                 Icon(

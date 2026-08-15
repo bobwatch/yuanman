@@ -110,6 +110,7 @@
     <string name="numpad_expand">展开键盘</string>
     <string name="numpad_collapse">收起键盘</string>
     <string name="numpad_backspace">删除数字</string>
+    <string name="numpad_clear_all">清空金额</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">设为周期账单</string>
@@ -155,7 +156,7 @@
     <string name="stats_insight_even">与上月持平</string>
     <string name="stats_percent_format">%1$d%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
-    <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
+    <string name="chart_donut_desc">占比环形图：%1$s。%2$s</string>
     <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
     <string name="chart_daily_desc">本月每日走势：共 %1$d 天有记录，合计 %2$s</string>
     <!-- 触控气泡：每日图中的几号 -->
@@ -231,6 +232,7 @@
     <string name="habit_type_quit">戒掉习惯</string>
     <string name="habit_name_hint">习惯名称</string>
     <string name="habit_name_error">请输入名称</string>
+    <string name="habit_name_count">%1$d/%2$d</string>
     <string name="habit_pick_emoji">选择一个 emoji</string>
     <string name="habit_checked_streak">🔥 连续打卡 %1$d 天</string>
     <string name="habit_created">已创建「%1$s」</string>
@@ -250,6 +252,7 @@
     <string name="mood_note_save">保存备注</string>
     <string name="mood_note_saved">已保存今天的一句话 ✨</string>
     <string name="mood_saved">今天的心情已记下 ✓</string>
+    <string name="mood_backfill_saved">%1$s 的心情已记下 ✓</string>
     <string name="mood_stats_title">本月统计</string>
     <string name="mood_stats_empty">本月还没有心情记录</string>
     <string name="mood_angry_days">😠 生气 %d 天</string>
@@ -274,7 +277,6 @@
     <string name="cats_add_title">添加自定义分类</string>
     <string name="cats_name_hint">分类名称</string>
     <string name="cats_name_count">%1$d/%2$d</string>
-    <string name="cats_error_empty">请输入分类名称</string>
     <string name="cats_error_dup">分类已存在</string>
     <string name="cats_added">已添加</string>
     <string name="cats_delete_confirm_title">删除这个分类？</string>

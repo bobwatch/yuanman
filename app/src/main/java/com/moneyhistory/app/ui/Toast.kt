@@ -37,13 +37,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
-import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import com.moneyhistory.app.ui.theme.WarningOrange
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -133,10 +134,10 @@ private fun ToastItem(
     onDismiss: () -> Unit,
     onRemoved: () -> Unit
 ) {
-    // 深浅色取应用主题（非系统）：用户手动切换主题时 Toast 也要跟着换
-    val darkTheme = LocalDarkTheme.current
-    val container = if (darkTheme) Color(0xFFF2F4F8) else Color(0xFF232A35)
-    val content = if (darkTheme) Color(0xFF161B22) else Color.White
+    // 深浅色走主题的 inverseSurface / inverseOnSurface（浅色主题深底、深色主题浅底），
+    // 用户手动切换主题时 Toast 自动跟着换，不手工维护两套色值
+    val container = MaterialTheme.colorScheme.inverseSurface
+    val content = MaterialTheme.colorScheme.inverseOnSurface
     // 按消息类型着色（信息蓝 / 成功绿 / 警告橙 / 异常红），统一引用主题语义色
     val variantColor = when (toast.variant) {
         MessageVariant.INFO -> MaterialTheme.colorScheme.primary
@@ -185,7 +186,11 @@ private fun ToastItem(
                         contentColor = content
                     ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    // 无障碍：Toast 是瞬时状态消息，礼貌式播报让 TalkBack 用户
+                    // 也能听到「已保存 / 已删除」这类结果反馈
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { liveRegion = LiveRegionMode.Polite }
                 ) {
                     Row(
                         Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),

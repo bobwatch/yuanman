@@ -550,6 +550,11 @@ fun TransactionSheet(
         ) {
             NumPad(
                 onKey = { onNumKey(it) },
+                // 长按退格清空整笔金额（含多段连加），与计算器键盘习惯一致
+                onClearAll = {
+                    segments = listOf("")
+                    amountError = false
+                },
                 onCollapse = { numpadExpanded = false },
                 // 当前段为空时连加无意义，禁用并压暗
                 plusEnabled = segments.last().isNotEmpty(),

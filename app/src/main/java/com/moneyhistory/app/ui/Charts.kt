@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
@@ -94,11 +95,12 @@ fun DonutChart(
     modifier: Modifier = Modifier,
     sliceColors: List<Color>? = null
 ) {
-    // TalkBack 读出每类占比与合计
+    // TalkBack 读出每类占比与中心数值（中心可能是金额合计，也可能是心情天数——
+    // 统一用「标题: 数值」格式，避免把心情天数误读成「合计」）
     val desc = stringResource(
         R.string.chart_donut_desc,
         slices.joinToString(", ") { "${it.label} ${it.value.toInt()}" },
-        centerValue
+        "$centerTitle: $centerValue"
     )
     Box(
         modifier = modifier.semantics { contentDescription = desc },
@@ -487,7 +489,10 @@ private fun DrawScope.drawValueCallout(
     val lineGap = 2f
     val w1 = amountPaint.measureText(line1)
     val w2 = textPaint.measureText(line2)
-    val width = maxOf(w1, w2) + paddingH * 2
+    // 气泡宽度封顶为画布宽度减 12dp：窄屏 + 超长金额时 coerceIn 下界会上穿
+    // 上界直接抛异常（IllegalArgumentException），先收窄再夹取
+    val width = (maxOf(w1, w2) + paddingH * 2)
+        .coerceAtMost((size.width - 12f).coerceAtLeast(1f))
     val height = amountPaint.textSize + textPaint.textSize + lineGap + paddingV * 2
     val left = (centerX - width / 2f).coerceIn(6f, size.width - width - 6f)
     // 默认在锚点上方，贴顶时翻到下方（气泡不越出画布）

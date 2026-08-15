@@ -68,8 +68,8 @@ fun StatsScreen(
         val cal = Calendar.getInstance().apply { add(Calendar.MONTH, monthOffset) }
         YearMonth(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1)
     }
-    // 偏移 0 即当前月，不允许翻到未来
-    val isAtCurrentMonth = monthOffset >= 0
+    // 月份偏移只在过去方向：翻到当前月后不允许再往前（未来无数据）
+    val canGoNext = monthOffset < 0
     // 不在当前月时月份标题可点（下划线提示），一键回到本月
     val goToCurrentMonth: (() -> Unit)? =
         if (monthOffset == 0) null else ({ monthOffset = 0 })
@@ -228,7 +228,7 @@ fun StatsScreen(
                 month = month,
                 onPrev = { shiftMonth(-1) },
                 onNext = { shiftMonth(1) },
-                nextEnabled = !isAtCurrentMonth,
+                nextEnabled = canGoNext,
                 onTitleClick = goToCurrentMonth
             )
 
@@ -238,7 +238,11 @@ fun StatsScreen(
             ) {
                 Tab(
                     selected = tab == 0,
-                    onClick = { tab = 0 },
+                    onClick = {
+                        // 收支切换与全 App 的按键触感一致：点下去「咯噔」一声
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        tab = 0
+                    },
                     text = {
                         Text(
                             stringResource(R.string.sheet_type_expense),
@@ -248,7 +252,10 @@ fun StatsScreen(
                 )
                 Tab(
                     selected = tab == 1,
-                    onClick = { tab = 1 },
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        tab = 1
+                    },
                     text = {
                         Text(
                             stringResource(R.string.sheet_type_income),

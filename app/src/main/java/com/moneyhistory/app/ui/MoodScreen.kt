@@ -287,23 +287,23 @@ fun MoodScreen(viewModel: MainViewModel) {
                         )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                // 切片按各情绪本色着色（与选择器/月历一致），非通用图表色板
-                                val moodSlices = Mood.entries.mapNotNull { mood ->
-                                    val count = monthEntries.count {
-                                        it.value.mood == mood
-                                    }
-                                    if (count > 0) {
-                                        ChartSlice(
-                                            moodLabel(mood),
-                                            count.toFloat()
-                                        ) to Color(mood.colorValue)
-                                    } else {
-                                        null
-                                    }
+                            // 切片按各情绪本色着色（与选择器/月历一致），非通用图表色板
+                            val moodSlices = Mood.entries.mapNotNull { mood ->
+                                val count = monthEntries.count {
+                                    it.value.mood == mood
                                 }
-                                DonutChart(
-                                    slices = moodSlices.map { it.first },
-                                    sliceColors = moodSlices.map { it.second },
+                                if (count > 0) {
+                                    ChartSlice(
+                                        moodLabel(mood),
+                                        count.toFloat()
+                                    ) to Color(mood.colorValue)
+                                } else {
+                                    null
+                                }
+                            }
+                            DonutChart(
+                                slices = moodSlices.map { it.first },
+                                sliceColors = moodSlices.map { it.second },
                                 centerTitle = stringResource(R.string.mood_donut_center),
                                 centerValue = "$angryDays",
                                 modifier = Modifier.size(120.dp)
@@ -384,17 +384,12 @@ fun MoodScreen(viewModel: MainViewModel) {
     dayPicker?.let { dayKey ->
         val entry = moods[dayKey]
         val dayTitle = remember(dayKey) {
-            try {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    .parse(dayKey)
-                    ?.let {
-                        SimpleDateFormat(dayTitlePattern, Locale.getDefault()).format(it)
-                    }
-                    ?: dayKey
-            } catch (e: Exception) {
-                dayKey
-            }
+            // 存储 key 是固定 yyyy-MM-dd，用 DateUtils 解析（与 BadgeScreen 同源）
+            DateUtils.parse(dayKey)?.let {
+                SimpleDateFormat(dayTitlePattern, Locale.getDefault()).format(Date(it))
+            } ?: dayKey
         }
+        val backfillSavedText = stringResource(R.string.mood_backfill_saved, dayTitle)
         AlertDialog(
             onDismissRequest = { dayPicker = null },
             title = { Text(dayTitle) },
@@ -430,6 +425,8 @@ fun MoodScreen(viewModel: MainViewModel) {
                         current = entry?.mood,
                         onSelect = { mood ->
                             viewModel.setMood(dayKey, mood, entry?.note ?: "")
+                            // 补记同样给成功反馈（与今日记录一致的「点了有回应」）
+                            viewModel.postMessage(backfillSavedText, MessageVariant.SUCCESS)
                             dayPicker = null
                         }
                     )

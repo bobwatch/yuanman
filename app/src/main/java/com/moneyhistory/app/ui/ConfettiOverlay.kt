@@ -68,24 +68,29 @@ fun ConfettiOverlay(
                 round = random.nextBoolean()
             )
         }
-        val startTime = withFrameMillis { it }
-        var lastFrame = startTime
-        while (lastFrame - startTime < 2000L) {
-            withFrameMillis { frameTime ->
-                val dt = ((frameTime - lastFrame) / 1000f).coerceIn(0f, 0.1f)
-                lastFrame = frameTime
-                val elapsed = (frameTime - startTime) / 2000f
-                alpha = (1f - elapsed).coerceIn(0f, 1f)
-                particles = particles.map { p ->
-                    p.copy(
-                        x = p.x + p.vx * dt,
-                        y = p.y + p.vy * dt,
-                        rotation = p.rotation + p.angularVel * dt
-                    )
+        try {
+            val startTime = withFrameMillis { it }
+            var lastFrame = startTime
+            while (lastFrame - startTime < 2000L) {
+                withFrameMillis { frameTime ->
+                    val dt = ((frameTime - lastFrame) / 1000f).coerceIn(0f, 0.1f)
+                    lastFrame = frameTime
+                    val elapsed = (frameTime - startTime) / 2000f
+                    alpha = (1f - elapsed).coerceIn(0f, 1f)
+                    particles = particles.map { p ->
+                        p.copy(
+                            x = p.x + p.vx * dt,
+                            y = p.y + p.vy * dt,
+                            rotation = p.rotation + p.angularVel * dt
+                        )
+                    }
                 }
             }
+        } finally {
+            // 动画中途被取消（页面重组/销毁）也必须收尾：不清理的话
+            // 撒花开关会一直停在 true，下次进来挡住整屏
+            onFinished()
         }
-        onFinished()
     }
 
     Canvas(modifier.fillMaxSize()) {

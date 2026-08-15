@@ -110,6 +110,7 @@
     <string name="numpad_expand">Show keypad</string>
     <string name="numpad_collapse">Collapse keypad</string>
     <string name="numpad_backspace">Delete digit</string>
+    <string name="numpad_clear_all">Clear amount</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">Make recurring</string>
@@ -155,7 +156,7 @@
     <string name="stats_insight_even">Same as last month</string>
     <string name="stats_percent_format">%1$d%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
-    <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
+    <string name="chart_donut_desc">Donut chart: %1$s. %2$s</string>
     <string name="chart_trend_desc">6-month trend: %1$s</string>
     <string name="chart_daily_desc">Daily trend this month: %1$d days with records, total %2$s</string>
     <!-- touch callout: day-of-month in the daily chart -->
@@ -231,6 +232,7 @@
     <string name="habit_type_quit">Quit a habit</string>
     <string name="habit_name_hint">Habit name</string>
     <string name="habit_name_error">Please enter a name</string>
+    <string name="habit_name_count">%1$d/%2$d</string>
     <string name="habit_pick_emoji">Pick an emoji</string>
     <string name="habit_checked_streak">🔥 %1$d-day streak</string>
     <string name="habit_created">Created "%1$s"</string>
@@ -250,6 +252,7 @@
     <string name="mood_note_save">Save note</string>
     <string name="mood_note_saved">Saved today\'s note ✨</string>
     <string name="mood_saved">Mood recorded ✓</string>
+    <string name="mood_backfill_saved">Mood recorded for %1$s ✓</string>
     <string name="mood_stats_title">This month</string>
     <string name="mood_stats_empty">No mood records this month</string>
     <string name="mood_angry_days">😠 Angry %d days</string>
@@ -274,7 +277,6 @@
     <string name="cats_add_title">Add custom category</string>
     <string name="cats_name_hint">Category name</string>
     <string name="cats_name_count">%1$d/%2$d</string>
-    <string name="cats_error_empty">Please enter a name</string>
     <string name="cats_error_dup">Category already exists</string>
     <string name="cats_added">Added</string>
     <string name="cats_delete_confirm_title">Delete this category?</string>

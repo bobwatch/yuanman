@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -11,11 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,8 +34,6 @@ import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 /** 勋章墙：已获得彩色 + 获得日期；未获得灰色 + 解锁条件。 */
 @Composable
@@ -75,20 +72,19 @@ fun BadgeScreen(
                     // 存储的解锁日期是固定 yyyy-MM-dd，展示时按当前语言环境重排
                     val obtainedText = remember(unlockedDate, datePattern) {
                         unlockedDate?.let { raw ->
-                            try {
-                                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                    .parse(raw)
-                                    ?.let { formatSheetDate(it.time, datePattern) }
-                            } catch (e: Exception) {
-                                null
+                            DateUtils.parse(raw)?.let {
+                                formatSheetDate(it, datePattern)
                             }
                         } ?: ""
                     }
                     // 今天刚解锁的勋章：进页时弹一下——努力被看见的时刻值得一个仪式感
                     val fresh = unlocked && unlockedDate == DateUtils.today()
                     val popScale = remember { Animatable(1f) }
+                    val view = LocalView.current
                     LaunchedEffect(fresh) {
                         if (fresh) {
+                            // 弹跳动效 + 确认触感：解锁的「落定感」让努力被看见
+                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                             popScale.snapTo(0.6f)
                             popScale.animateTo(
                                 targetValue = 1f,
@@ -99,14 +95,8 @@ fun BadgeScreen(
                             )
                         }
                     }
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ),
+                    AppCard(
                         modifier = Modifier
-                            .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 6.dp)
                             .graphicsLayer {
                                 scaleX = popScale.value

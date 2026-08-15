@@ -274,7 +274,8 @@ fun HabitScreen(viewModel: MainViewModel) {
                 }) {
                     Text(
                         stringResource(R.string.common_confirm),
-                        color = MaterialTheme.colorScheme.error
+                        // 破戒重置不是删除：用主色而非错误红，别让「坦白」看起来像惩罚
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             },
