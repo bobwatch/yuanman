@@ -129,6 +129,7 @@
     <string name="stats_daily_income">本月每日收入走势</string>
     <string name="stats_total_expense_label">支出总额</string>
     <string name="stats_total_income_label">收入总额</string>
+    <string name="stats_balance">结余</string>
     <string name="stats_month_short">%d月</string>
 
     <!-- budget dialog -->

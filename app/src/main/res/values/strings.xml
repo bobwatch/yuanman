@@ -129,6 +129,7 @@
     <string name="stats_daily_income">Daily income this month</string>
     <string name="stats_total_expense_label">Total spending</string>
     <string name="stats_total_income_label">Total income</string>
+    <string name="stats_balance">Balance</string>
     <string name="stats_month_short">%d</string>
 
     <!-- budget dialog -->

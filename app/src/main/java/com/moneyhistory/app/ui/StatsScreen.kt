@@ -194,7 +194,7 @@ fun StatsScreen(
                 )
             }
 
-            // 顶部汇总
+            // 顶部汇总：支出 / 收入 / 结余
             AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(
                     Modifier
@@ -228,6 +228,26 @@ fun StatsScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = IncomeGreen,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.stats_balance),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val balance = totalIncome - totalExpense
+                        Text(
+                            text = MoneyUtils.formatCents(balance),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                balance > 0 -> IncomeGreen
+                                balance < 0 -> ExpenseRed
+                                else -> MaterialTheme.colorScheme.onSurface
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
