@@ -11,15 +11,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -39,8 +41,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
@@ -50,11 +54,11 @@ import com.moneyhistory.app.ui.theme.IncomeGreen
 import java.util.Calendar
 
 /**
- * 记账 / 编辑 BottomSheet —— 两步完成：九宫格输金额 → 点分类即保存关闭。
+ * 记账 / 编辑 BottomSheet —— 九宫格输金额 → 选分类 → 点「保存」。
  *
  * 备注 / 日期 / 周期账单 / 收支切换折叠在「更多选项」里（默认收起）。
- * 编辑模式点分类不自动保存（用户可能改多处）：保存按钮置顶在金额行右侧。
- * 有已输入内容时，关闭（下滑/点外部/返回）需二次确认。
+ * 有已输入内容时，关闭（下滑/点外部/返回）弹「放弃 / 继续编辑」确认，
+ * 确认弹窗的每条出路都会收起或重新展开 Sheet，不会残留卡死的弹窗。
  * 输入状态用 rememberSaveable，进程重建不丢。
  *
  * @param initial  编辑模式：预填原数据，保存为更新
@@ -116,7 +120,6 @@ fun TransactionSheet(
     }
     var amountError by rememberSaveable { mutableStateOf(false) }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
-    var showDiscardConfirm by rememberSaveable { mutableStateOf(false) }
 
     // 周期账单（仅新增支出时可用）
     var recurringEnabled by rememberSaveable { mutableStateOf(false) }
@@ -124,7 +127,6 @@ fun TransactionSheet(
     var dueMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
 
     val liveCents = segments.mapNotNull { MoneyUtils.parseToCents(it) }.sum()
-    val hasInput = segments.any { it.isNotBlank() } || note.isNotBlank()
 
     fun onNumKey(key: String) {
         amountError = false
@@ -187,22 +189,20 @@ fun TransactionSheet(
         }
     }
 
-    // 有输入时关闭需确认（下滑/点外部/返回都会走 onDismissRequest）
-    fun requestDismiss() {
-        if (hasInput) showDiscardConfirm = true else onDismiss()
-    }
-
+    // 关闭（下滑/点外部/返回）：一律直接收起，不残留窗口、不卡死。
+    // 保存动作由底部「保存」按钮显式完成。
     ModalBottomSheet(
-        onDismissRequest = { requestDismiss() },
+        onDismissRequest = { onDismiss() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-        ) {
+        // 整块内容随键盘上移，备注输入不被遮挡
+        Column(Modifier.fillMaxWidth().imePadding()) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 8.dp)
+            ) {
             Text(
                 text = stringResource(
                     when {
@@ -245,7 +245,7 @@ fun TransactionSheet(
             }
             Spacer(Modifier.height(12.dp))
 
-            // 金额大号等宽显示 + 连加实时合计；编辑模式保存按钮置顶右侧
+            // 金额大号等宽显示 + 连加实时合计
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -281,21 +281,35 @@ fun TransactionSheet(
                         }
                     )
                 }
-                if (initial != null) {
-                    Spacer(Modifier.width(12.dp))
-                    Button(onClick = { doSave() }) {
-                        Text(stringResource(R.string.common_save))
-                    }
-                }
             }
             Spacer(Modifier.height(12.dp))
 
-            // 分类（新增模式：点分类 = 立即保存）
+            // 备注：常驻可见，聚焦时随键盘上移不遮挡
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text(stringResource(R.string.sheet_note_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+
+            // 分类（选中即可，不再点分类即保存）
             Text(
                 text = stringResource(R.string.sheet_category),
                 style = MaterialTheme.typography.titleSmall
             )
-            Spacer(Modifier.height(8.dp))
+        }
+
+        // 可滚动中部：分类 + 更多选项
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp)
+        ) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -303,11 +317,15 @@ fun TransactionSheet(
                 categories.forEach { c ->
                     FilterChip(
                         selected = category == c,
-                        onClick = {
-                            category = c
-                            if (initial == null) doSave()
-                        },
-                        label = { Text(c) }
+                        onClick = { category = c },
+                        label = { Text(Categories.nameOf(c)) },
+                        leadingIcon = {
+                            Icon(
+                                categoryIcon(c),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     )
                 }
             }
@@ -325,14 +343,6 @@ fun TransactionSheet(
                     label = stringResource(R.string.sheet_date),
                     millis = dateMillis,
                     onDateSelected = { dateMillis = it }
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text(stringResource(R.string.sheet_note_hint)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // 周期账单开关（仅新增支出）
@@ -369,43 +379,46 @@ fun TransactionSheet(
                     }
                 }
             }
+        }
 
+        // 固定底部：提示 + 键盘 + 保存（始终可见，不被长分类列表挤出）
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+        ) {
             if (initial == null) {
                 Text(
-                    text = stringResource(R.string.sheet_hint_tap_category),
+                    text = stringResource(R.string.sheet_hint_save),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
-            NumPad(onKey = { onNumKey(it) })
-        }
-    }
-
-    // 丢弃确认
-    if (showDiscardConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDiscardConfirm = false },
-            title = { Text(stringResource(R.string.discard_title)) },
-            text = { Text(stringResource(R.string.discard_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDiscardConfirm = false
-                    onDismiss()
-                }) {
-                    Text(
-                        stringResource(R.string.discard_confirm),
-                        color = MaterialTheme.colorScheme.error
-                    )
+            // 「＋ 连加」与「保存」并排一行
+            NumPad(
+                onKey = { onNumKey(it) },
+                footer = {
+                    Button(
+                        onClick = { doSave() },
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.common_save),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) {
-                    Text(stringResource(R.string.discard_keep))
-                }
+            )
             }
-        )
+        }
     }
 }
 

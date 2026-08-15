@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,13 +23,15 @@ import com.moneyhistory.app.R
 
 /**
  * 计算器式九宫格数字键盘（自绘，不弹系统软键盘）。
- * 按键：1-9、0、小数点、退格 ⌫，底部全宽「＋ 连加」。
+ * 按键：1-9、0、小数点、退格 ⌫。
+ * 底部一行：左侧「＋ 连加」，右侧可放 [footer]（如「保存」）并排。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NumPad(
     onKey: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    footer: @Composable RowScope.() -> Unit = {}
 ) {
     val rows = listOf(
         listOf("1", "2", "3"),
@@ -51,23 +54,29 @@ fun NumPad(
                 }
             }
         }
-        // 全宽「＋ 连加」：品牌渐变
-        Surface(
-            onClick = { onKey("+") },
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
+        // 底部一行：「＋ 连加」与「保存」并排
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = stringResource(R.string.numpad_plus),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
+            Surface(
+                onClick = { onKey("+") },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(R.string.numpad_plus),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
+            footer()
         }
     }
 }

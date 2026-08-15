@@ -103,9 +103,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _confettiVisible = MutableStateFlow(false)
     val confettiVisible: StateFlow<Boolean> = _confettiVisible.asStateFlow()
 
-    /** Snackbar 提示（同步完成 / 周期账单结算等）。 */
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    val messages: SharedFlow<String> = _messages.asSharedFlow()
+    /** 全局提示消息（Toast），带类型。 */
+    private val _messages = MutableSharedFlow<UiMessage>(extraBufferCapacity = 4)
+    val messages: SharedFlow<UiMessage> = _messages.asSharedFlow()
 
     /** 在线升级状态（GitHub Releases）。 */
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -122,11 +122,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 refresh()
                 checkBadges()
                 _messages.emit(
-                    if (event.mergedCount > 0) {
-                        app.getString(R.string.sync_done_new, event.mergedCount)
-                    } else {
-                        app.getString(R.string.sync_done_fresh)
-                    }
+                    UiMessage(
+                        text = if (event.mergedCount > 0) {
+                            app.getString(R.string.sync_done_new, event.mergedCount)
+                        } else {
+                            app.getString(R.string.sync_done_fresh)
+                        },
+                        variant = MessageVariant.SUCCESS
+                    )
                 )
             }
         }
@@ -286,7 +289,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                         else -> R.string.milestone_100
                     }
                     viewModelScope.launch {
-                        _messages.emit(app.getString(textRes))
+                        _messages.emit(
+                            UiMessage(app.getString(textRes), MessageVariant.SUCCESS)
+                        )
                     }
                 }
             }
@@ -339,9 +344,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         checkBadges()
     }
 
-    /** 供 UI 发 Snackbar 消息（由 MainActivity 顶层宿主统一展示）。 */
-    fun postMessage(msg: String) {
-        viewModelScope.launch { _messages.emit(msg) }
+    /** 供 UI 发全局 Toast 消息（由 MainActivity 顶层宿主统一展示）。 */
+    fun postMessage(msg: String, variant: MessageVariant = MessageVariant.INFO) {
+        viewModelScope.launch { _messages.emit(UiMessage(msg, variant)) }
     }
 
     // ---------- 勋章 ----------
@@ -377,9 +382,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 badgeById(id)?.let { badge ->
                     viewModelScope.launch {
                         _messages.emit(
-                            app.getString(
-                                R.string.badge_unlocked,
-                                app.getString(badge.titleRes)
+                            UiMessage(
+                                app.getString(
+                                    R.string.badge_unlocked,
+                                    app.getString(badge.titleRes)
+                                ),
+                                MessageVariant.SUCCESS
                             )
                         )
                     }
@@ -430,7 +438,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             if (file == null) {
                 _updateState.value = UpdateState.Idle
                 _messages.emit(
-                    getApplication<Application>().getString(R.string.update_download_failed)
+                    UiMessage(
+                        getApplication<Application>().getString(R.string.update_download_failed),
+                        MessageVariant.ERROR
+                    )
                 )
             } else {
                 _updateState.value = UpdateState.Idle
@@ -438,7 +449,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                     UpdateChecker.install(getApplication<Application>(), file)
                 } catch (e: Exception) {
                     _messages.emit(
-                        getApplication<Application>().getString(R.string.update_install_failed)
+                        UiMessage(
+                            getApplication<Application>().getString(R.string.update_install_failed),
+                            MessageVariant.ERROR
+                        )
                     )
                 }
             }
@@ -456,8 +470,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             _recurring.value = recurringStore.all()
             viewModelScope.launch {
                 _messages.emit(
-                    getApplication<Application>()
-                        .getString(R.string.recurring_settled, settled)
+                    UiMessage(
+                        getApplication<Application>()
+                            .getString(R.string.recurring_settled, settled),
+                        MessageVariant.INFO
+                    )
                 )
             }
         }

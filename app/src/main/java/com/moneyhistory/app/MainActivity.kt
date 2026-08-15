@@ -4,9 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,8 +38,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -43,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -75,6 +79,8 @@ import com.moneyhistory.app.ui.MoodScreen
 import com.moneyhistory.app.ui.OnboardingScreen
 import com.moneyhistory.app.ui.RecurringScreen
 import com.moneyhistory.app.ui.StatsScreen
+import com.moneyhistory.app.ui.ToastHost
+import com.moneyhistory.app.ui.ToastHostState
 import com.moneyhistory.app.ui.theme.YuanmanTheme
 
 private data class BottomTab(
@@ -89,6 +95,30 @@ private val bottomTabs = listOf(
     BottomTab("mood", R.string.tab_mood, Icons.Filled.Face),
     BottomTab("mine", R.string.tab_mine, Icons.Filled.Person)
 )
+
+private val tabRoutes = bottomTabs.map { it.route }
+
+/** 前进方向：Tab 之间按索引左右滑；进入子页统一向左滑（新页从右进入）。 */
+private fun navEnter(from: String?, to: String?): EnterTransition {
+    val fi = tabRoutes.indexOf(from)
+    val ti = tabRoutes.indexOf(to)
+    return if (fi >= 0 && ti >= 0 && fi != ti) {
+        if (ti > fi) slideInHorizontally { it } + fadeIn() else slideInHorizontally { -it } + fadeIn()
+    } else {
+        slideInHorizontally { it } + fadeIn()
+    }
+}
+
+/** 后退方向：当前页向左退出（配合返回时从右弹回）。 */
+private fun navExit(from: String?, to: String?): ExitTransition {
+    val fi = tabRoutes.indexOf(from)
+    val ti = tabRoutes.indexOf(to)
+    return if (fi >= 0 && ti >= 0 && fi != ti) {
+        if (ti > fi) slideOutHorizontally { -it } + fadeOut() else slideOutHorizontally { it } + fadeOut()
+    } else {
+        slideOutHorizontally { -it } + fadeOut()
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -118,12 +148,12 @@ class MainActivity : ComponentActivity() {
                     )
                 } else {
                     val navController = rememberNavController()
-                    val snackbarHostState = remember { SnackbarHostState() }
+                    val toastHostState = remember { ToastHostState() }
 
-                    // 顶层统一 Snackbar（同步 / 周期账单 / 勋章解锁等提示）
+                    // 全局 Toast（同步 / 周期账单 / 勋章解锁 / 升级等提示）
                     LaunchedEffect(Unit) {
                         viewModel.messages.collect { msg ->
-                            snackbarHostState.showSnackbar(msg)
+                            toastHostState.show(msg.text, msg.variant)
                         }
                     }
 
@@ -145,13 +175,6 @@ class MainActivity : ComponentActivity() {
                         Scaffold(
                             // 各页面自绘渐变页头（含状态栏），外层不再叠加系统 insets
                             contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-                            snackbarHost = {
-                                // 避开底部导航 / FAB 区域
-                                SnackbarHost(
-                                    snackbarHostState,
-                                    modifier = Modifier.padding(bottom = 80.dp)
-                                )
-                            },
                             bottomBar = {
                                 NavigationBar(
                                     containerColor = MaterialTheme.colorScheme.surface,
@@ -223,11 +246,18 @@ class MainActivity : ComponentActivity() {
                             NavHost(
                                 navController = navController,
                                 startDestination = "home",
-                                modifier = Modifier.padding(padding),
-                                enterTransition = { fadeIn(tween(250)) },
-                                exitTransition = { fadeOut(tween(200)) },
-                                popEnterTransition = { fadeIn(tween(250)) },
-                                popExitTransition = { fadeOut(tween(200)) }
+                                modifier = Modifier
+                                    .padding(padding)
+                                    .background(MaterialTheme.colorScheme.background),
+                                // 按方向滑动切换：Tab 之间按索引左右滑，进入子页面向左滑、返回向右滑
+                                enterTransition = {
+                                    navEnter(initialState.destination.route, targetState.destination.route)
+                                },
+                                exitTransition = {
+                                    navExit(initialState.destination.route, targetState.destination.route)
+                                },
+                                popEnterTransition = { slideInHorizontally { -it } },
+                                popExitTransition = { slideOutHorizontally { it } }
                             ) {
                                 composable("home") {
                                     HomeScreen(
@@ -241,7 +271,8 @@ class MainActivity : ComponentActivity() {
                                         openAddRequest = openAddRequest.value,
                                         onAddRequestHandled = {
                                             openAddRequest.value = false
-                                        }
+                                        },
+                                        toastHostState = toastHostState
                                     )
                                 }
                                 composable("habits") {
@@ -338,6 +369,15 @@ class MainActivity : ComponentActivity() {
                         ConfettiOverlay(
                             visible = confettiVisible,
                             onFinished = { viewModel.dismissConfetti() }
+                        )
+
+                        // 全局 Toast：顶部向下一点，避开状态栏
+                        ToastHost(
+                            state = toastHostState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                         )
 
                         // 在线升级：新版本弹窗 + 下载中进度

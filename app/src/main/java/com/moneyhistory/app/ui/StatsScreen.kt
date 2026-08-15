@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
@@ -169,25 +169,27 @@ fun StatsScreen(
 
             TabRow(
                 selectedTabIndex = tab,
-                containerColor = MaterialTheme.colorScheme.background,
-                indicator = { _ ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .padding(horizontal = 48.dp),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                containerColor = MaterialTheme.colorScheme.background
             ) {
                 Tab(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    text = { Text(stringResource(R.string.sheet_type_expense)) }
+                    text = {
+                        Text(
+                            stringResource(R.string.sheet_type_expense),
+                            fontWeight = if (tab == 0) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 )
                 Tab(
                     selected = tab == 1,
                     onClick = { tab = 1 },
-                    text = { Text(stringResource(R.string.sheet_type_income)) }
+                    text = {
+                        Text(
+                            stringResource(R.string.sheet_type_income),
+                            fontWeight = if (tab == 1) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 )
             }
 
@@ -285,7 +287,7 @@ fun StatsScreen(
                                 )
                                 Spacer(Modifier.size(8.dp))
                                 Text(
-                                    text = slice.label,
+                                    text = Categories.nameOf(slice.label),
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f)
                                 )

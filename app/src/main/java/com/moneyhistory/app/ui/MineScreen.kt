@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.BuildConfig
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ThemeMode
@@ -98,22 +99,24 @@ fun MineScreen(
                 String(input.readBytes(), Charsets.UTF_8)
             }
             when {
-                content == null -> viewModel.postMessage(readFailedText)
+                content == null -> viewModel.postMessage(readFailedText, MessageVariant.ERROR)
                 importMergeMode -> {
                     val merged = viewModel.mergeImportJson(content)
-                    viewModel.postMessage(
-                        if (merged != null) {
-                            context.getString(R.string.import_merged, merged)
-                        } else {
-                            invalidText
-                        }
-                    )
+                    if (merged != null) {
+                        viewModel.postMessage(
+                            context.getString(R.string.import_merged, merged),
+                            MessageVariant.SUCCESS
+                        )
+                    } else {
+                        viewModel.postMessage(invalidText, MessageVariant.ERROR)
+                    }
                 }
                 else -> pendingImport = content
             }
         } catch (e: Exception) {
             viewModel.postMessage(
-                context.getString(R.string.import_read_failed_reason, e.message)
+                context.getString(R.string.import_read_failed_reason, e.message),
+                MessageVariant.ERROR
             )
         }
     }
@@ -216,7 +219,7 @@ fun MineScreen(
                     subtitle = stringResource(R.string.mine_export_sub),
                     onClick = {
                         exportBackup(context, viewModel) { msg ->
-                            viewModel.postMessage(msg)
+                            viewModel.postMessage(msg, MessageVariant.ERROR)
                         }
                     }
                 )
@@ -329,7 +332,10 @@ fun MineScreen(
                 TextButton(onClick = {
                     pendingImport = null
                     val ok = viewModel.importJson(content)
-                    viewModel.postMessage(if (ok) successText else invalidText)
+                    viewModel.postMessage(
+                        if (ok) successText else invalidText,
+                        if (ok) MessageVariant.SUCCESS else MessageVariant.ERROR
+                    )
                 }) {
                     Text(stringResource(R.string.import_confirm))
                 }

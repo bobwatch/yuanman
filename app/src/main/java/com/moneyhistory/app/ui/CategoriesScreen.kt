@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.R
 
 /** 分类管理：预设分类不可删，自定义分类（emoji + 名称）可增可删。 */
@@ -101,12 +102,12 @@ fun CategoriesScreen(
                                 val trimmed = name.trim()
                                 when {
                                     trimmed.isEmpty() ->
-                                        viewModel.postMessage(errorEmptyText)
+                                        viewModel.postMessage(errorEmptyText, MessageVariant.ERROR)
                                     !viewModel.addCustomCategory("$selectedEmoji $trimmed") ->
-                                        viewModel.postMessage(errorDupText)
+                                        viewModel.postMessage(errorDupText, MessageVariant.WARNING)
                                     else -> {
                                         name = ""
-                                        viewModel.postMessage(addedText)
+                                        viewModel.postMessage(addedText, MessageVariant.SUCCESS)
                                     }
                                 }
                             }) {
@@ -174,8 +175,16 @@ private fun CategoryRow(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconTile(
+            icon = categoryIcon(category),
+            tint = MaterialTheme.colorScheme.primary,
+            container = MaterialTheme.colorScheme.primaryContainer,
+            size = 36.dp,
+            iconSize = 18.dp
+        )
+        Spacer(Modifier.size(12.dp))
         Text(
-            text = category,
+            text = Categories.nameOf(category),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )

@@ -13,14 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -32,12 +31,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,7 +65,6 @@ import com.moneyhistory.app.checkedOn
 import com.moneyhistory.app.habitEmojiCandidates
 import com.moneyhistory.app.quitDays
 import com.moneyhistory.app.ui.theme.ExpenseRed
-import com.moneyhistory.app.ui.theme.IncomeGreen
 
 private data class HabitPreset(val emoji: String, val name: String, val type: Habit.Type)
 
@@ -84,14 +80,19 @@ private val habitPresets = listOf(
     HabitPreset("🌙", "戒熬夜", Habit.Type.QUIT)
 )
 
-/** 打卡 Tab：习惯列表 + 虚线「+ 新习惯」入口卡片。 */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 打卡 Tab：习惯列表 + 行内新建表单（不再用弹窗，缩短操作路径）。 */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HabitScreen(viewModel: MainViewModel) {
     val habits by viewModel.habits.collectAsStateWithLifecycle()
     val today = remember { DateUtils.today() }
 
-    var showCreateSheet by remember { mutableStateOf(false) }
+    // 正在进行的习惯排最前：build（今天/昨天有打卡）或 quit（今天未破戒）
+    val sortedHabits = remember(habits, today) {
+        habits.sortedByDescending { it.isActiveToday(today) }
+    }
+
+    var showCreate by rememberSaveable { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Habit?>(null) }
     var resetTarget by remember { mutableStateOf<Habit?>(null) }
 
@@ -105,9 +106,30 @@ fun HabitScreen(viewModel: MainViewModel) {
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .imePadding()
                 .padding(top = 4.dp)
         ) {
-            if (habits.isEmpty()) {
+            // 行内新建表单：直接在主列表里操作
+            if (showCreate) {
+                item(key = "create") {
+                    InlineHabitForm(
+                        onCancel = { showCreate = false },
+                        onCreate = { name, emoji, type ->
+                            viewModel.addHabit(
+                                Habit(
+                                    name = name,
+                                    emoji = emoji,
+                                    type = type,
+                                    startDate = DateUtils.today()
+                                )
+                            )
+                            showCreate = false
+                        }
+                    )
+                }
+            }
+
+            if (habits.isEmpty() && !showCreate) {
                 item(key = "empty") {
                     Text(
                         text = stringResource(R.string.habit_empty),
@@ -120,7 +142,8 @@ fun HabitScreen(viewModel: MainViewModel) {
                     )
                 }
             }
-            items(habits, key = { it.id }) { habit ->
+
+            items(sortedHabits, key = { it.id }) { habit ->
                 HabitCard(
                     habit = habit,
                     today = today,
@@ -129,27 +152,13 @@ fun HabitScreen(viewModel: MainViewModel) {
                     onDelete = { deleteTarget = habit }
                 )
             }
-            item(key = "add") {
-                DashedAddCard(onClick = { showCreateSheet = true })
+
+            if (!showCreate) {
+                item(key = "add") {
+                    DashedAddCard(onClick = { showCreate = true })
+                }
             }
         }
-    }
-
-    if (showCreateSheet) {
-        HabitCreateSheet(
-            onDismiss = { showCreateSheet = false },
-            onCreate = { name, emoji, type ->
-                viewModel.addHabit(
-                    Habit(
-                        name = name,
-                        emoji = emoji,
-                        type = type,
-                        startDate = DateUtils.today()
-                    )
-                )
-                showCreateSheet = false
-            }
-        )
     }
 
     deleteTarget?.let { habit ->
@@ -216,222 +225,11 @@ fun HabitScreen(viewModel: MainViewModel) {
     }
 }
 
-/** 虚线「+ 新习惯」入口卡片。 */
+/** 行内新建习惯表单：类型 + 预设 + 名称 + emoji + 创建/取消。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DashedAddCard(onClick: () -> Unit) {
-    val dashColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .dashedBorder(dashColor, 20.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 20.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = stringResource(R.string.habit_add_new),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
-}
-
-private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp): Modifier =
-    drawBehind {
-        val strokeWidth = 2.dp.toPx()
-        drawRoundRect(
-            color = color,
-            size = size,
-            cornerRadius = CornerRadius(cornerRadius.toPx()),
-            style = Stroke(
-                width = strokeWidth,
-                pathEffect = PathEffect.dashPathEffect(
-                    floatArrayOf(16f, 12f), 0f
-                )
-            )
-        )
-    }
-
-@Composable
-private fun HabitCard(
-    habit: Habit,
-    today: String,
-    onCheckin: () -> Unit,
-    onReset: () -> Unit,
-    onDelete: () -> Unit
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        if (habit.type == Habit.Type.BUILD) {
-            val streak = habit.buildStreak(today)
-            val checked = habit.checkedOn(today)
-            Column(Modifier.padding(12.dp)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (checked) {
-                                    IncomeGreen.copy(alpha = 0.16f)
-                                } else {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = habit.emoji, fontSize = 22.sp)
-                    }
-                    Spacer(Modifier.size(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = habit.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.habit_build_streak, streak),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // 最近 7 天小圆点（打卡日实心）
-                    LastSevenDots(
-                        habit = habit,
-                        today = today,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                    // 打卡按钮：整块右侧大按钮，单手拇指可达
-                    if (checked) {
-                        OutlinedButton(
-                            onClick = onCheckin,
-                            modifier = Modifier.heightIn(min = 52.dp)
-                        ) {
-                            Text(stringResource(R.string.habit_checked_today))
-                        }
-                    } else {
-                        Button(
-                            onClick = onCheckin,
-                            modifier = Modifier.heightIn(min = 52.dp)
-                        ) {
-                            Text(stringResource(R.string.habit_checkin_today))
-                        }
-                    }
-                    HabitMenuButton(onOpen = { menuOpen = true })
-                }
-            }
-        } else {
-            // 戒断卡片：超大坚持天数为主视觉
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = habit.emoji, fontSize = 22.sp)
-                }
-                Spacer(Modifier.size(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = habit.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.habit_quit_since),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = stringResource(
-                            R.string.habit_quit_days_big,
-                            habit.quitDays(today)
-                        ),
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    OutlinedButton(onClick = onReset) {
-                        Text(stringResource(R.string.habit_relapse))
-                    }
-                }
-                HabitMenuButton(onOpen = { menuOpen = true })
-            }
-        }
-    }
-
-    DropdownMenu(
-        expanded = menuOpen,
-        onDismissRequest = { menuOpen = false }
-    ) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.habit_delete_title)) },
-            onClick = {
-                menuOpen = false
-                onDelete()
-            }
-        )
-    }
-}
-
-/** 卡片右上角「⋯」操作按钮。 */
-@Composable
-private fun HabitMenuButton(onOpen: () -> Unit) {
-    IconButton(onClick = onOpen) {
-        Icon(
-            Icons.Filled.MoreVert,
-            contentDescription = stringResource(R.string.home_menu),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-/** 最近 7 天打卡小圆点：7 个小圆，打卡日实心主色，未打卡浅灰。 */
-@Composable
-private fun LastSevenDots(
-    habit: Habit,
-    today: String,
-    modifier: Modifier = Modifier
-) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        (6 downTo 0).forEach { back ->
-            val day = DateUtils.addDays(today, -back)
-            val checked = habit.checkedOn(day)
-            Box(
-                Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (checked) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        }
-                    )
-            )
-        }
-    }
-}
-
-/** 新建习惯 Sheet：名称 + emoji + 类型 + 预设快捷填充。 */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun HabitCreateSheet(
-    onDismiss: () -> Unit,
+private fun InlineHabitForm(
+    onCancel: () -> Unit,
     onCreate: (name: String, emoji: String, type: Habit.Type) -> Unit
 ) {
     var name by rememberSaveable { mutableStateOf("") }
@@ -439,22 +237,13 @@ private fun HabitCreateSheet(
     var emoji by rememberSaveable { mutableStateOf(habitEmojiCandidates.first()) }
     var type by rememberSaveable { mutableStateOf(Habit.Type.BUILD) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-        ) {
+    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Text(
                 stringResource(R.string.habit_create_title),
                 style = MaterialTheme.typography.titleLarge
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
@@ -468,7 +257,7 @@ private fun HabitCreateSheet(
                     label = { Text(stringResource(R.string.habit_type_quit)) }
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
             // 预设快捷填充
             FlowRow(
@@ -522,7 +311,7 @@ private fun HabitCreateSheet(
                     )
                 }
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
 
             Button(
                 onClick = {
@@ -532,10 +321,228 @@ private fun HabitCreateSheet(
                         onCreate(name.trim(), emoji, type)
                     }
                 },
+                shape = MaterialTheme.shapes.large,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.common_create))
+                Text(
+                    text = stringResource(R.string.common_create),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.common_cancel))
             }
         }
     }
+}
+
+/** 虚线「+ 新习惯」入口卡片。 */
+@Composable
+private fun DashedAddCard(onClick: () -> Unit) {
+    val dashColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .dashedBorder(dashColor, 20.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = stringResource(R.string.habit_add_new),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp): Modifier =
+    drawBehind {
+        val strokeWidth = 2.dp.toPx()
+        drawRoundRect(
+            color = color,
+            size = size,
+            cornerRadius = CornerRadius(cornerRadius.toPx()),
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = PathEffect.dashPathEffect(
+                    floatArrayOf(16f, 12f), 0f
+                )
+            )
+        )
+    }
+
+@Composable
+private fun HabitCard(
+    habit: Habit,
+    today: String,
+    onCheckin: () -> Unit,
+    onReset: () -> Unit,
+    onDelete: () -> Unit
+) {
+    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        if (habit.type == Habit.Type.BUILD) {
+            val streak = habit.buildStreak(today)
+            val checked = habit.checkedOn(today)
+            Column(Modifier.padding(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconTile(
+                        icon = habitIcon(habit.emoji),
+                        tint = habitIconColor(habit),
+                        container = habitIconColor(habit).copy(alpha = if (checked) 0.2f else 0.12f),
+                        size = 46.dp,
+                        iconSize = 22.dp
+                    )
+                    Spacer(Modifier.size(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = habit.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.habit_build_streak, streak),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    // 最近 7 天小圆点（打卡日实心）
+                    LastSevenDots(
+                        habit = habit,
+                        today = today,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    // 打卡按钮：整块右侧大按钮，单手拇指可达
+                    if (checked) {
+                        OutlinedButton(
+                            onClick = onCheckin,
+                            modifier = Modifier.heightIn(min = 52.dp)
+                        ) {
+                            Text(stringResource(R.string.habit_checked_today))
+                        }
+                    } else {
+                        Button(
+                            onClick = onCheckin,
+                            modifier = Modifier.heightIn(min = 52.dp)
+                        ) {
+                            Text(stringResource(R.string.habit_checkin_today))
+                        }
+                    }
+                    HabitMenuButton(onDelete = onDelete)
+                }
+            }
+        } else {
+            // 戒断卡片：超大坚持天数为主视觉
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconTile(
+                    icon = habitIcon(habit.emoji),
+                    tint = habitIconColor(habit),
+                    container = habitIconColor(habit).copy(alpha = 0.12f),
+                    size = 46.dp,
+                    iconSize = 22.dp
+                )
+                Spacer(Modifier.size(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = habit.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(R.string.habit_quit_since),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = stringResource(
+                            R.string.habit_quit_days_big,
+                            habit.quitDays(today)
+                        ),
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    OutlinedButton(onClick = onReset) {
+                        Text(stringResource(R.string.habit_relapse))
+                    }
+                }
+                HabitMenuButton(onDelete = onDelete)
+            }
+        }
+    }
+}
+
+/** 卡片右上角「⋯」操作按钮（菜单锚定在按钮上，不跑到屏幕角落）。 */
+@Composable
+private fun HabitMenuButton(onDelete: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menuOpen = true }) {
+            Icon(
+                Icons.Filled.MoreVert,
+                contentDescription = stringResource(R.string.home_menu),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.habit_delete_title)) },
+                onClick = {
+                    menuOpen = false
+                    onDelete()
+                }
+            )
+        }
+    }
+}
+
+/** 最近 7 天打卡小圆点：7 个小圆，打卡日实心主色，未打卡浅灰。 */
+@Composable
+private fun LastSevenDots(
+    habit: Habit,
+    today: String,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        (6 downTo 0).forEach { back ->
+            val day = DateUtils.addDays(today, -back)
+            val checked = habit.checkedOn(day)
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (checked) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        }
+                    )
+            )
+        }
+    }
+}
+
+/** 正在进行的习惯：build（今天/昨天有打卡）或 quit（今天未破戒）。 */
+private fun Habit.isActiveToday(today: String): Boolean = when (type) {
+    Habit.Type.BUILD -> checkedOn(today) || checkedOn(DateUtils.addDays(today, -1))
+    Habit.Type.QUIT -> resets.none { it == today }
 }

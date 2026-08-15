@@ -79,7 +79,7 @@
     <string name="sheet_less">Less ▴</string>
     <string name="sheet_note_hint">Note (optional)</string>
     <string name="sheet_date">Date</string>
-    <string name="sheet_hint_tap_category">Enter an amount, then tap a category to save</string>
+    <string name="sheet_hint_save">Enter an amount, pick a category, then tap Save</string>
     <string name="numpad_plus">＋ Add up</string>
 
     <!-- recurring -->
@@ -342,9 +342,5 @@
 
     <!-- v0.0.2 polish -->
     <string name="record_saved">Saved</string>
-    <string name="discard_title">Discard changes?</string>
-    <string name="discard_message">You have unsaved input. Closing will discard it.</string>
-    <string name="discard_confirm">Discard</string>
-    <string name="discard_keep">Keep editing</string>
     <string name="pad_amount_exceeds">Exceeds available balance</string>
 </resources>

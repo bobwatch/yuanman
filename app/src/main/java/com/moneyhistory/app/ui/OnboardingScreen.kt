@@ -15,8 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,9 +45,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
     val pages = listOf(
-        Triple("⚡", R.string.onboard_1_title, R.string.onboard_1_desc),
-        Triple("✅", R.string.onboard_2_title, R.string.onboard_2_desc),
-        Triple("🔒", R.string.onboard_3_title, R.string.onboard_3_desc)
+        Triple(Icons.Outlined.Bolt, R.string.onboard_1_title, R.string.onboard_1_desc),
+        Triple(Icons.Outlined.TaskAlt, R.string.onboard_2_title, R.string.onboard_2_desc),
+        Triple(Icons.Outlined.Lock, R.string.onboard_3_title, R.string.onboard_3_desc)
     )
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
@@ -56,13 +62,13 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             state = pagerState,
             modifier = Modifier.weight(1f)
         ) { page ->
-            val (emoji, titleRes, descRes) = pages[page]
+            val (icon, titleRes, descRes) = pages[page]
             Column(
                 Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // 半透明白底 emoji
+                // 半透明白底矢量图标
                 Box(
                     Modifier
                         .size(128.dp)
@@ -70,7 +76,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         .background(Color.White.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = emoji, fontSize = 56.sp)
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(56.dp)
+                    )
                 }
                 Spacer(Modifier.height(32.dp))
                 Text(

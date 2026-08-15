@@ -79,7 +79,7 @@
     <string name="sheet_less">收起 ▴</string>
     <string name="sheet_note_hint">备注（可选）</string>
     <string name="sheet_date">日期</string>
-    <string name="sheet_hint_tap_category">输入金额后点击分类即可保存</string>
+    <string name="sheet_hint_save">输入金额，选择分类，点保存</string>
     <string name="numpad_plus">＋ 连加</string>
 
     <!-- recurring -->
@@ -342,9 +342,5 @@
 
     <!-- v0.0.2 polish -->
     <string name="record_saved">已保存</string>
-    <string name="discard_title">放弃当前输入？</string>
-    <string name="discard_message">已输入内容尚未保存，关闭将丢弃。</string>
-    <string name="discard_confirm">放弃</string>
-    <string name="discard_keep">继续编辑</string>
     <string name="pad_amount_exceeds">超出可取出金额</string>
 </resources>

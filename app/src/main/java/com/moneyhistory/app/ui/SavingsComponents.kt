@@ -15,11 +15,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -41,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.Goal
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
@@ -142,8 +144,14 @@ fun GoalCard(goal: Goal, onClick: () -> Unit) {
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = goal.emoji, fontSize = 20.sp)
-                Spacer(Modifier.size(6.dp))
+                IconTile(
+                    icon = goalIcon(goal.emoji),
+                    tint = MaterialTheme.colorScheme.primary,
+                    container = MaterialTheme.colorScheme.primaryContainer,
+                    size = 32.dp,
+                    iconSize = 16.dp
+                )
+                Spacer(Modifier.size(8.dp))
                 Text(
                     text = goal.name,
                     style = MaterialTheme.typography.titleSmall,
@@ -215,10 +223,10 @@ fun AddGoalCard(onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = "＋",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = stringResource(R.string.goal_add_card),

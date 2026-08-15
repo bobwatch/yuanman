@@ -1,0 +1,203 @@
+package com.moneyhistory.app.ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneyhistory.app.MessageVariant
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** 一条 Toast。 */
+data class ToastData(
+    val id: Long,
+    val message: String,
+    val variant: MessageVariant = MessageVariant.INFO,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null
+)
+
+/**
+ * shadcn 风格 Toast 状态：悬浮圆角卡片，按类型着色，自动消失、可滑动关闭、可带操作按钮。
+ */
+class ToastHostState {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _toasts = MutableStateFlow<List<ToastData>>(emptyList())
+    val toasts: StateFlow<List<ToastData>> = _toasts.asStateFlow()
+    private val idCounter = AtomicLong(0)
+
+    fun show(
+        message: String,
+        variant: MessageVariant = MessageVariant.INFO,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
+        durationMillis: Long = 3500L
+    ) {
+        val toast = ToastData(idCounter.incrementAndGet(), message, variant, actionLabel, onAction)
+        _toasts.update { it + toast }
+        scope.launch {
+            delay(durationMillis)
+            dismiss(toast.id)
+        }
+    }
+
+    fun dismiss(id: Long) {
+        _toasts.update { list -> list.filterNot { it.id == id } }
+    }
+}
+
+/** 顶部悬浮 Toast 容器：最新一条在最下方。 */
+@Composable
+fun ToastHost(
+    state: ToastHostState,
+    modifier: Modifier = Modifier
+) {
+    val toasts by state.toasts.collectAsStateWithLifecycle()
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        toasts.forEach { toast ->
+            key(toast.id) {
+                ToastItem(toast, onDismiss = { state.dismiss(toast.id) })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ToastItem(toast: ToastData, onDismiss: () -> Unit) {
+    val darkTheme = isSystemInDarkTheme()
+    val container = if (darkTheme) Color(0xFFF2F4F8) else Color(0xFF232A35)
+    val content = if (darkTheme) Color(0xFF161B22) else Color.White
+    // 按消息类型着色（信息蓝 / 成功绿 / 警告橙 / 异常红）
+    val variantColor = when (toast.variant) {
+        MessageVariant.INFO -> MaterialTheme.colorScheme.primary
+        MessageVariant.SUCCESS -> Color(0xFF34A853)
+        MessageVariant.WARNING -> Color(0xFFFF9800)
+        MessageVariant.ERROR -> Color(0xFFE53935)
+    }
+
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    // 横向滑动关闭
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value != SwipeToDismissBoxValue.Settled) {
+                onDismiss()
+                true
+            } else {
+                false
+            }
+        }
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = fadeOut()
+    ) {
+        SwipeToDismissBox(
+            state = dismissState,
+            backgroundContent = {},
+            content = {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = container,
+                        contentColor = content
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 左侧类型色条
+                        Box(
+                            Modifier
+                                .width(4.dp)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(variantColor)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        // 类型色指示点
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(variantColor)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = toast.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = content,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (toast.actionLabel != null) {
+                            TextButton(onClick = {
+                                toast.onAction?.invoke()
+                                onDismiss()
+                            }) {
+                                Text(
+                                    text = toast.actionLabel,
+                                    color = variantColor,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+}

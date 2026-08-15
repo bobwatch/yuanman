@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -57,10 +59,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
@@ -346,6 +350,32 @@ fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
     )
+}
+
+/** 矢量图标圆底（替代 emoji 文本图标）。 */
+@Composable
+fun IconTile(
+    icon: ImageVector,
+    tint: Color,
+    container: Color,
+    size: Dp = 42.dp,
+    iconSize: Dp = 20.dp,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(container),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(iconSize)
+        )
+    }
 }
 
 /** 一级页头（Tab 页）：品牌蓝渐变 + 状态栏融合 + 圆角收底。 */

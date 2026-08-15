@@ -67,7 +67,7 @@ fun GoalDetailScreen(
 
     Column(Modifier.fillMaxSize()) {
         SubPageHeader(
-            title = goal?.let { "${it.emoji} ${it.name}" } ?: "",
+            title = goal?.name ?: "",
             onBack = onBack,
             actions = {
                 IconButton(onClick = { showDeleteConfirm = true }) {
@@ -89,6 +89,14 @@ fun GoalDetailScreen(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+            Spacer(Modifier.height(8.dp))
+            IconTile(
+                icon = goalIcon(goal.emoji),
+                tint = MaterialTheme.colorScheme.primary,
+                container = MaterialTheme.colorScheme.primaryContainer,
+                size = 56.dp,
+                iconSize = 26.dp
+            )
             Spacer(Modifier.height(8.dp))
             ProgressRing(
                 progress = goal.progress,

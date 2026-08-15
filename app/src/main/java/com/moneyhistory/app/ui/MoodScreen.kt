@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -39,7 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
@@ -216,20 +216,20 @@ fun MoodScreen(viewModel: MainViewModel) {
                         )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            DonutChart(
-                                slices = Mood.entries.mapNotNull { mood ->
-                                    val count = monthEntries.count {
-                                        it.value.mood == mood
-                                    }
-                                    if (count > 0) {
-                                        ChartSlice(
-                                            "${mood.emoji} ${moodLabel(mood)}",
-                                            count.toFloat()
-                                        )
-                                    } else {
-                                        null
-                                    }
-                                },
+                                DonutChart(
+                                    slices = Mood.entries.mapNotNull { mood ->
+                                        val count = monthEntries.count {
+                                            it.value.mood == mood
+                                        }
+                                        if (count > 0) {
+                                            ChartSlice(
+                                                moodLabel(mood),
+                                                count.toFloat()
+                                            )
+                                        } else {
+                                            null
+                                        }
+                                    },
                                 centerTitle = stringResource(R.string.mood_donut_center),
                                 centerValue = "$angryDays",
                                 modifier = Modifier.size(140.dp)
@@ -336,7 +336,12 @@ private fun MoodButton(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = mood.emoji, fontSize = 26.sp)
+            Icon(
+                imageVector = moodIcon(mood),
+                contentDescription = null,
+                tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(26.dp)
+            )
         }
         Spacer(Modifier.height(2.dp))
         Text(
