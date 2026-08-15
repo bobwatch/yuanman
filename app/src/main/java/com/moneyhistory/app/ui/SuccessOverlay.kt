@@ -1,9 +1,6 @@
 package com.moneyhistory.app.ui
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -24,19 +21,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /**
  * 操作成功的对勾微动效：屏幕中央偏上 Canvas 自绘
- * （圆形描边 300ms + 对勾路径，随后 200ms 淡出）+ 30ms 轻震动。
+ * （圆形描边 300ms + 对勾路径，随后 200ms 淡出）+ 确认触感。
  *
  * 由 [trigger] 自增计数驱动：每次 +1 播放一次（0 或重复值不触发）。
  */
 @Composable
 fun SuccessOverlay(trigger: Int, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
+    val view = LocalView.current
     val color = MaterialTheme.colorScheme.primary
     val progress = remember { Animatable(0f) }
     val alpha = remember { Animatable(1f) }
@@ -48,7 +45,8 @@ fun SuccessOverlay(trigger: Int, modifier: Modifier = Modifier) {
         if (trigger == lastHandled) return@LaunchedEffect
         lastHandled = trigger
         active = true
-        vibrateClick(context)
+        // 走系统触感通道：尊重「触摸振动」设置（直接调 Vibrator 会无视开关）
+        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         progress.snapTo(0f)
         alpha.snapTo(1f)
         progress.animateTo(1f, tween(300))
@@ -109,21 +107,5 @@ fun SuccessOverlay(trigger: Int, modifier: Modifier = Modifier) {
                 }
             }
         }
-    }
-}
-
-@Suppress("DEPRECATION")
-private fun vibrateClick(context: Context) {
-    try {
-        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(
-                VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE)
-            )
-        } else {
-            vibrator.vibrate(30)
-        }
-    } catch (e: Exception) {
-        // 无震动硬件等情况忽略
     }
 }

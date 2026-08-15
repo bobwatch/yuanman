@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -100,11 +101,23 @@ fun CategoriesScreen(
                                 value = name,
                                 onValueChange = { name = it.take(8) },
                                 label = { Text(stringResource(R.string.cats_name_hint)) },
+                                // 上限 8 字：边输边显示计数，不会「打字突然卡住」的错觉
+                                supportingText = {
+                                    if (name.isNotEmpty()) {
+                                        Text(
+                                            stringResource(
+                                                R.string.cats_name_count,
+                                                name.length,
+                                                8
+                                            )
+                                        )
+                                    }
+                                },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.size(8.dp))
-                            // 与输入框（56dp 含 label）同高，行内不「吊高」
+                            // 最小与输入框同高；大字号下随内容自然长高，不会「吊高」
                             Button(
                                 onClick = {
                                     val trimmed = name.trim()
@@ -119,7 +132,7 @@ fun CategoriesScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.height(56.dp)
+                                modifier = Modifier.heightIn(min = 56.dp)
                             ) {
                                 Text(stringResource(R.string.common_add))
                             }

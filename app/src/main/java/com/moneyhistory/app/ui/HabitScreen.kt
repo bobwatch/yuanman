@@ -168,7 +168,16 @@ fun HabitScreen(viewModel: MainViewModel) {
                 HabitCard(
                     habit = habit,
                     today = today,
-                    onCheckin = { viewModel.toggleCheckin(habit.id) },
+                    onCheckin = {
+                        // 打卡成功有对勾+连续天数反馈；取消也轻声告知，两条路都有回应
+                        val checked = viewModel.toggleCheckin(habit.id)
+                        if (!checked) {
+                            viewModel.postMessage(
+                                context.getString(R.string.habit_unchecked),
+                                MessageVariant.INFO
+                            )
+                        }
+                    },
                     onReset = { resetTarget = habit },
                     onDelete = { deleteTarget = habit }
                 )

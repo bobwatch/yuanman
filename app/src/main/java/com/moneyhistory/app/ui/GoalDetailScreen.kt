@@ -172,15 +172,22 @@ fun GoalDetailScreen(
             )
 
             Spacer(Modifier.height(16.dp))
-            Row {
-                Button(onClick = {
-                    recordExpense = false
-                    showDepositDialog = true
-                }) {
+            // 两按钮均分整行：窄屏/大字号下不会溢出换位
+            Row(Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {
+                        recordExpense = false
+                        showDepositDialog = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(stringResource(R.string.goal_deposit))
                 }
                 Spacer(Modifier.width(12.dp))
-                OutlinedButton(onClick = { showWithdrawDialog = true }) {
+                OutlinedButton(
+                    onClick = { showWithdrawDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(stringResource(R.string.goal_withdraw))
                 }
             }

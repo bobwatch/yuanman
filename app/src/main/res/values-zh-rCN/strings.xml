@@ -96,6 +96,7 @@
     <string name="numpad_plus">＋ 连加</string>
     <string name="numpad_expand">展开键盘</string>
     <string name="numpad_collapse">收起键盘</string>
+    <string name="numpad_backspace">删除数字</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">设为周期账单</string>
@@ -180,6 +181,7 @@
     <string name="habit_uncheck_title">取消今日打卡？</string>
     <string name="habit_uncheck_msg">确定取消「%1$s」今天的打卡吗？连续天数会减少。</string>
     <string name="habit_uncheck_confirm">取消打卡</string>
+    <string name="habit_unchecked">已取消打卡</string>
     <string name="habit_quit_days_big">%d 天</string>
     <string name="habit_quit_since">已坚持</string>
     <string name="habit_relapse">我破了…</string>
@@ -210,6 +212,7 @@
     <string name="mood_note_hint">一句话记录今天（可选）</string>
     <string name="mood_note_save">保存备注</string>
     <string name="mood_note_saved">已保存今天的一句话 ✨</string>
+    <string name="mood_saved">今天的心情已记下 ✓</string>
     <string name="mood_stats_title">本月统计</string>
     <string name="mood_stats_empty">本月还没有心情记录</string>
     <string name="mood_angry_days">😠 生气 %d 天</string>
@@ -232,6 +235,7 @@
     <string name="cats_title">分类管理</string>
     <string name="cats_add_title">添加自定义分类</string>
     <string name="cats_name_hint">分类名称</string>
+    <string name="cats_name_count">%1$d/%2$d</string>
     <string name="cats_error_empty">请输入分类名称</string>
     <string name="cats_error_dup">分类已存在</string>
     <string name="cats_added">已添加</string>

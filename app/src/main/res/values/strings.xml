@@ -96,6 +96,7 @@
     <string name="numpad_plus">＋ Add up</string>
     <string name="numpad_expand">Show keypad</string>
     <string name="numpad_collapse">Collapse keypad</string>
+    <string name="numpad_backspace">Delete digit</string>
 
     <!-- recurring -->
     <string name="recurring_toggle">Make recurring</string>
@@ -180,6 +181,7 @@
     <string name="habit_uncheck_title">Undo today\'s check-in?</string>
     <string name="habit_uncheck_msg">Undo today\'s check-in for \"%1$s\"? Your streak will be shortened.</string>
     <string name="habit_uncheck_confirm">Undo check-in</string>
+    <string name="habit_unchecked">Check-in undone</string>
     <string name="habit_quit_days_big">%d days</string>
     <string name="habit_quit_since">clean for</string>
     <string name="habit_relapse">I relapsed…</string>
@@ -210,6 +212,7 @@
     <string name="mood_note_hint">One line about today (optional)</string>
     <string name="mood_note_save">Save note</string>
     <string name="mood_note_saved">Saved today\'s note ✨</string>
+    <string name="mood_saved">Mood recorded ✓</string>
     <string name="mood_stats_title">This month</string>
     <string name="mood_stats_empty">No mood records this month</string>
     <string name="mood_angry_days">😠 Angry %d days</string>
@@ -232,6 +235,7 @@
     <string name="cats_title">Categories</string>
     <string name="cats_add_title">Add custom category</string>
     <string name="cats_name_hint">Category name</string>
+    <string name="cats_name_count">%1$d/%2$d</string>
     <string name="cats_error_empty">Please enter a name</string>
     <string name="cats_error_dup">Category already exists</string>
     <string name="cats_added">Added</string>

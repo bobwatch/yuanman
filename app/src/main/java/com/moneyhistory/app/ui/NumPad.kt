@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,6 +81,12 @@ fun NumPad(
                 row.forEach { key ->
                     NumKey(
                         label = key,
+                        // 退格键是符号文本，读屏按语义读「删除」而不是读「⌫」
+                        description = if (key == "⌫") {
+                            stringResource(R.string.numpad_backspace)
+                        } else {
+                            null
+                        },
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             onKey(key)
@@ -129,13 +136,25 @@ fun NumPad(
 private fun NumKey(
     label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    description: String? = null
 ) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.height(48.dp)
+        // 符号键（⌫）清掉内部文本语义、换成人话描述，其余键照常
+        modifier = modifier
+            .height(48.dp)
+            .then(
+                if (description != null) {
+                    Modifier.clearAndSetSemantics {
+                        this.contentDescription = description
+                    }
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(

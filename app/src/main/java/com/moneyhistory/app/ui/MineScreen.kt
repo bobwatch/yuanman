@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +66,9 @@ import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ThemeMode
 import com.moneyhistory.app.allBadges
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 我的 Tab：勋章墙 + 外观/记账/数据/关于全部设置项。 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -93,34 +97,46 @@ fun MineScreen(
     val exportDoneText = stringResource(R.string.export_done)
 
     // Snackbar 统一由 MainActivity 顶层宿主展示，这里只发消息
+    val importScope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        try {
-            val content = context.contentResolver.openInputStream(uri)?.use { input ->
-                String(input.readBytes(), Charsets.UTF_8)
-            }
-            when {
-                content == null -> viewModel.postMessage(readFailedText, MessageVariant.ERROR)
-                importMergeMode -> {
-                    val merged = viewModel.mergeImportJson(content)
-                    if (merged != null) {
-                        viewModel.postMessage(
-                            context.getString(R.string.import_merged, merged),
-                            MessageVariant.SUCCESS
-                        )
-                    } else {
-                        viewModel.postMessage(invalidText, MessageVariant.ERROR)
+        // 读取 + JSON 解析走 IO 线程，大备份文件不卡 UI
+        importScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val content = context.contentResolver.openInputStream(uri)?.use { input ->
+                        String(input.readBytes(), Charsets.UTF_8)
                     }
+                    when {
+                        content == null ->
+                            ImportOutcome.Failure(readFailedText)
+                        importMergeMode -> {
+                            val merged = viewModel.mergeImportJson(content)
+                            if (merged != null) {
+                                ImportOutcome.Success(
+                                    context.getString(R.string.import_merged, merged)
+                                )
+                            } else {
+                                ImportOutcome.Failure(invalidText)
+                            }
+                        }
+                        else -> ImportOutcome.Pending(content)
+                    }
+                } catch (e: Exception) {
+                    ImportOutcome.Failure(
+                        context.getString(R.string.import_read_failed_reason, e.message)
+                    )
                 }
-                else -> pendingImport = content
             }
-        } catch (e: Exception) {
-            viewModel.postMessage(
-                context.getString(R.string.import_read_failed_reason, e.message),
-                MessageVariant.ERROR
-            )
+            when (result) {
+                is ImportOutcome.Success ->
+                    viewModel.postMessage(result.message, MessageVariant.SUCCESS)
+                is ImportOutcome.Failure ->
+                    viewModel.postMessage(result.message, MessageVariant.ERROR)
+                is ImportOutcome.Pending -> pendingImport = result.content
+            }
         }
     }
 
@@ -433,4 +449,11 @@ internal fun SettingRow(
             )
         }
     }
+}
+
+/** 导入流程的中间结果：成功提示 / 失败提示 / 待确认的覆盖导入内容。 */
+private sealed interface ImportOutcome {
+    class Success(val message: String) : ImportOutcome
+    class Failure(val message: String) : ImportOutcome
+    class Pending(val content: String) : ImportOutcome
 }

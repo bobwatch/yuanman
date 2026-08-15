@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,7 +78,14 @@ fun ProgressRing(
     val primary = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     androidx.compose.foundation.layout.Box(
-        modifier = modifier,
+        // 环形进度对读屏暴露进度条语义（与图表 TalkBack 描述同一标准），
+        // 中心文字并入同一节点读出
+        modifier = modifier.semantics(mergeDescendants = true) {
+            progressBarRangeInfo = ProgressBarRangeInfo(
+                current = animated.coerceIn(0f, 1f),
+                range = 0f..1f
+            )
+        },
         contentAlignment = Alignment.Center
     ) {
         androidx.compose.foundation.Canvas(
@@ -279,6 +290,7 @@ fun GoalListSheet(
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(bottom = 28.dp)
                 ) {
                     SheetDragHandle(onDismiss = onDismiss)
@@ -347,6 +359,7 @@ fun GoalCreateSheet(
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 24.dp)
                         .padding(bottom = 32.dp)
@@ -511,7 +524,9 @@ fun AmountPadDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
+            // 内容含整块数字键盘，小屏/大字号下可能超高：
+            // 加滚动兜底，键盘行与按钮永不超出窗口被裁
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
                     Text(
                         text = segments.joinToString(" + ").ifEmpty { "0" },

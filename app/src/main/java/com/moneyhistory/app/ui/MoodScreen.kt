@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,6 +100,7 @@ fun MoodScreen(viewModel: MainViewModel) {
         }
     }
     val noteSavedText = stringResource(R.string.mood_note_saved)
+    val moodSavedText = stringResource(R.string.mood_saved)
     val todayEntry = moods[today]
     var note by remember(today, todayEntry?.note) {
         mutableStateOf(todayEntry?.note ?: "")
@@ -181,9 +184,16 @@ fun MoodScreen(viewModel: MainViewModel) {
                         Mood.entries.forEach { mood ->
                             MoodButton(
                                 mood = mood,
-                                selected = todayEntry?.mood == mood,
+                                isSelected = todayEntry?.mood == mood,
                                 onClick = {
-                                    viewModel.setMood(today, mood, note.trim())
+                                    // 换了个心情才算「新记录」：给成功反馈，重复点同一枚不打扰
+                                    if (todayEntry?.mood != mood) {
+                                        viewModel.setMood(today, mood, note.trim())
+                                        viewModel.postMessage(
+                                            moodSavedText,
+                                            MessageVariant.SUCCESS
+                                        )
+                                    }
                                 },
                                 modifier = Modifier.weight(1f)
                             )
@@ -396,7 +406,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                     }
                     Spacer(Modifier.height(14.dp))
                     CompactMoodPicker(
-                        selected = entry?.mood,
+                        current = entry?.mood,
                         onSelect = { mood ->
                             viewModel.setMood(dayKey, mood, entry?.note ?: "")
                             dayPicker = null
@@ -416,16 +426,17 @@ fun MoodScreen(viewModel: MainViewModel) {
 @Composable
 private fun MoodButton(
     mood: Mood,
-    selected: Boolean,
+    isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val label = moodLabel(mood)
     val borderWidth by animateDpAsState(
-        targetValue = if (selected) 2.dp else 0.dp,
+        targetValue = if (isSelected) 2.dp else 0.dp,
         label = "moodBorder"
     )
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
+        targetValue = if (isSelected) 1.08f else 1f,
         label = "moodScale"
     )
     // 点心情即记录：轻震动确认「已选上」，避免只见选中态动画、体感发虚
@@ -440,14 +451,19 @@ private fun MoodButton(
                 .scale(scale)
                 .clip(CircleShape)
                 .background(
-                    if (selected) {
+                    if (isSelected) {
                         // 选中按该情绪本色填充，与月历/回填选择器一致
                         Color(mood.colorValue)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     }
                 )
-                .border(borderWidth, Color.White, CircleShape)
+                // 描边用卡片底色而非纯白：浅色主题下不消失，深色主题下不刺眼
+                .border(borderWidth, MaterialTheme.colorScheme.surface, CircleShape)
+                .semantics {
+                    contentDescription = label
+                    selected = isSelected
+                }
                 .clickable {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     onClick()
@@ -457,16 +473,16 @@ private fun MoodButton(
             Icon(
                 imageVector = moodIcon(mood),
                 contentDescription = null,
-                tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
         }
         Spacer(Modifier.height(2.dp))
         Text(
-            text = moodLabel(mood),
+            text = label,
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) {
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSelected) {
                 MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -480,7 +496,7 @@ private fun MoodButton(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CompactMoodPicker(
-    selected: Mood?,
+    current: Mood?,
     onSelect: (Mood) -> Unit
 ) {
     val view = LocalView.current
@@ -491,17 +507,23 @@ private fun CompactMoodPicker(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Mood.entries.forEach { mood ->
+            val label = moodLabel(mood)
             Box(
                 Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(
-                        if (mood == selected) {
+                        if (mood == current) {
                             Color(mood.colorValue)
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         }
                     )
+                    // 与主选择器同一套无障碍语义：读出心情名 + 选中态
+                    .clearAndSetSemantics {
+                        contentDescription = label
+                        selected = mood == current
+                    }
                     .clickable {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         onSelect(mood)
@@ -571,7 +593,7 @@ private fun MoodGrid(
                     } else {
                         val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
                         val entry = moods[key]
-                        // 整格可点（44dp 高触达区），圆点只做视觉；
+                        // 整格可点（48dp 高触达区，与全 App 触达下限一致），圆点只做视觉；
                         // 无障碍读出当天心情（未记录也有明确说明）
                         val cellDesc = if (entry != null) {
                             stringResource(
@@ -585,7 +607,7 @@ private fun MoodGrid(
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .height(48.dp)
                                 .clip(CircleShape)
                                 .pressScale()
                                 .clearAndSetSemantics { contentDescription = cellDesc }

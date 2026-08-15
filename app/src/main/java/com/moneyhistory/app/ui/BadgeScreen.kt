@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -28,6 +29,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /** 勋章墙：已获得彩色 + 获得日期；未获得灰色 + 解锁条件。 */
 @Composable
@@ -62,6 +65,19 @@ fun BadgeScreen(
                     val badge = badges[index]
                     val unlockedDate = unlocks[badge.id]
                     val unlocked = unlockedDate != null
+                    val datePattern = stringResource(R.string.date_pattern)
+                    // 存储的解锁日期是固定 yyyy-MM-dd，展示时按当前语言环境重排
+                    val obtainedText = remember(unlockedDate, datePattern) {
+                        unlockedDate?.let { raw ->
+                            try {
+                                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                    .parse(raw)
+                                    ?.let { formatSheetDate(it.time, datePattern) }
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } ?: ""
+                    }
                     Card(
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
@@ -110,7 +126,7 @@ fun BadgeScreen(
                                     text = if (unlocked) {
                                         stringResource(
                                             R.string.badge_obtained,
-                                            unlockedDate ?: ""
+                                            obtainedText
                                         )
                                     } else {
                                         stringResource(badge.descRes)

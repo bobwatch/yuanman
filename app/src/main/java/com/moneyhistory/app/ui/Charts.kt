@@ -121,9 +121,15 @@ fun DonutChart(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // 中心金额按长度降字号：大额长串不省略号截断（环形内径有限）
+            val centerStyle = when {
+                centerValue.length <= 8 -> MaterialTheme.typography.titleLarge
+                centerValue.length <= 11 -> MaterialTheme.typography.titleMedium
+                else -> MaterialTheme.typography.titleSmall
+            }
             Text(
                 text = centerValue,
-                style = MaterialTheme.typography.titleLarge,
+                style = centerStyle,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

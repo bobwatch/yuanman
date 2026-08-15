@@ -21,8 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,30 +51,19 @@ fun StatsScreen(
     onBack: () -> Unit
 ) {
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
-    // 月份为统计页本地状态（不与首页共享，返回首页月份不受影响）
-    var month by remember {
-        mutableStateOf(
-            Calendar.getInstance().let {
-                YearMonth(it.get(Calendar.YEAR), it.get(Calendar.MONTH) + 1)
-            }
-        )
+    // 月份为统计页本地状态（不与首页共享，返回首页月份不受影响）。
+    // 存相对当前月的偏移量（rememberSaveable 可存），旋转屏幕不丢查看位置
+    var monthOffset by rememberSaveable { mutableIntStateOf(0) }
+    val month = remember(monthOffset) {
+        val cal = Calendar.getInstance().apply { add(Calendar.MONTH, monthOffset) }
+        YearMonth(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1)
     }
-    val isAtCurrentMonth = remember(month) {
-        val c = Calendar.getInstance()
-        month.year * 12 + month.month >=
-            c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) + 1
-    }
+    // 偏移 0 即当前月，不允许翻到未来
+    val isAtCurrentMonth = monthOffset >= 0
 
     fun shiftMonth(delta: Int) {
-        val cur = Calendar.getInstance()
-        val curValue = cur.get(Calendar.YEAR) * 12 + cur.get(Calendar.MONTH) + 1
-        val nextValue = month.year * 12 + month.month + delta
-        if (nextValue > curValue) return
-        month = if (nextValue % 12 == 0) {
-            YearMonth(nextValue / 12 - 1, 12)
-        } else {
-            YearMonth(nextValue / 12, nextValue % 12)
-        }
+        if (monthOffset + delta > 0) return
+        monthOffset += delta
     }
 
     var tab by remember { mutableIntStateOf(0) } // 0 支出 1 收入
@@ -328,6 +317,8 @@ fun StatsScreen(
                                 Text(
                                     text = Categories.displayName(slice.label),
                                     style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(

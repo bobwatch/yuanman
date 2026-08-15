@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MainViewModel
+import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ui.theme.IncomeGreen
 
@@ -207,7 +208,9 @@ fun FamilySyncScreen(
                 TextButton(onClick = {
                     confirmRegenerate = false
                     sync.regeneratePairingCode()
-                    message = regeneratedText to false
+                    // 操作发生在页面顶部配对码卡片，用全局 Toast 就近反馈，
+                    // 不落到下方「加入家庭」卡片的输入结果位
+                    viewModel.postMessage(regeneratedText, MessageVariant.SUCCESS)
                 }) {
                     Text(
                         stringResource(R.string.common_confirm),
