@@ -129,6 +129,17 @@ fun StatsScreen(
             )
         }
     }
+    // 与趋势柱一一对应的月份（点柱跳转首页明细用）
+    val trendMonths = remember(month) {
+        val base = Calendar.getInstance().apply {
+            set(Calendar.YEAR, month.year)
+            set(Calendar.MONTH, month.month - 1)
+        }
+        (5 downTo 0).map { back ->
+            val target = (base.clone() as Calendar).apply { add(Calendar.MONTH, -back) }
+            YearMonth(target.get(Calendar.YEAR), target.get(Calendar.MONTH) + 1)
+        }
+    }
 
     // 本月每日走势
     val dailyValues = remember(transactions, month, currentType) {
@@ -515,6 +526,16 @@ fun StatsScreen(
                     } else {
                         TrendBarChart(
                             points = trendPoints,
+                            // 轻点某月柱 → 首页直达该月流水（趋势 → 逐笔闭环）
+                            onBarTap = { idx ->
+                                if (idx in trendMonths.indices) {
+                                    view.performHapticFeedback(
+                                        HapticFeedbackConstants.KEYBOARD_TAP
+                                    )
+                                    viewModel.goToMonth(trendMonths[idx])
+                                    onBack()
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(160.dp)

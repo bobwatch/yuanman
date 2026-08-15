@@ -41,6 +41,7 @@ import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** 图表分类配色（10 色，循环使用）。 */
@@ -162,11 +163,13 @@ fun DonutChart(
 }
 
 /** 近 6 个月趋势柱状图：当前月主色高亮，柱顶显示金额缩写。
- *  触控柱子弹出完整金额气泡（手指按住/拖动跟随）。 */
+ *  触控柱子弹出完整金额气泡（手指按住/拖动跟随）；
+ *  原地轻点柱子触发 [onBarTap]（跳转到该月明细）。 */
 @Composable
 fun TrendBarChart(
     points: List<MonthPoint>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBarTap: ((Int) -> Unit)? = null
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val barColor = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -207,21 +210,33 @@ fun TrendBarChart(
     Canvas(
         modifier
             .semantics { contentDescription = desc }
-            .pointerInput(points) {
+            .pointerInput(points, onBarTap) {
                 if (points.isEmpty()) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     // 不消费事件：页面纵向滚动不受影响（拖动只取 x 定位柱位）
                     val slotW = size.width.toFloat() / points.size
-                    selectedIndex = (down.position.x / slotW).toInt()
+                    val downIndex = (down.position.x / slotW).toInt()
                         .coerceIn(0, points.size - 1)
+                    // 位移超过触控阈值视为「拖动查数值」，否则松手即「点按跳转」
+                    val slop = 8.dp.toPx()
+                    var moved = false
+                    var sel = downIndex
+                    selectedIndex = sel
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull { it.id == down.id }
                             ?: break
-                        if (!change.pressed) break
-                        selectedIndex = (change.position.x / slotW).toInt()
+                        if (!change.pressed) {
+                            if (!moved && onBarTap != null) onBarTap(sel)
+                            break
+                        }
+                        if (abs(change.position.x - down.position.x) > slop) {
+                            moved = true
+                        }
+                        sel = (change.position.x / slotW).toInt()
                             .coerceIn(0, points.size - 1)
+                        selectedIndex = sel
                     }
                 }
             }
