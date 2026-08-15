@@ -40,7 +40,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MessageVariant
+import com.moneyhistory.app.ui.theme.ExpenseRed
+import com.moneyhistory.app.ui.theme.IncomeGreen
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
+import com.moneyhistory.app.ui.theme.WarningOrange
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -116,12 +119,12 @@ private fun ToastItem(toast: ToastData, onDismiss: () -> Unit) {
     val darkTheme = LocalDarkTheme.current
     val container = if (darkTheme) Color(0xFFF2F4F8) else Color(0xFF232A35)
     val content = if (darkTheme) Color(0xFF161B22) else Color.White
-    // 按消息类型着色（信息蓝 / 成功绿 / 警告橙 / 异常红）
+    // 按消息类型着色（信息蓝 / 成功绿 / 警告橙 / 异常红），统一引用主题语义色
     val variantColor = when (toast.variant) {
         MessageVariant.INFO -> MaterialTheme.colorScheme.primary
-        MessageVariant.SUCCESS -> Color(0xFF34A853)
-        MessageVariant.WARNING -> Color(0xFFFF9800)
-        MessageVariant.ERROR -> Color(0xFFE53935)
+        MessageVariant.SUCCESS -> IncomeGreen
+        MessageVariant.WARNING -> WarningOrange
+        MessageVariant.ERROR -> ExpenseRed
     }
 
     var visible by remember { mutableStateOf(false) }

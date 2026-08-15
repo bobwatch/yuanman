@@ -91,7 +91,7 @@ fun RecurringScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconTile(
@@ -121,13 +121,14 @@ fun RecurringScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            // 金额完整展示，绝不截断（标题列可截断，弹性让位）
                             Text(
                                 text = MoneyUtils.formatCents(r.amountCents),
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                             IconButton(onClick = { deleteTarget = r }) {
                                 Icon(

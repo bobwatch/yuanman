@@ -56,9 +56,12 @@ import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.Weekend
 import androidx.compose.material.icons.outlined.Work
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.moneyhistory.app.Habit
 import com.moneyhistory.app.Mood
+import com.moneyhistory.app.ui.theme.WarningOrange
+import com.moneyhistory.app.ui.theme.YuanmanBlue
 
 // ---------- 分类 ----------
 
@@ -117,12 +120,8 @@ private val habitIcons = mapOf(
 fun habitIcon(emoji: String): ImageVector = habitIcons[emoji] ?: Icons.Outlined.CheckCircle
 
 /** 习惯的类型无关展示色：build 主色 / quit 橙色。 */
-fun habitIconColor(habit: Habit): androidx.compose.ui.graphics.Color =
-    if (habit.type == Habit.Type.BUILD) {
-        androidx.compose.ui.graphics.Color(0xFF2AABEE)
-    } else {
-        androidx.compose.ui.graphics.Color(0xFFFF9800)
-    }
+fun habitIconColor(habit: Habit): Color =
+    if (habit.type == Habit.Type.BUILD) YuanmanBlue else WarningOrange
 
 // ---------- 攒钱目标 ----------
 

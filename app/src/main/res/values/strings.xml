@@ -131,6 +131,10 @@
     <string name="stats_total_income_label">Total income</string>
     <string name="stats_balance">Balance</string>
     <string name="stats_month_short">%d</string>
+    <!-- chart accessibility descriptions (TalkBack) -->
+    <string name="chart_donut_desc">Donut chart: %1$s. Total: %2$s</string>
+    <string name="chart_trend_desc">6-month trend: %1$s</string>
+    <string name="chart_daily_desc">Daily trend this month: %1$s</string>
 
     <!-- budget dialog -->
     <string name="budget_title">Monthly budget</string>
@@ -177,6 +181,9 @@
     <string name="habit_build_streak">%d-day streak</string>
     <string name="habit_checked_today">✓ Done today</string>
     <string name="habit_checkin_today">Check in today</string>
+    <string name="habit_uncheck_title">Undo today\'s check-in?</string>
+    <string name="habit_uncheck_msg">Undo today\'s check-in for \"%1$s\"? Your streak will be shortened.</string>
+    <string name="habit_uncheck_confirm">Undo check-in</string>
     <string name="habit_quit_days_big">%d days</string>
     <string name="habit_quit_since">clean for</string>
     <string name="habit_relapse">I relapsed…</string>

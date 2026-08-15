@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -160,7 +162,8 @@ fun MoodScreen(viewModel: MainViewModel) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         maxItemsInEachRow = 5,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Mood.entries.forEach { mood ->
                             MoodButton(
@@ -409,13 +412,16 @@ private fun MoodButton(
         targetValue = if (selected) 1.08f else 1f,
         label = "moodScale"
     )
+    // 点心情即记录：轻震动确认「已选上」，避免只见选中态动画、体感发虚
+    val view = LocalView.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.scale(scale)
+        modifier = modifier
     ) {
         Box(
             Modifier
                 .size(48.dp)
+                .scale(scale)
                 .clip(CircleShape)
                 .background(
                     if (selected) {
@@ -425,7 +431,10 @@ private fun MoodButton(
                     }
                 )
                 .border(borderWidth, Color.White, CircleShape)
-                .clickable(onClick = onClick),
+                .clickable {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onClick()
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -457,10 +466,12 @@ private fun CompactMoodPicker(
     selected: Mood?,
     onSelect: (Mood) -> Unit
 ) {
+    val view = LocalView.current
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         maxItemsInEachRow = 5,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Mood.entries.forEach { mood ->
             Box(
@@ -474,7 +485,10 @@ private fun CompactMoodPicker(
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         }
                     )
-                    .clickable { onSelect(mood) },
+                    .clickable {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onSelect(mood)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(text = mood.emoji, fontSize = 20.sp)
@@ -540,15 +554,18 @@ private fun MoodGrid(
                     } else {
                         val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
                         val entry = moods[key]
+                        // 整格可点（44dp 高触达区），圆点只做视觉
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(36.dp),
+                                .height(44.dp)
+                                .clip(CircleShape)
+                                .clickable { onDayClick(key) },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
                                 Modifier
-                                    .size(28.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
                                     .background(
                                         if (entry != null) {
@@ -556,8 +573,7 @@ private fun MoodGrid(
                                         } else {
                                             MaterialTheme.colorScheme.surfaceContainerHighest
                                         }
-                                    )
-                                    .clickable { onDayClick(key) },
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

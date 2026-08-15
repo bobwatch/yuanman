@@ -165,7 +165,8 @@ fun MineScreen(
                 Spacer(Modifier.height(4.dp))
                 // 主题三选：窄屏/大字号放不下时自动换行
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
                         selected = themeMode == ThemeMode.SYSTEM,
@@ -393,7 +394,13 @@ internal fun SettingRow(
         Modifier
             .fillMaxWidth()
             .then(
-                if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+                if (onClick != null) {
+                    Modifier
+                        .clickable(onClick = onClick)
+                        .pressScale(pressedScale = 0.97f)
+                } else {
+                    Modifier
+                }
             )
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -402,7 +409,7 @@ internal fun SettingRow(
             Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(

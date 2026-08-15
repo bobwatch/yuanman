@@ -1,5 +1,7 @@
 package com.moneyhistory.app.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,8 +12,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +61,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(brandHeaderBrush())
+            // 状态栏/手势条与内容隔离：刘海屏状态栏更高也不顶头，底部按钮不贴手势条
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(24.dp)
     ) {
         HorizontalPager(
@@ -101,25 +109,27 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             }
         }
 
-        // 页码指示点
+        // 页码指示点（当前页圆点放大 + 变亮，带过渡动画）
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
             repeat(pages.size) { index ->
                 val active = pagerState.currentPage == index
+                val dotSize by animateDpAsState(
+                    targetValue = if (active) 10.dp else 8.dp,
+                    label = "onboardDot"
+                )
+                val dotAlpha by animateFloatAsState(
+                    targetValue = if (active) 1f else 0.35f,
+                    label = "onboardDotAlpha"
+                )
                 Box(
                     Modifier
                         .padding(4.dp)
-                        .size(if (active) 10.dp else 8.dp)
+                        .size(dotSize)
                         .clip(CircleShape)
-                        .background(
-                            if (active) {
-                                Color.White
-                            } else {
-                                Color.White.copy(alpha = 0.35f)
-                            }
-                        )
+                        .background(Color.White.copy(alpha = dotAlpha))
                 )
             }
         }

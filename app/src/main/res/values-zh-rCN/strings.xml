@@ -131,6 +131,10 @@
     <string name="stats_total_income_label">收入总额</string>
     <string name="stats_balance">结余</string>
     <string name="stats_month_short">%d月</string>
+    <!-- chart accessibility descriptions (TalkBack) -->
+    <string name="chart_donut_desc">占比环形图：%1$s。合计：%2$s</string>
+    <string name="chart_trend_desc">近 6 个月趋势：%1$s</string>
+    <string name="chart_daily_desc">本月每日走势：%1$s</string>
 
     <!-- budget dialog -->
     <string name="budget_title">月度预算</string>
@@ -177,6 +181,9 @@
     <string name="habit_build_streak">连续 %d 天</string>
     <string name="habit_checked_today">✓ 已打卡</string>
     <string name="habit_checkin_today">今天打卡</string>
+    <string name="habit_uncheck_title">取消今日打卡？</string>
+    <string name="habit_uncheck_msg">确定取消「%1$s」今天的打卡吗？连续天数会减少。</string>
+    <string name="habit_uncheck_confirm">取消打卡</string>
     <string name="habit_quit_days_big">%d 天</string>
     <string name="habit_quit_since">已坚持</string>
     <string name="habit_relapse">我破了…</string>

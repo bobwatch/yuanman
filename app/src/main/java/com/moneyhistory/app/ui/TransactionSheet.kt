@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -290,11 +292,29 @@ fun TransactionSheet(
             tonalElevation = 3.dp
         ) {
         Column(Modifier.fillMaxSize()) {
-            // 拖动手柄：点击或下滑手势关闭弹窗
+            // 拖动手柄：下滑（超过 96dp）或点击关闭弹窗。
+            // detectVerticalDragGestures 不拦截无位移的点击，clickable 正常响应；
+            // 手柄只有 ~40dp 高，与中部滚动区互不干扰
             Box(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp, bottom = 2.dp)
+                    .pointerInput(Unit) {
+                        var dragTotal = 0f
+                        var dismissed = false
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (!dismissed) {
+                                    dragTotal += dragAmount
+                                    if (dragTotal > 96.dp.toPx()) {
+                                        dismissed = true
+                                        onDismiss()
+                                    }
+                                }
+                            }
+                        )
+                    }
                     .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center
             ) {
@@ -336,7 +356,8 @@ fun TransactionSheet(
                         // 金额为空禁用：灰色按钮比红字报错更先一步给出反馈
                         enabled = liveCents > 0,
                         shape = MaterialTheme.shapes.large,
-                        modifier = Modifier.height(40.dp)
+                        // 与底部键盘的保存按钮同高，规格统一
+                        modifier = Modifier.height(48.dp)
                     ) {
                         Text(stringResource(R.string.common_save))
                     }
@@ -570,7 +591,7 @@ fun TransactionSheet(
                             shape = MaterialTheme.shapes.large,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(52.dp)
+                                .height(48.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.common_save),

@@ -19,9 +19,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import com.moneyhistory.app.MoneyUtils
+import com.moneyhistory.app.R
 import java.util.Locale
 
 /** 图表分类配色（10 色，循环使用）。 */
@@ -61,7 +66,16 @@ fun DonutChart(
     centerValue: String,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    // TalkBack 读出每类占比与合计
+    val desc = stringResource(
+        R.string.chart_donut_desc,
+        slices.joinToString(", ") { "${it.label} ${it.value.toInt()}" },
+        centerValue
+    )
+    Box(
+        modifier = modifier.semantics { contentDescription = desc },
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.matchParentSize()) {
             val total = slices.sumOf { it.value.toDouble() }.toFloat()
             if (total <= 0f) return@Canvas
@@ -122,35 +136,46 @@ fun TrendBarChart(
             isAntiAlias = true
         }
     }
-    Canvas(modifier) {
+    // TalkBack 读出各月金额
+    val desc = stringResource(
+        R.string.chart_trend_desc,
+        points.joinToString(", ") { "${it.label} ${abbrevYuan(it.amountCents)}" }
+    )
+    Canvas(
+        modifier.semantics { contentDescription = desc }
+    ) {
         if (points.isEmpty()) return@Canvas
         // 按 density 换算，适配不同屏幕文字密度
         textPaint.textSize = 10.sp.toPx()
-        val max = points.maxOf { it.amountCents }.coerceAtLeast(1L)
+        val max = points.maxOf { it.amountCents }
+        val hasData = max > 0L
         val topLabelHeight = 34f
         val bottomLabelHeight = 34f
         val chartHeight = (size.height - topLabelHeight - bottomLabelHeight).coerceAtLeast(1f)
         val slotWidth = size.width / points.size
         val barWidth = slotWidth * 0.5f
         points.forEachIndexed { i, p ->
-            val barHeight = p.amountCents.toFloat() / max * chartHeight
-            val left = slotWidth * i + (slotWidth - barWidth) / 2f
-            val top = topLabelHeight + (chartHeight - barHeight)
-            drawRoundRect(
-                color = if (p.isCurrent) primary else barColor,
-                topLeft = Offset(left, top),
-                size = Size(barWidth, barHeight.coerceAtLeast(3f)),
-                cornerRadius = CornerRadius(8f, 8f)
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                abbrevYuan(p.amountCents),
-                left + barWidth / 2f,
-                top - 8f,
-                textPaint
-            )
+            // 全 0 月份不画「假柱」（底部 3px 会被误读为有少量数据），只保留标签
+            if (hasData) {
+                val barHeight = p.amountCents.toFloat() / max * chartHeight
+                val left = slotWidth * i + (slotWidth - barWidth) / 2f
+                val top = topLabelHeight + (chartHeight - barHeight)
+                drawRoundRect(
+                    color = if (p.isCurrent) primary else barColor,
+                    topLeft = Offset(left, top),
+                    size = Size(barWidth, barHeight.coerceAtLeast(3f)),
+                    cornerRadius = CornerRadius(8f, 8f)
+                )
+                drawContext.canvas.nativeCanvas.drawText(
+                    abbrevYuan(p.amountCents),
+                    left + barWidth / 2f,
+                    top - 8f,
+                    textPaint
+                )
+            }
             drawContext.canvas.nativeCanvas.drawText(
                 p.label,
-                left + barWidth / 2f,
+                slotWidth * i + slotWidth / 2f,
                 size.height - 6f,
                 textPaint
             )
@@ -174,7 +199,15 @@ fun DailyLineChart(
             isAntiAlias = true
         }
     }
-    Canvas(modifier) {
+    // TalkBack 读出有记录的天数与合计（逐日数值太长，只报摘要）
+    val desc = stringResource(
+        R.string.chart_daily_desc,
+        "${dailyCents.count { it > 0L }} days, total " +
+            MoneyUtils.formatCents(dailyCents.sum())
+    )
+    Canvas(
+        modifier.semantics { contentDescription = desc }
+    ) {
         if (dailyCents.isEmpty()) return@Canvas
         // 按 density 换算，适配不同屏幕文字密度
         textPaint.textSize = 9.sp.toPx()

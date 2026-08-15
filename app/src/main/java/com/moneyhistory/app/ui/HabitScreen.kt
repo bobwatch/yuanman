@@ -69,7 +69,6 @@ import com.moneyhistory.app.buildStreak
 import com.moneyhistory.app.checkedOn
 import com.moneyhistory.app.habitEmojiCandidates
 import com.moneyhistory.app.quitDays
-import com.moneyhistory.app.ui.theme.ExpenseRed
 
 private data class HabitPreset(val emoji: String, val name: String, val type: Habit.Type)
 
@@ -222,7 +221,7 @@ fun HabitScreen(viewModel: MainViewModel) {
                 }) {
                     Text(
                         stringResource(R.string.common_confirm),
-                        color = ExpenseRed
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             },
@@ -272,6 +271,7 @@ private fun InlineHabitForm(
             // 预设快捷填充
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 habitPresets.filter { it.type == type }.forEach { preset ->
@@ -311,6 +311,7 @@ private fun InlineHabitForm(
             Spacer(Modifier.height(8.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 habitEmojiCandidates.forEach { candidate ->
@@ -359,6 +360,7 @@ private fun DashedAddCard(onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .dashedBorder(dashColor, 20.dp)
             .clip(RoundedCornerShape(20.dp))
+            .pressScale()
             .clickable(onClick = onClick)
             .padding(vertical = 20.dp),
         contentAlignment = Alignment.Center
@@ -395,11 +397,13 @@ private fun HabitCard(
     onReset: () -> Unit,
     onDelete: () -> Unit
 ) {
+    // 已打卡状态下点击按钮是「取消打卡」，属于不可逆操作，先确认
+    var confirmUncheck by remember { mutableStateOf(false) }
     AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (habit.type == Habit.Type.BUILD) {
             val streak = habit.buildStreak(today)
             val checked = habit.checkedOn(today)
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(16.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -459,7 +463,7 @@ private fun HabitCard(
                 // 打卡按钮：整行宽，窄屏/大字号下始终可点
                 if (checked) {
                     OutlinedButton(
-                        onClick = onCheckin,
+                        onClick = { confirmUncheck = true },
                         shape = MaterialTheme.shapes.large,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -481,7 +485,7 @@ private fun HabitCard(
             }
         } else {
             // 戒断卡片：超大坚持天数为主视觉
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(16.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -528,12 +532,41 @@ private fun HabitCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedButton(onClick = onReset) {
+                    OutlinedButton(
+                        onClick = onReset,
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
                         Text(stringResource(R.string.habit_relapse))
                     }
                 }
             }
         }
+    }
+
+    if (confirmUncheck) {
+        AlertDialog(
+            onDismissRequest = { confirmUncheck = false },
+            title = { Text(stringResource(R.string.habit_uncheck_title)) },
+            text = {
+                Text(stringResource(R.string.habit_uncheck_msg, habit.name))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmUncheck = false
+                    onCheckin()
+                }) {
+                    Text(
+                        stringResource(R.string.habit_uncheck_confirm),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUncheck = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 }
 
