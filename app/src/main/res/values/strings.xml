@@ -26,7 +26,10 @@
 
     <!-- home -->
     <string name="home_search">Search</string>
-    <string name="home_search_hint">Search note or category</string>
+    <string name="home_search_hint">Search note, category, or amount</string>
+    <string name="search_filter_all">All</string>
+    <string name="search_filter_expense">Expense</string>
+    <string name="search_filter_income">Income</string>
     <string name="home_search_clear">Clear</string>
     <string name="home_menu">Menu</string>
     <string name="home_menu_stats">Stats</string>

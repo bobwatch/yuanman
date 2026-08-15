@@ -39,6 +39,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -126,6 +127,8 @@ fun HomeScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    // 搜索类型筛选：null = 全部，不选时不影响关键词搜索
+    var searchType by rememberSaveable { mutableStateOf<Transaction.Type?>(null) }
     var showBudgetDialog by rememberSaveable { mutableStateOf(false) }
 
     val editing = transactions.firstOrNull { it.id == editingId }
@@ -148,14 +151,17 @@ fun HomeScreen(
     }
 
     val monthTransactions = remember(transactions, month) { transactions.ofMonth(month) }
-    val filteredTransactions = remember(monthTransactions, searchQuery) {
-        if (searchQuery.isBlank()) {
-            monthTransactions
-        } else {
-            monthTransactions.filter {
-                it.note.contains(searchQuery, ignoreCase = true) ||
-                    it.category.contains(searchQuery, ignoreCase = true)
-            }
+    val filteredTransactions = remember(monthTransactions, searchQuery, searchType) {
+        monthTransactions.filter { t ->
+            if (searchType != null && t.type != searchType) return@filter false
+            if (searchQuery.isBlank()) return@filter true
+            val q = searchQuery.trim()
+            // 纯数字关键词按金额精确匹配（如输 35 找到 ¥35.00），否则匹配备注/分类
+            val amountMatch = MoneyUtils.parseToCents(q)?.let { it == t.amountCents }
+                ?: false
+            amountMatch ||
+                t.note.contains(q, ignoreCase = true) ||
+                t.category.contains(q, ignoreCase = true)
         }
     }
     var monthExpense = 0L
@@ -254,6 +260,34 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = searchType == null,
+                        onClick = { searchType = null },
+                        label = {
+                            Text(stringResource(R.string.search_filter_all))
+                        }
+                    )
+                    FilterChip(
+                        selected = searchType == Transaction.Type.EXPENSE,
+                        onClick = { searchType = Transaction.Type.EXPENSE },
+                        label = {
+                            Text(stringResource(R.string.search_filter_expense))
+                        }
+                    )
+                    FilterChip(
+                        selected = searchType == Transaction.Type.INCOME,
+                        onClick = { searchType = Transaction.Type.INCOME },
+                        label = {
+                            Text(stringResource(R.string.search_filter_income))
+                        }
+                    )
+                }
             }
 
             LazyColumn(

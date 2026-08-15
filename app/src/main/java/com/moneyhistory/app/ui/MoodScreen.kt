@@ -371,59 +371,99 @@ private fun MoodButton(
     }
 }
 
-/** 本月心情网格：7 列，每日一个色点（未记录灰色）。 */
+/** 本月心情日历：周表头 + 7 列按星期对齐，每日一个色点（未记录灰色）。 */
 @Composable
 private fun MoodGrid(
     daysInMonth: Int,
     monthPrefix: String,
     moods: Map<String, MoodEntry>
 ) {
-    val days = (1..daysInMonth).toList()
-    days.chunked(7).forEach { week ->
+    Column {
+        // 周表头（周一起始）
         Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            week.forEach { day ->
-                val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
-                val entry = moods[key]
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(36.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (entry != null) {
-                                    Color(entry.mood.colorValue)
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
-                                }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = day.toString(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (entry != null) {
-                                Color.White
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            textAlign = TextAlign.Center
-                        )
+            val weekdayRes = listOf(
+                R.string.weekday_mon,
+                R.string.weekday_tue,
+                R.string.weekday_wed,
+                R.string.weekday_thu,
+                R.string.weekday_fri,
+                R.string.weekday_sat,
+                R.string.weekday_sun
+            )
+            weekdayRes.forEach { res ->
+                Text(
+                    text = stringResource(res),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        // 1 号对齐到正确星期（周一起始），前面补空位
+        val leadingBlanks = remember(monthPrefix) {
+            val parts = monthPrefix.split("-")
+            val cal = Calendar.getInstance().apply {
+                set(parts[0].toInt(), parts[1].toInt() - 1, 1)
+            }
+            (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        }
+        val days = (1..daysInMonth).toList()
+        val cells: List<Int?> = List(leadingBlanks) { null } + days
+        cells.chunked(7).forEach { week ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                week.forEach { day ->
+                    if (day == null) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        val key = String.format(Locale.CHINA, "%s-%02d", monthPrefix, day)
+                        val entry = moods[key]
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (entry != null) {
+                                            Color(entry.mood.colorValue)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceContainerHighest
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = day.toString(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (entry != null) {
+                                        Color.White
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                     }
                 }
-            }
-            // 补齐最后一周的空位
-            repeat(7 - week.size) {
-                Spacer(Modifier.weight(1f))
+                // 补齐最后一周的空位
+                repeat(7 - week.size) {
+                    Spacer(Modifier.weight(1f))
+                }
             }
         }
     }
