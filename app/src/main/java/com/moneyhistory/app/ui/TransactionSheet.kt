@@ -6,8 +6,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +39,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -50,6 +55,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +86,7 @@ import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
 import java.util.Calendar
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 记账 / 编辑 全屏底部对话框 —— 九宫格输金额 → 选分类 → 点「保存」。
@@ -108,6 +115,7 @@ fun TransactionSheet(
     expenseCategories: List<String>,
     incomeCategories: List<String>,
     recentCategories: List<String> = emptyList(),
+    startWithRecurring: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (Transaction) -> Unit,
     onDelete: () -> Unit,
@@ -163,14 +171,25 @@ fun TransactionSheet(
     }
     var amountError by rememberSaveable { mutableStateOf(false) }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
-    // 编辑态删除：确认后由外部执行（走撤销 Toast）
-    var deleteConfirm by rememberSaveable { mutableStateOf(false) }
-    // 数字键盘：默认展开，打开即可输金额（记账核心路径少一步，参考支付宝）；
-    // 点箭头收起让分类区独占空间，点金额输入框再次展开
-    var numpadExpanded by rememberSaveable { mutableStateOf(true) }
+    // 收起动画：所有关闭路径先下滑收起再真正关闭（Dialog 直接移除会「啪」地消失）。
+    // 协程挂在组合 scope：动画中途组合被替换（如保存后立刻点「再记一笔」）时协程
+    // 随组合取消，不会误关新打开的面板
+    var dismissing by remember { mutableStateOf(false) }
+    val sheetScope = rememberCoroutineScope()
+    fun closeSheet(after: () -> Unit = {}) {
+        if (dismissing) return
+        dismissing = true
+        sheetScope.launch {
+            delay(300)
+            after()
+        }
+    }
+    // 数字键盘：新增/再记一笔默认展开（记账核心路径少一步，参考支付宝）；
+    // 编辑默认收起——以核对调整分类/备注为主，金额一般不动，需要改时点金额框再展开
+    var numpadExpanded by rememberSaveable { mutableStateOf(initial == null) }
 
-    // 周期账单（仅新增支出时可用）
-    var recurringEnabled by rememberSaveable { mutableStateOf(false) }
+    // 周期账单（仅新增支出时可用）；「周期账单」空态直达会预勾选
+    var recurringEnabled by rememberSaveable { mutableStateOf(startWithRecurring) }
     var cycle by rememberSaveable { mutableStateOf(RecurringExpense.Cycle.MONTHLY) }
     var dueMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
 
@@ -238,12 +257,13 @@ fun TransactionSheet(
                 )
             )
         }
+        closeSheet(onDismiss)
     }
 
     // 关闭（点外部/返回）：一律直接收起，不残留窗口、不卡死。
     // 保存动作由底部「保存」按钮显式完成。
     Dialog(
-        onDismissRequest = { onDismiss() },
+        onDismissRequest = { closeSheet(onDismiss) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             // 让 Dialog 收到 IME inset：键盘弹起/收起有感知，备注态才能自动退出
@@ -289,6 +309,17 @@ fun TransactionSheet(
             }
         }
 
+        // 上拉展开 / 下滑收起：面板从底部滑入、向下滑出。位移是动画主体
+        // （fade 节奏略快），透明度只做柔和过渡，不抢滑动的「实感」
+        AnimatedVisibility(
+            visible = !dismissing,
+            enter = slideInVertically(
+                animationSpec = tween(320, easing = FastOutSlowInEasing)
+            ) { it } + fadeIn(animationSpec = tween(240)),
+            exit = slideOutVertically(
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) { it } + fadeOut(animationSpec = tween(220))
+        ) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -299,7 +330,7 @@ fun TransactionSheet(
         ) {
         Column(Modifier.fillMaxSize()) {
             // 拖动手柄：下滑（超过 96dp）或点击关闭弹窗（与 GoalCreateSheet 共用）
-            SheetDragHandle(onDismiss = onDismiss)
+            SheetDragHandle(onDismiss = { closeSheet(onDismiss) })
             // 固定头部：标题（编辑备注时右侧带 完成/保存）+（收支/金额）+ 备注
             Column(
                 Modifier
@@ -326,6 +357,9 @@ fun TransactionSheet(
                         Text(stringResource(R.string.sheet_done))
                     }
                     Spacer(Modifier.width(4.dp))
+                }
+                // 键盘收起时头部兜底保存：编辑态默认收起键盘，改完分类/备注直接保存
+                if (noteFocused || !numpadExpanded) {
                     Button(
                         onClick = { doSave() },
                         // 金额为空禁用：灰色按钮比红字报错更先一步给出反馈
@@ -484,7 +518,14 @@ fun TransactionSheet(
                 )
 
                 // 更多选项（默认收起）
-                TextButton(onClick = { moreOpen = !moreOpen }) {
+                val moreView = LocalView.current
+                TextButton(onClick = {
+                    // 与 sheet 内其它可点元素同一套轻震反馈
+                    moreView.performHapticFeedback(
+                        HapticFeedbackConstants.KEYBOARD_TAP
+                    )
+                    moreOpen = !moreOpen
+                }) {
                     Text(
                         stringResource(
                             if (moreOpen) R.string.sheet_less else R.string.sheet_more
@@ -541,11 +582,15 @@ fun TransactionSheet(
                             )
                         }
                     }
-                    // 编辑态删除：不想翻回列表左滑时，在这里直接删
+                    // 编辑态删除：不想翻回列表左滑时，在这里直接删。
+                    // 删除可经 Toast 撤销，不再二次确认
                     if (initial != null) {
                         Spacer(Modifier.height(8.dp))
                         TextButton(
-                            onClick = { deleteConfirm = true },
+                            onClick = {
+                                onDelete()
+                                closeSheet(onDismiss)
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -558,7 +603,7 @@ fun TransactionSheet(
         }
 
         // 固定底部：数字键盘（数字键 + 连加 + 保存视为一个整体）。
-        // 默认收起让分类区独占空间，点金额输入框展开/收起；备注编辑态隐藏。
+        // 新增默认展开；编辑默认收起让分类区独占空间，点金额输入框展开；备注编辑态隐藏。
         AnimatedVisibility(
             visible = !noteFocused && numpadExpanded,
             enter = expandVertically(),
@@ -595,41 +640,9 @@ fun TransactionSheet(
                         }
                     }
                 )
+                }
             }
         }
-        }
-
-        // 编辑态删除确认（复用首页同款文案）
-        if (deleteConfirm) {
-            AlertDialog(
-                onDismissRequest = { deleteConfirm = false },
-                title = { Text(stringResource(R.string.home_delete_confirm_title)) },
-                text = {
-                    Text(
-                        stringResource(
-                            R.string.home_delete_confirm_msg,
-                            Categories.displayName(initial?.category ?: ""),
-                            MoneyUtils.formatCents(initial?.amountCents ?: 0L)
-                        )
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        deleteConfirm = false
-                        onDelete()
-                    }) {
-                        Text(
-                            stringResource(R.string.common_delete),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { deleteConfirm = false }) {
-                        Text(stringResource(R.string.common_cancel))
-                    }
-                }
-            )
         }
     }
 }

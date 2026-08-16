@@ -1,9 +1,14 @@
 package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,6 +74,8 @@ import com.moneyhistory.app.dailySavingRate
 import com.moneyhistory.app.goalEmojiCandidates
 import java.util.Calendar
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // 目标名称上限：与 emoji 并排时一屏可读，输入时边输边显示计数
 private const val GOAL_NAME_MAX = 12
@@ -284,8 +292,19 @@ fun GoalListSheet(
     onCreateClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    // 收起动画：先下滑收起再真正关闭；协程随组合取消，组合被替换时不会误关新弹层
+    var dismissing by remember { mutableStateOf(false) }
+    val sheetScope = rememberCoroutineScope()
+    fun closeSheet(after: () -> Unit = {}) {
+        if (dismissing) return
+        dismissing = true
+        sheetScope.launch {
+            delay(300)
+            after()
+        }
+    }
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { closeSheet(onDismiss) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -293,6 +312,16 @@ fun GoalListSheet(
     ) {
         // 弹层窗口透明系统条：背景（品牌蓝窗底）铺满屏幕，sheet 浮在上面
         DialogEdgeToEdge()
+        // 上拉展开 / 下滑收起：位移是动画主体，fade 略快只做柔和过渡
+        AnimatedVisibility(
+            visible = !dismissing,
+            enter = slideInVertically(
+                animationSpec = tween(320, easing = FastOutSlowInEasing)
+            ) { it } + fadeIn(animationSpec = tween(240)),
+            exit = slideOutVertically(
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) { it } + fadeOut(animationSpec = tween(220))
+        ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -311,7 +340,7 @@ fun GoalListSheet(
                         .navigationBarsPadding()
                         .padding(bottom = 28.dp)
                 ) {
-                    SheetDragHandle(onDismiss = onDismiss)
+                    SheetDragHandle(onDismiss = { closeSheet(onDismiss) })
                     Text(
                         text = stringResource(R.string.home_section_goal),
                         style = MaterialTheme.typography.titleLarge,
@@ -323,14 +352,30 @@ fun GoalListSheet(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(goals, key = { it.id }) { goal ->
-                            GoalCard(goal = goal, onClick = { onGoalClick(goal.id) })
+                            GoalCard(
+                                goal = goal,
+                                onClick = {
+                                    closeSheet {
+                                        onGoalClick(goal.id)
+                                        onDismiss()
+                                    }
+                                }
+                            )
                         }
                         item {
-                            AddGoalCard(onClick = onCreateClick)
+                            AddGoalCard(
+                                onClick = {
+                                    closeSheet {
+                                        onCreateClick()
+                                        onDismiss()
+                                    }
+                                }
+                            )
                         }
                     }
                 }
             }
+        }
         }
     }
 }
@@ -354,9 +399,20 @@ fun GoalCreateSheet(
     var emoji by rememberSaveable { mutableStateOf(goalEmojiCandidates.first()) }
     var deadlineEnabled by rememberSaveable { mutableStateOf(false) }
     var deadlineMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+    // 收起动画：先下滑收起再真正关闭；协程随组合取消，组合被替换时不会误关新弹层
+    var dismissing by remember { mutableStateOf(false) }
+    val sheetScope = rememberCoroutineScope()
+    fun closeSheet(after: () -> Unit = {}) {
+        if (dismissing) return
+        dismissing = true
+        sheetScope.launch {
+            delay(300)
+            after()
+        }
+    }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { closeSheet(onDismiss) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -364,6 +420,16 @@ fun GoalCreateSheet(
     ) {
         // 弹层窗口透明系统条：背景（品牌蓝窗底）铺满屏幕，sheet 浮在上面
         DialogEdgeToEdge()
+        // 上拉展开 / 下滑收起：位移是动画主体，fade 略快只做柔和过渡
+        AnimatedVisibility(
+            visible = !dismissing,
+            enter = slideInVertically(
+                animationSpec = tween(320, easing = FastOutSlowInEasing)
+            ) { it } + fadeIn(animationSpec = tween(240)),
+            exit = slideOutVertically(
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) { it } + fadeOut(animationSpec = tween(220))
+        ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -384,7 +450,7 @@ fun GoalCreateSheet(
                         .padding(horizontal = 24.dp)
                         .padding(bottom = 32.dp)
                 ) {
-                    SheetDragHandle(onDismiss = onDismiss)
+                    SheetDragHandle(onDismiss = { closeSheet(onDismiss) })
 
                     Text(
                         stringResource(R.string.goal_create_title),
@@ -490,7 +556,7 @@ fun GoalCreateSheet(
                                             if (deadlineEnabled) deadlineMillis else null
                                         )
                                     )
-                                    onDismiss()
+                                    closeSheet(onDismiss)
                                 }
                             }
                         },
@@ -503,6 +569,7 @@ fun GoalCreateSheet(
                 }
             }
         }
+    }
     }
 }
 
@@ -581,7 +648,12 @@ fun AmountPadDialog(
                 Spacer(Modifier.height(8.dp))
                 NumPad(
                     onKey = { onNumKey(it) },
-                    plusEnabled = segments.last().isNotEmpty()
+                    plusEnabled = segments.last().isNotEmpty(),
+                    // 与记账面板同一交互语言：长按退格清空整笔金额（含连加）
+                    onClearAll = {
+                        segments = listOf("")
+                        errorRes = null
+                    }
                 )
                 errorRes?.let {
                     Spacer(Modifier.height(4.dp))

@@ -88,12 +88,15 @@ fun GoalDetailScreen(
             title = goal?.name ?: "",
             onBack = onBack,
             actions = {
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = stringResource(R.string.goal_delete_title),
-                        tint = androidx.compose.ui.graphics.Color.White
-                    )
+                // 目标已删（等撤销 Toast 的窗口期）时不渲染删除入口，避免空名二次删除
+                if (goal != null) {
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = stringResource(R.string.goal_delete_title),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         )
@@ -179,7 +182,9 @@ fun GoalDetailScreen(
                     val daysLeft = (remaining + rate - 1) / rate
                     stringResource(
                         R.string.goal_detail_stats,
-                        MoneyUtils.formatCents(dailyAvg),
+                        // 显示的日均与预测同口径（近 30 天速度）：
+                        // 「按此速度」的 N 天与前面的数字对得上
+                        MoneyUtils.formatCents(rate),
                         MoneyUtils.formatCents(remaining),
                         daysLeft
                     )
@@ -203,7 +208,8 @@ fun GoalDetailScreen(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 48.dp),
+                    shape = MaterialTheme.shapes.large
                 ) {
                     Text(stringResource(R.string.goal_deposit))
                 }
@@ -212,7 +218,8 @@ fun GoalDetailScreen(
                     onClick = { showWithdrawDialog = true },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 48.dp),
+                    shape = MaterialTheme.shapes.large
                 ) {
                     Text(stringResource(R.string.goal_withdraw))
                 }
@@ -234,7 +241,11 @@ fun GoalDetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        goal.deposits.sortedByDescending { it.timestamp }.forEach { d ->
+                        // 页面是 verticalScroll 的普通 Column：历史全量渲染会随
+                        // 记录增多卡顿，只展示最近 100 笔，超出部分明示剩余条数
+                        val deposits = goal.deposits.sortedByDescending { it.timestamp }
+                        val shown = deposits.take(100)
+                        shown.forEach { d ->
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -260,10 +271,28 @@ fun GoalDetailScreen(
                                 )
                             }
                         }
+                        if (deposits.size > shown.size) {
+                            Text(
+                                text = stringResource(
+                                    R.string.goal_history_more,
+                                    deposits.size - shown.size
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                 }
             }
         }
+        } else {
+            // 目标已删、等撤销 Toast 窗口期：给个轻空态，不做空白页
+            EmptyState(
+                emoji = "🗑️",
+                title = deletedText,
+                subtitle = stringResource(R.string.goal_deleted_sub)
+            )
         }
     }
 

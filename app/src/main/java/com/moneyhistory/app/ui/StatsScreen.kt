@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.DateUtils
@@ -285,7 +288,15 @@ fun StatsScreen(
             }
 
             // 整月无记录：整页空态（插图 + 记一笔直达），不再展示一串 0.00 的噪音卡片
-            if (monthTransactions.isEmpty()) {
+            // 标签页 + 图表区随月份整块滑动（与标题同一套过渡），翻月不再「标题滑、图表跳」
+            AnimatedContent(
+                targetState = month,
+                transitionSpec = { monthPageTransition { it.year * 12 + it.month } },
+                modifier = Modifier.fillMaxWidth(),
+                label = "statsMonth"
+            ) { _ ->
+                Column {
+                if (monthTransactions.isEmpty()) {
                 EmptyState(
                     emoji = "📊",
                     title = stringResource(R.string.stats_page_empty_title),
@@ -298,7 +309,7 @@ fun StatsScreen(
                     }
                 )
             } else {
-            // 顶部汇总：支出 / 收入 / 结余
+            // 顶部汇总：支出 / 收入 / 结余（金额按长度降字号，不截断）
             AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(
                     Modifier
@@ -306,54 +317,51 @@ fun StatsScreen(
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
                             text = stringResource(R.string.stats_total_expense_label),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        SummaryAmount(
                             text = MoneyUtils.formatCents(totalExpense),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = expenseAmountColor(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = expenseAmountColor()
                         )
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
                             text = stringResource(R.string.stats_total_income_label),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        SummaryAmount(
                             text = MoneyUtils.formatCents(totalIncome),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = incomeAmountColor(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = incomeAmountColor()
                         )
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
                             text = stringResource(R.string.stats_balance),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         val balance = totalIncome - totalExpense
-                        Text(
+                        SummaryAmount(
                             text = MoneyUtils.formatCents(balance),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
                             color = when {
                                 balance > 0 -> incomeAmountColor()
                                 balance < 0 -> expenseAmountColor()
                                 else -> MaterialTheme.colorScheme.onSurface
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            }
                         )
                     }
                 }
@@ -428,6 +436,30 @@ fun StatsScreen(
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
+                            // 环比变化的一行温度：省了钱夸奖、花多了轻轻提个醒
+                            // （颜色与上面数值同语义，金额/百分比共用同一对占位符）
+                            if (diff != 0L) {
+                                Spacer(Modifier.height(6.dp))
+                                val goodNews = if (tab == 0) diff < 0 else diff > 0
+                                Text(
+                                    text = stringResource(
+                                        when {
+                                            tab == 0 && goodNews -> R.string.stats_insight_saved_expense
+                                            tab == 0 -> R.string.stats_insight_more_expense
+                                            goodNews -> R.string.stats_insight_more_income
+                                            else -> R.string.stats_insight_less_income
+                                        },
+                                        MoneyUtils.formatCents(Math.abs(diff)),
+                                        diffPct
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (goodNews) {
+                                        incomeAmountColor()
+                                    } else {
+                                        expenseAmountColor()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -463,6 +495,11 @@ fun StatsScreen(
                             }
                         )
                     } else {
+                        // 读屏按界面语言读：本地化分类名 + 元格式金额（与图例一致）。
+                        // displayName 是 @Composable，先在组合上下文算好，lambda 里只取值
+                        val sliceDescs = slices.associate {
+                            it.label to Categories.displayName(it.label)
+                        }
                         DonutChart(
                             slices = slices,
                             centerTitle = stringResource(
@@ -473,6 +510,10 @@ fun StatsScreen(
                                 }
                             ),
                             centerValue = MoneyUtils.formatCents(currentTotal),
+                            sliceDescription = { slice ->
+                                "${sliceDescs[slice.label].orEmpty()} " +
+                                    MoneyUtils.formatCents(slice.value.toLong())
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(200.dp)
@@ -490,7 +531,7 @@ fun StatsScreen(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
+                                    .heightIn(min = 48.dp)
                                     .pressScale()
                                     .clickable(
                                         interactionSource = remember {
@@ -637,6 +678,8 @@ fun StatsScreen(
                 }
             }
             } // else：整月有记录
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }
@@ -690,7 +733,27 @@ private fun InsightRow(
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = trailingColor,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+/** 汇总金额：按字符串长度降字号适配列宽，金额信息不被省略号吞掉。 */
+@Composable
+private fun SummaryAmount(text: String, color: Color, modifier: Modifier = Modifier) {
+    val fontSize = when {
+        text.length <= 9 -> 16.sp  // 与 titleMedium 同号
+        text.length <= 12 -> 14.sp
+        else -> 12.sp
+    }
+    Text(
+        text = text,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Bold,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
 }

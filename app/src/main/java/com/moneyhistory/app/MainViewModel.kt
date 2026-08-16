@@ -6,12 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.moneyhistory.app.sync.FamilySyncManager
 import com.moneyhistory.app.widget.SpendingWidgetProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
@@ -91,8 +94,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _recurring = MutableStateFlow(recurringStore.all())
     val recurring: StateFlow<List<RecurringExpense>> = _recurring.asStateFlow()
 
-    private val _customCategories = MutableStateFlow(categoriesStore.customCategories())
-    val customCategories: StateFlow<List<String>> = _customCategories.asStateFlow()
+    private val _expenseCategories = MutableStateFlow(categoriesStore.expenseCategories())
+    val expenseCategories: StateFlow<List<String>> = _expenseCategories.asStateFlow()
+
+    private val _incomeCategories = MutableStateFlow(categoriesStore.incomeCategories())
+    val incomeCategories: StateFlow<List<String>> = _incomeCategories.asStateFlow()
 
     private val _goals = MutableStateFlow(savingsStore.all())
     val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
@@ -134,17 +140,35 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _tabReclick.tryEmit(route)
     }
 
-    /** 子页（统计等）「记一笔」直达：首页收到后打开记账面板。 */
-    private val _requestAddSheet = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val requestAddSheet: SharedFlow<Unit> = _requestAddSheet.asSharedFlow()
+    /**
+     * 子页（统计等）「记一笔」直达：首页收到后打开记账面板。
+     * 用带缓冲的 Channel 而非 SharedFlow：统计页是独立导航目的地，点击时首页
+     * 不在组合中，replay=0 的 SharedFlow 会直接丢弃事件；Channel 会把事件暂存，
+     * 等首页重新进入组合开始收集时再投递——跨页直达才不丢。
+     */
+    private val _requestAddSheet = Channel<Unit>(Channel.BUFFERED)
+    val requestAddSheet: Flow<Unit> = _requestAddSheet.receiveAsFlow()
 
     fun requestAddSheet() {
-        _requestAddSheet.tryEmit(Unit)
+        _requestAddSheet.trySend(Unit)
+    }
+
+    /**
+     * 「周期账单」空态直达：返回首页打开记账面板并预勾选周期开关。
+     * 与 [requestAddSheet] 同机制：Channel 缓冲保证跨页事件不丢。
+     */
+    private val _requestRecurringSheet = Channel<Unit>(Channel.BUFFERED)
+    val requestRecurringSheet: Flow<Unit> = _requestRecurringSheet.receiveAsFlow()
+
+    fun requestRecurringSheet() {
+        _requestRecurringSheet.trySend(Unit)
     }
 
     init {
         // 流水变更后刷新桌面 Widget
         store.onChanged = { SpendingWidgetProvider.notifyChanged(app) }
+        // 启动时补发：新版本新增的勋章按历史数据一次性结算（幂等，只庆祝新解锁）
+        checkBadges()
         viewModelScope.launch {
             syncManager.events.collect { event ->
                 refresh()
@@ -267,21 +291,41 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _recurring.value = recurringStore.all()
     }
 
-    // ---------- 自定义分类 ----------
+    // ---------- 分类（支出/收入两组，均含默认分类，可增删改） ----------
 
-    fun expenseCategories(): List<String> = categoriesStore.expenseCategories()
-
-    fun incomeCategories(): List<String> = categoriesStore.incomeCategories()
-
-    fun addCustomCategory(category: String): Boolean {
-        val ok = categoriesStore.add(category)
-        if (ok) _customCategories.value = categoriesStore.customCategories()
+    fun addCategory(category: String, isExpense: Boolean): Boolean {
+        val ok = categoriesStore.add(category, isExpense)
+        if (ok) refreshCategoryLists()
         return ok
     }
 
-    fun removeCustomCategory(category: String) {
-        categoriesStore.remove(category)
-        _customCategories.value = categoriesStore.customCategories()
+    fun removeCategory(category: String, isExpense: Boolean) {
+        categoriesStore.remove(category, isExpense)
+        refreshCategoryLists()
+    }
+
+    /**
+     * 重命名分类：同步改写历史流水与周期记账中引用的旧分类名，
+     * 保证记录与分类管理页展示一致。返回是否成功（重名/不存在为 false）。
+     */
+    fun renameCategory(old: String, new: String, isExpense: Boolean): Boolean {
+        if (!categoriesStore.rename(old, new, isExpense)) return false
+        store.all().filter { it.category == old }.forEach {
+            store.update(it.copy(category = new))
+        }
+        recurringStore.all().filter { it.category == old }.forEach {
+            recurringStore.remove(it.id)
+            recurringStore.add(it.copy(category = new))
+        }
+        _transactions.value = store.all()
+        _recurring.value = recurringStore.all()
+        refreshCategoryLists()
+        return true
+    }
+
+    private fun refreshCategoryLists() {
+        _expenseCategories.value = categoriesStore.expenseCategories()
+        _incomeCategories.value = categoriesStore.incomeCategories()
     }
 
     // ---------- 攒钱目标 ----------
@@ -375,22 +419,30 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         _habits.value = habitsStore.all()
     }
 
-    /** build 类打卡/撤销，返回操作后是否已打卡。打卡成功给对勾动效 + 连续天数反馈。 */
-    fun toggleCheckin(id: String): Boolean {
-        val checked = habitsStore.toggleCheckin(id)
+    /** build 类打卡/撤销（[day] 默认今天，可传历史日期补卡），返回操作后是否已打卡。
+     *  打卡成功给对勾动效 + 连续天数反馈；补卡只计入统计与徽章，不过度庆祝。 */
+    fun toggleCheckin(id: String, day: String = DateUtils.today()): Boolean {
+        val checked = habitsStore.toggleCheckin(id, day)
         _habits.value = habitsStore.all()
         if (checked) {
             checkBadges()
-            val streak = _habits.value.firstOrNull { it.id == id }
-                ?.buildStreak(DateUtils.today()) ?: 0
-            bumpSuccess()
-            viewModelScope.launch {
-                _messages.emit(
-                    UiMessage(
-                        app.getString(R.string.habit_checked_streak, streak),
-                        MessageVariant.SUCCESS
+            if (day == DateUtils.today()) {
+                val streak = _habits.value.firstOrNull { it.id == id }
+                    ?.buildStreak(DateUtils.today()) ?: 0
+                bumpSuccess()
+                viewModelScope.launch {
+                    _messages.emit(
+                        UiMessage(
+                            // 第一次打卡是「开始」不是「坚持」：给单独的暖心文案
+                            if (streak == 1) {
+                                app.getString(R.string.habit_checked_first)
+                            } else {
+                                app.getString(R.string.habit_checked_streak, streak)
+                            },
+                            MessageVariant.SUCCESS
+                        )
                     )
-                )
+                }
             }
         }
         return checked
@@ -405,14 +457,24 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // ---------- 心情 ----------
 
     fun setMood(day: String, mood: Mood, note: String) {
+        // 心情变化才算「新记录」：给成功对勾动效；只改备注不触发，避免过度庆祝
+        val changed = _moods.value[day]?.mood != mood
         moodStore.set(day, mood, note)
         _moods.value = moodStore.all()
         checkBadges()
+        if (changed) bumpSuccess()
     }
 
-    /** 供 UI 发全局 Toast 消息（由 MainActivity 顶层宿主统一展示）。 */
-    fun postMessage(msg: String, variant: MessageVariant = MessageVariant.INFO) {
-        viewModelScope.launch { _messages.emit(UiMessage(msg, variant)) }
+    /** 供 UI 发全局 Toast 消息（由 MainActivity 顶层宿主统一展示）；可带操作按钮（如撤销）。 */
+    fun postMessage(
+        msg: String,
+        variant: MessageVariant = MessageVariant.INFO,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            _messages.emit(UiMessage(msg, variant, actionLabel, onAction))
+        }
     }
 
     /** 深夜关怀：同一会话只提示一次，不打扰连续记账。 */
@@ -435,20 +497,27 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val txs = store.all()
         val habitList = habitsStore.all()
         val moodMap = moodStore.all()
+        val quitHabits = habitList.filter { it.type == Habit.Type.QUIT }
         val input = BadgeInput(
             txCount = txs.size,
             txStreak = streakOf(txs),
+            fullMonth = hasFullMonth(txs),
+            recurringAdded = recurringStore.all().isNotEmpty(),
+            goalDeposited = savingsStore.all()
+                .any { it.deposits.any { d -> !d.isWithdraw } },
             goalAchieved = savingsStore.all()
                 .any { it.targetCents > 0 && it.savedCents >= it.targetCents },
             anyCheckin = habitList.any { it.checkins.isNotEmpty() },
             maxBuildStreak = habitList
                 .filter { it.type == Habit.Type.BUILD }
                 .maxOfOrNull { it.buildStreak() } ?: 0,
-            maxQuitDays = habitList
-                .filter { it.type == Habit.Type.QUIT }
-                .maxOfOrNull { it.quitDays() } ?: 0,
+            totalCheckins = habitList.sumOf { it.checkins.size },
+            maxQuitDays = quitHabits.maxOfOrNull { it.quitDays() } ?: 0,
+            anyQuitReset = quitHabits.any { it.resets.isNotEmpty() },
             moodCount = moodMap.size,
             moodStreak = moodStreakOf(moodMap.keys),
+            nonAngryStreak = consecutiveNonAngryDays(moodMap),
+            moodNote = moodMap.values.any { it.note.isNotBlank() },
             calmMonth = hasCalmMonth(moodMap)
         )
         val unlocked = evaluateBadges(input)

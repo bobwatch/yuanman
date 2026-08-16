@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -62,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -123,14 +125,24 @@ private val bottomTabs = listOf(
 
 private val tabRoutes = bottomTabs.map { it.route }
 
+// 页切换动画节奏：FastOutSlowIn 先快后缓的 200ms 位移是主体——Tab 切换要「快而跟手」，
+// fade 更短（进入 150 / 退出 120）只做柔和过渡，避免看起来像卡顿
+private val navSlideSpec = tween<IntOffset>(200, easing = FastOutSlowInEasing)
+private val navFadeInSpec = tween<Float>(150)
+private val navFadeOutSpec = tween<Float>(120)
+
 /** 前进方向：Tab 之间按索引左右滑；进入子页统一向左滑（新页从右进入）。 */
 private fun navEnter(from: String?, to: String?): EnterTransition {
     val fi = tabRoutes.indexOf(from)
     val ti = tabRoutes.indexOf(to)
     return if (fi >= 0 && ti >= 0 && fi != ti) {
-        if (ti > fi) slideInHorizontally { it } + fadeIn() else slideInHorizontally { -it } + fadeIn()
+        if (ti > fi) {
+            slideInHorizontally(animationSpec = navSlideSpec) { it } + fadeIn(animationSpec = navFadeInSpec)
+        } else {
+            slideInHorizontally(animationSpec = navSlideSpec) { -it } + fadeIn(animationSpec = navFadeInSpec)
+        }
     } else {
-        slideInHorizontally { it } + fadeIn()
+        slideInHorizontally(animationSpec = navSlideSpec) { it } + fadeIn(animationSpec = navFadeInSpec)
     }
 }
 
@@ -139,9 +151,13 @@ private fun navExit(from: String?, to: String?): ExitTransition {
     val fi = tabRoutes.indexOf(from)
     val ti = tabRoutes.indexOf(to)
     return if (fi >= 0 && ti >= 0 && fi != ti) {
-        if (ti > fi) slideOutHorizontally { -it } + fadeOut() else slideOutHorizontally { it } + fadeOut()
+        if (ti > fi) {
+            slideOutHorizontally(animationSpec = navSlideSpec) { -it } + fadeOut(animationSpec = navFadeOutSpec)
+        } else {
+            slideOutHorizontally(animationSpec = navSlideSpec) { it } + fadeOut(animationSpec = navFadeOutSpec)
+        }
     } else {
-        slideOutHorizontally { -it } + fadeOut()
+        slideOutHorizontally(animationSpec = navSlideSpec) { -it } + fadeOut(animationSpec = navFadeOutSpec)
     }
 }
 
@@ -183,7 +199,12 @@ class MainActivity : ComponentActivity() {
                     // 全局 Toast（同步 / 周期账单 / 勋章解锁 / 升级等提示）
                     LaunchedEffect(Unit) {
                         viewModel.messages.collect { msg ->
-                            toastHostState.show(msg.text, msg.variant)
+                            toastHostState.show(
+                                msg.text,
+                                msg.variant,
+                                msg.actionLabel,
+                                msg.onAction
+                            )
                         }
                     }
 
@@ -240,10 +261,10 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             },
                                             icon = {
-                                                // 描边 ⇄ 实心淡切：选中状态变化不「干跳」
+                                                // 描边 ⇄ 实心淡切：与整页过渡同节奏（约 150ms），跟手不拖沓
                                                 Crossfade(
                                                     targetState = selected,
-                                                    animationSpec = tween(220),
+                                                    animationSpec = tween(140),
                                                     label = "tabIcon"
                                                 ) { isSelected ->
                                                     Icon(
@@ -307,8 +328,14 @@ class MainActivity : ComponentActivity() {
                                 exitTransition = {
                                     navExit(initialState.destination.route, targetState.destination.route)
                                 },
-                                popEnterTransition = { slideInHorizontally { -it } },
-                                popExitTransition = { slideOutHorizontally { it } }
+                                popEnterTransition = {
+                                    slideInHorizontally(animationSpec = navSlideSpec) { -it } +
+                                        fadeIn(animationSpec = navFadeInSpec)
+                                },
+                                popExitTransition = {
+                                    slideOutHorizontally(animationSpec = navSlideSpec) { it } +
+                                        fadeOut(animationSpec = navFadeOutSpec)
+                                }
                             ) {
                                 composable("home") {
                                     HomeScreen(

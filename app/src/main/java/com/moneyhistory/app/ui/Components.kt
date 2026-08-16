@@ -2,6 +2,8 @@ package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.with
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -87,7 +90,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -104,8 +109,29 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+/** 月份切换的整页过渡：前进从右滑入、后退从左滑入；280ms FastOutSlowIn 与淡入淡出同步，
+ *  高度变化（月历 5/6 行、统计页高度）用同一 tween 而非默认弹簧，避免回弹；
+ *  标题与页面内容共用同一套以保证位移一致。 */
+@OptIn(ExperimentalAnimationApi::class)
+internal fun <T> AnimatedContentTransitionScope<T>.monthPageTransition(
+    keyOf: (T) -> Int
+): ContentTransform {
+    val forward = keyOf(targetState) > keyOf(initialState)
+    val slide = tween<IntOffset>(280, easing = FastOutSlowInEasing)
+    val fade = tween<Float>(280, easing = FastOutSlowInEasing)
+    val size = SizeTransform { _, _ -> tween(280, easing = FastOutSlowInEasing) }
+    return if (forward) {
+        ((slideInHorizontally(slide) { it } + fadeIn(fade)) with
+            (slideOutHorizontally(slide) { -it } + fadeOut(fade))).using(size)
+    } else {
+        ((slideInHorizontally(slide) { -it } + fadeIn(fade)) with
+            (slideOutHorizontally(slide) { it } + fadeOut(fade))).using(size)
+    }
+}
+
 /** 月份切换条（‹ 2026年8月 ›），月份文字带滑动动画。[contentColor] 默认跟随主题。
- *  [onTitleClick] 非空时月份标题可点击（加下划线提示），用于「一键回到本月」。 */
+ *  [onTitleClick] 非空时月份标题可点击（加下划线提示），用于「一键回到本月」。
+ *  [animateTitle] 为 false 时（整页随月份滑动的首页）标题只做极短淡入，避免双重位移。 */
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun MonthSelector(
@@ -115,7 +141,9 @@ fun MonthSelector(
     modifier: Modifier = Modifier,
     nextEnabled: Boolean = true,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    /** false 时标题不自带动画（整页随月份滑动时避免双重位移）。 */
+    animateTitle: Boolean = true
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -132,15 +160,12 @@ fun MonthSelector(
         AnimatedContent(
             targetState = month,
             transitionSpec = {
-                val forward =
-                    targetState.year * 12 + targetState.month >
-                        initialState.year * 12 + initialState.month
-                if (forward) {
-                    slideInHorizontally { it } + fadeIn() with
-                        slideOutHorizontally { -it } + fadeOut()
+                if (animateTitle) {
+                    monthPageTransition { it.year * 12 + it.month }
                 } else {
-                    slideInHorizontally { -it } + fadeIn() with
-                        slideOutHorizontally { it } + fadeOut()
+                    // 标题随整页滑动，只留极短淡入淡出平滑宽度变化，避免双重位移
+                    fadeIn(tween(120, easing = FastOutSlowInEasing)) with
+                        fadeOut(tween(120, easing = FastOutSlowInEasing))
                 }
             },
             label = "month"
@@ -458,7 +483,11 @@ fun EmptyState(
         )
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(22.dp))
-            Button(onClick = onAction) {
+            Button(
+                onClick = onAction,
+                // 与全局主按钮体系一致（20dp），不做 M3 默认全圆角
+                shape = MaterialTheme.shapes.large
+            ) {
                 Text(actionLabel)
             }
         }
@@ -584,7 +613,9 @@ fun DialogEdgeToEdge() {
     }
 }
 
-/** 一级页头（Tab 页）：品牌蓝渐变 + 状态栏融合 + 圆角收底。 */@Composable
+/** 一级页头（Tab 页）：去色块卡片，品牌渐变大字标题 + 副标题，留白更大气。
+ *  与首页的蓝渐变同源（brandHeaderBrush），只是不再以卡片形式铺底。 */
+@Composable
 fun YuanmanHeader(
     title: String,
     subtitle: String? = null,
@@ -593,34 +624,35 @@ fun YuanmanHeader(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
-            .background(brandHeaderBrush())
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 18.dp)
+            .padding(top = 24.dp, bottom = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    brush = brandHeaderBrush()
+                ),
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             actions()
         }
         subtitle?.let {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.8f)
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
-/** 二级页头（子页面）：返回箭头 + 标题 + 可选操作。 */
+/** 二级页头（子页面）：返回箭头 + 渐变标题 + 可选操作，与一级页头同语言。 */
 @Composable
 fun SubPageHeader(
     title: String,
@@ -631,32 +663,33 @@ fun SubPageHeader(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
-            .background(brandHeaderBrush())
             .statusBarsPadding()
-            .padding(horizontal = 8.dp)
-            .padding(top = 4.dp, bottom = 16.dp)
+            .padding(horizontal = 6.dp)
+            .padding(top = 8.dp, bottom = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.common_back),
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        brush = brandHeaderBrush()
+                    ),
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 subtitle?.let {
                     Text(
                         text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f)
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

@@ -69,7 +69,14 @@ fun RecurringScreen(
                 EmptyState(
                     emoji = "🔁",
                     title = stringResource(R.string.recurring_empty_title),
-                    subtitle = stringResource(R.string.recurring_empty_sub)
+                    subtitle = stringResource(R.string.recurring_empty_sub),
+                    // 创建入口藏在首页记账面板的「周期」开关里，空态给直达按钮：
+                    // 返回首页并打开面板、预勾选周期开关，用户不用自己摸索
+                    actionLabel = stringResource(R.string.recurring_empty_action),
+                    onAction = {
+                        viewModel.requestRecurringSheet()
+                        onBack()
+                    }
                 )
             }
         } else {

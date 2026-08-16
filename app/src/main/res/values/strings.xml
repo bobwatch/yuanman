@@ -46,24 +46,20 @@
     <string name="home_search_empty_sub">Nothing found for \"%1$s\" — try another keyword</string>
     <string name="home_deleted">Deleted</string>
     <string name="home_undo">Undo</string>
-    <string name="home_delete_confirm_title">Delete this record?</string>
-    <string name="home_delete_confirm_msg">%1$s %2$s will be deleted. This cannot be undone.</string>
     <string name="home_overview_expense">Spent this month</string>
     <string name="home_header_income">Income</string>
     <string name="home_header_today">Today</string>
     <string name="home_header_today_none">—</string>
     <string name="home_header_streak">Streak</string>
     <string name="home_header_streak_short">🔥 %1$d days</string>
-    <string name="home_budget_set">Set monthly budget →</string>
-    <string name="budget_left">%1$s left</string>
-    <string name="budget_over_amount">%1$s over</string>
-    <!-- header pills (compact, next to the monthly expense figure) -->
-    <string name="home_pill_budget_left">%1$s left</string>
-    <string name="home_pill_budget_over">%1$s over</string>
-    <string name="home_pill_goal_saved">Saved %1$s</string>
+    <!-- header progress cards (below the monthly expense figure) -->
+    <string name="home_card_budget_unset">Set budget</string>
+    <string name="home_card_budget_amount">Budget %1$s</string>
+    <string name="home_card_budget_left">%1$s left</string>
+    <string name="home_card_budget_over">%1$s over</string>
+    <string name="home_card_goal_saved">Saved %1$s</string>
+    <string name="home_card_goal_unset">Set a goal</string>
     <string name="home_section_goal">Savings goals</string>
-    <string name="home_goal_set">Set a goal →</string>
-    <string name="home_goal_progress">%1$s %2$d%%</string>
 
     <!-- greetings (time-of-day, light emotional touch) -->
     <string name="greeting_morning">Good morning</string>
@@ -126,6 +122,7 @@
     <string name="recurring_title">Recurring bills</string>
     <string name="recurring_empty_title">No recurring bills yet</string>
     <string name="recurring_empty_sub">Turn on \"Make recurring\" when adding a transaction</string>
+    <string name="recurring_empty_action">Create one</string>
     <string name="recurring_row_subtitle">%1$s · next %2$s</string>
     <string name="recurring_row_title">%1$s · %2$s</string>
     <string name="recurring_delete">Delete</string>
@@ -163,6 +160,11 @@
     <string name="stats_insight_more">+%1$s (+%2$d%%)</string>
     <string name="stats_insight_less">-%1$s (-%2$d%%)</string>
     <string name="stats_insight_even">Same as last month</string>
+    <!-- 环比暖心文案：给结果的语气，不让数字冷冰冰 -->
+    <string name="stats_insight_saved_expense">🎉 %1$s less than last month (-%2$d%%) — keep it up!</string>
+    <string name="stats_insight_more_expense">%1$s more than last month (+%2$d%%) — where did it go?</string>
+    <string name="stats_insight_more_income">🎉 %1$s more than last month (+%2$d%%) — great month!</string>
+    <string name="stats_insight_less_income">%1$s less than last month (-%2$d%%) — hang in there</string>
     <string name="stats_percent_format">%1$d%%</string>
     <!-- chart accessibility descriptions (TalkBack) -->
     <string name="chart_donut_desc">Donut chart: %1$s. %2$s</string>
@@ -207,12 +209,14 @@
     <string name="goal_withdraw">Withdraw</string>
     <string name="goal_history">History</string>
     <string name="goal_history_empty">💸 No deposits yet — make your first one</string>
+    <string name="goal_history_more">…and %1$d more entries</string>
     <string name="goal_deposit_title">Deposit to \"%1$s\"</string>
     <string name="goal_withdraw_title">Withdraw from \"%1$s\"</string>
     <string name="goal_record_expense">Also record an expense (category: 💎 Savings)</string>
     <string name="goal_delete_title">Delete goal</string>
     <string name="goal_delete_msg">Delete \"%1$s\"? Deposit history will be removed; recorded transactions are not affected.</string>
     <string name="goal_deleted">Goal deleted</string>
+    <string name="goal_deleted_sub">Tap undo on the toast to restore it</string>
     <string name="goal_not_found">This goal no longer exists</string>
     <string name="milestone_25">🌱 Nice start! 25% saved</string>
     <string name="milestone_50">💪 Halfway there! 50% saved</string>
@@ -225,15 +229,13 @@
     <string name="habit_header_sub">Check in daily and build streaks</string>
     <string name="habit_add_new">＋ New habit</string>
     <string name="habit_build_streak">%d-day streak</string>
+    <string name="habit_streak_zero">No streak yet — start today 🌱</string>
     <string name="habit_checked_today">✓ Done today</string>
     <string name="habit_checkin_today">Check in today</string>
-    <string name="habit_uncheck_title">Undo today\'s check-in?</string>
-    <string name="habit_uncheck_msg">Undo today\'s check-in for \"%1$s\"? Your streak will be shortened.</string>
-    <string name="habit_uncheck_confirm">Undo check-in</string>
     <string name="habit_unchecked">Check-in undone</string>
     <string name="habit_quit_days_big">%d days</string>
     <string name="habit_quit_since">clean for</string>
-    <string name="habit_relapse">I relapsed…</string>
+    <string name="habit_relapse">Slipped today?</string>
     <string name="habit_relapse_title">Record a relapse</string>
     <string name="habit_relapse_msg">\"%1$s\" has been clean for %2$d days. The counter restarts from today. Continue?</string>
     <string name="habit_relapse_cancel">Keep going</string>
@@ -247,6 +249,7 @@
     <string name="habit_name_count">%1$d/%2$d</string>
     <string name="habit_pick_emoji">Pick an emoji</string>
     <string name="habit_checked_streak">🔥 %1$d-day streak</string>
+    <string name="habit_checked_first">First check-in — streak started! 🌱</string>
     <string name="habit_created">Created "%1$s"</string>
     <string name="habit_reset_done">Relapse recorded — restarting from today 🌱</string>
 
@@ -259,9 +262,9 @@
     <string name="mood_bad">Down</string>
     <string name="mood_angry">Angry</string>
     <string name="mood_note_toggle">＋ Add a note…</string>
-    <string name="mood_note_hint">One line about today (optional)</string>
-    <string name="mood_note_count">%1$d/%2$d</string>
+    <string name="mood_note_hint">How was today? (optional)</string>
     <string name="mood_note_save">Save note</string>
+    <string name="mood_note_edit">Edit</string>
     <string name="mood_note_saved">Saved today\'s note ✨</string>
     <string name="mood_saved">Mood recorded ✓</string>
     <string name="mood_backfill_saved">Mood recorded for %1$s ✓</string>
@@ -270,7 +273,7 @@
     <string name="mood_angry_days">😠 Angry %d days</string>
     <string name="mood_calm_streak">%d days without anger</string>
     <string name="mood_recorded_days">%d days recorded this month</string>
-    <string name="mood_grid_title">Mood this month</string>
+    <string name="mood_grid_title">Mood calendar</string>
     <string name="mood_day_pattern">MMM d</string>
     <string name="mood_day_none">No mood recorded for this day — pick one to add it</string>
     <string name="mood_today_marker">today</string>
@@ -286,16 +289,23 @@
 
     <!-- categories management -->
     <string name="cats_title">Categories</string>
-    <string name="cats_add_title">Add custom category</string>
+    <string name="cats_add_title">Add category</string>
     <string name="cats_name_hint">Category name</string>
     <string name="cats_name_count">%1$d/%2$d</string>
     <string name="cats_error_dup">Category already exists</string>
     <string name="cats_added">Added</string>
     <string name="cats_delete_confirm_title">Delete this category?</string>
     <string name="cats_delete_confirm_msg">"%1$s" will be removed. Existing records keep the category name.</string>
-    <string name="cats_custom">Custom categories</string>
-    <string name="cats_preset_expense">Preset expense categories</string>
-    <string name="cats_preset_income">Preset income categories</string>
+    <string name="cats_expense">Expense categories</string>
+    <string name="cats_income">Income categories</string>
+    <string name="cats_rename_title">Rename category</string>
+    <string name="cats_renamed">Category renamed</string>
+    <string name="cats_emoji_common">Common</string>
+    <string name="cats_emoji_all">All</string>
+    <string name="cats_emoji_custom">Or type your own emoji</string>
+    <string name="cats_emoji_more">More icons</string>
+    <string name="cats_emoji_title">Choose an icon</string>
+    <string name="cats_emoji_done">Done</string>
 
     <!-- mine -->
     <string name="mine_title">Me</string>
@@ -303,7 +313,7 @@
     <string name="mine_badges_sub">%1$d / %2$d unlocked</string>
     <string name="mine_section_appearance">Appearance</string>
     <string name="mine_section_achievement">Achievements</string>
-    <string name="mine_dark_mode">Dark mode</string>
+    <string name="mine_dark_mode">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -313,7 +323,7 @@
     <string name="mine_recurring">Recurring bills</string>
     <string name="mine_recurring_sub">Rent, subscriptions, etc.</string>
     <string name="mine_categories">Categories</string>
-    <string name="mine_categories_sub">Add custom categories</string>
+    <string name="mine_categories_sub">Add expense &amp; income categories</string>
     <string name="mine_section_data">Data</string>
     <string name="mine_family">Family sync</string>
     <string name="mine_family_sub">Merge ledgers over the same Wi-Fi</string>
@@ -343,6 +353,7 @@
     <string name="import_read_failed_reason">Failed to read the file: %1$s</string>
     <string name="import_merged">Merged %d records</string>
     <string name="importing">Importing…</string>
+    <string name="importing_wait">Importing, please wait…</string>
     <string name="export_title">Export backup</string>
     <string name="export_done">Backup created — choose where to save it</string>
     <string name="export_failed">Export failed: %1$s</string>
@@ -427,6 +438,34 @@
     <string name="badge_mood_7_desc">Record your mood 7 days in a row</string>
     <string name="badge_calm_month_title">Zen month</string>
     <string name="badge_calm_month_desc">A calendar month with 0 angry days and ≥10 records</string>
+    <string name="badge_tx_10_title">Money journal</string>
+    <string name="badge_tx_10_desc">Record 10 transactions in total</string>
+    <string name="badge_streak_100_title">Century ledger</string>
+    <string name="badge_streak_100_desc">Record 100 days in a row</string>
+    <string name="badge_tx_500_title">Chronicler</string>
+    <string name="badge_tx_500_desc">Record 500 transactions in total</string>
+    <string name="badge_month_full_title">Full attendance</string>
+    <string name="badge_month_full_desc">Record every day of a calendar month</string>
+    <string name="badge_recurring_first_title">Subscription keeper</string>
+    <string name="badge_recurring_first_desc">Add your first recurring expense</string>
+    <string name="badge_goal_deposit_title">First deposit</string>
+    <string name="badge_goal_deposit_desc">Put money into a savings goal</string>
+    <string name="badge_habit_3_title">On a roll</string>
+    <string name="badge_habit_3_desc">3-day streak on one habit</string>
+    <string name="badge_habit_30_title">Iron discipline</string>
+    <string name="badge_habit_30_desc">30-day streak on one habit</string>
+    <string name="badge_habit_total_100_title">Accumulator</string>
+    <string name="badge_habit_total_100_desc">100 check-ins in total across habits</string>
+    <string name="badge_quit_7_title">Fresh start</string>
+    <string name="badge_quit_7_desc">Stay clean for 7 days</string>
+    <string name="badge_comeback_title">Comeback kid</string>
+    <string name="badge_comeback_desc">Stay clean for 7 days after a slip</string>
+    <string name="badge_mood_sunny_7_title">Sunny week</string>
+    <string name="badge_mood_sunny_7_desc">7 days in a row without a bad mood</string>
+    <string name="badge_mood_30_title">Mood chronicle</string>
+    <string name="badge_mood_30_desc">Record your mood on 30 days in total</string>
+    <string name="badge_mood_note_title">Heartfelt</string>
+    <string name="badge_mood_note_desc">Write a note with your mood</string>
 
     <!-- onboarding -->
     <string name="onboard_1_title">Record in 3 seconds</string>
@@ -506,8 +545,35 @@
     <!-- accessibility -->
     <string name="habit_week_summary">Checked in %1$d of the last 7 days</string>
     <string name="habit_week_clean_summary">Clean %1$d of the last 7 days</string>
+    <string name="habit_today_progress">Today %1$d/%2$d checked in</string>
+    <string name="habit_today_done">All done today 🎉</string>
+    <string name="habit_detail_30d">Last 30 days</string>
+    <string name="habit_detail_streak_label">Streak</string>
+    <string name="habit_detail_clean_label">Clean streak</string>
+    <string name="habit_detail_month_done">This month %1$d%%</string>
+    <string name="habit_detail_month_clean">This month %1$d%%</string>
+    <string name="habit_detail_tap_hint">Tap a dot to add or undo a check-in</string>
+    <string name="habit_30_done_summary">Checked in %1$d days in the last 30</string>
+    <string name="habit_30_clean_summary">Clean %1$d days in the last 30</string>
     <string name="mood_day_semantics">Day %1$d, mood: %2$s</string>
 
     <!-- care moments -->
     <string name="late_night_hint">It\'s late — recorded. Now get some rest 🌙</string>
+    <string name="time_filter_desc">Filter by time</string>
+    <string name="time_filter_active">Range: %1$s</string>
+    <string name="time_filter_title">Time range</string>
+    <string name="time_filter_month">Browse by month</string>
+    <string name="time_filter_today">Today</string>
+    <string name="time_filter_week">This week</string>
+    <string name="time_filter_last3">Last 3 months</string>
+    <string name="time_filter_last6">Last 6 months</string>
+    <string name="time_filter_year">This year</string>
+    <string name="time_filter_all">All time</string>
+    <string name="time_filter_custom">Custom range…</string>
+    <string name="time_filter_empty_title">No records in this range</string>
+    <string name="time_filter_empty_sub">Try another range, or clear the filter</string>
+    <string name="custom_range_title">Pick a date range</string>
+    <string name="custom_range_start">Start</string>
+    <string name="custom_range_end">End</string>
+    <string name="custom_range_apply">Apply</string>
 </resources>

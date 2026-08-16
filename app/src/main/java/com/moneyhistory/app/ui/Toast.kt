@@ -1,9 +1,13 @@
 package com.moneyhistory.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +24,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MessageVariant
@@ -150,6 +159,13 @@ private fun ToastItem(
         MessageVariant.WARNING -> WarningOrange
         MessageVariant.ERROR -> ExpenseRed
     }
+    // 类型图标：彩色浅底圆 + 同色图标，一眼识别消息类型（比色条/色点更直观）
+    val variantIcon = when (toast.variant) {
+        MessageVariant.INFO -> Icons.Filled.Info
+        MessageVariant.SUCCESS -> Icons.Filled.CheckCircle
+        MessageVariant.WARNING -> Icons.Filled.Warning
+        MessageVariant.ERROR -> Icons.Filled.ErrorOutline
+    }
 
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -177,8 +193,14 @@ private fun ToastItem(
 
     AnimatedVisibility(
         visible = visible,
-        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-        exit = fadeOut()
+        // 入场：顶部滑下 + 轻微缩放弹出（0.92→1），比纯位移更有「落下来」的质感
+        enter = slideInVertically(initialOffsetY = { -it }) +
+            scaleIn(
+                initialScale = 0.92f,
+                animationSpec = tween(220, easing = FastOutSlowInEasing)
+            ) +
+            fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it / 2 }) + fadeOut()
     ) {
         SwipeToDismissBox(
             state = dismissState,
@@ -203,7 +225,7 @@ private fun ToastItem(
             },
             content = {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = container,
                         contentColor = content
@@ -216,29 +238,29 @@ private fun ToastItem(
                         .semantics { liveRegion = LiveRegionMode.Polite }
                 ) {
                     Row(
-                        Modifier.padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
+                        Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 左侧类型色条
+                        // 类型图标：彩色浅底圆 + 同色图标（18dp），视觉焦点一眼可见
                         Box(
                             Modifier
-                                .width(4.dp)
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(variantColor)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        // 类型色指示点
-                        Box(
-                            Modifier
-                                .size(8.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
-                                .background(variantColor)
-                        )
-                        Spacer(Modifier.width(10.dp))
+                                .background(variantColor.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = variantIcon,
+                                contentDescription = null,
+                                tint = variantColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
                         Text(
                             text = toast.message,
                             style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
                             color = content,
                             modifier = Modifier.weight(1f)
                         )
@@ -255,7 +277,7 @@ private fun ToastItem(
                                 Text(
                                     text = toast.actionLabel,
                                     color = variantColor,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }

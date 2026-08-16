@@ -2,6 +2,7 @@ package com.moneyhistory.app
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -12,11 +13,20 @@ import java.util.Locale
  */
 object MoneyUtils {
 
+    // 千分位金额格式：大额一眼可读（¥1,234.56）；DecimalFormat 对 BigDecimal
+    // 走精确格式化，不会像 double 那样产生浮点尾差
+    private val centsFormat = DecimalFormat("#,##0.00").apply {
+        decimalFormatSymbols = decimalFormatSymbols.apply {
+            decimalSeparator = '.'
+            groupingSeparator = ','
+        }
+    }
+
     /** 把「分」格式化为类似 ¥12.50 的字符串（不带正负号，正负由调用方加）。 */
     fun formatCents(cents: Long): String {
         val sign = if (cents < 0) "-" else ""
         val abs = kotlin.math.abs(cents)
-        return String.format(Locale.CHINA, "%s¥%d.%02d", sign, abs / 100, abs % 100)
+        return sign + "¥" + centsFormat.format(BigDecimal(abs).movePointLeft(2))
     }
 
     /** 把「分」格式化为 12.50 形式（用于 CSV 导出，Excel 友好）。 */

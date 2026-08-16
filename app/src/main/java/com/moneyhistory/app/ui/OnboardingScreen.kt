@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Lock
@@ -78,13 +80,15 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             modifier = Modifier.weight(1f)
         ) { page ->
             val (icon, titleRes, descRes) = pages[page]
-            Column(
+            Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         // 翻页视差：页面滑出时内容微微缩小 + 淡出 + 下浮，
-                        // 当前页完全回正——滑动不再是「贴纸平移」，有层次感
-                        val offset = ((page - pagerState.currentPage) +
+                        // 当前页完全回正——滑动不再是「贴纸平移」，有层次感。
+                        // 公式与官方一致（currentPage - page + fraction）：滑向
+                        // 下一页时 fraction 为正，进入页 offset 从 1 平滑回 0
+                        val offset = ((pagerState.currentPage - page) +
                             pagerState.currentPageOffsetFraction)
                             .coerceIn(-1f, 1f)
                         val distance = offset.absoluteValue
@@ -93,9 +97,15 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         alpha = 1f - distance * 0.35f
                         translationY = distance * 28.dp.toPx()
                     },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                contentAlignment = Alignment.Center
             ) {
+                // 内容超高（小屏/超大字号）时可滚动，常规高度下居中显示
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                 // 半透明白底矢量图标
                 Box(
                     Modifier
@@ -126,6 +136,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     color = Color.White.copy(alpha = 0.85f),
                     textAlign = TextAlign.Center
                 )
+                }
             }
         }
 

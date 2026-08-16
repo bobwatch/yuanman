@@ -22,7 +22,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,6 +40,7 @@ import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.R
 import com.moneyhistory.app.allBadges
 import com.moneyhistory.app.buildStreak
+import com.moneyhistory.app.consecutiveNonAngryDays
 import com.moneyhistory.app.moodStreakOf
 import com.moneyhistory.app.quitDays
 import com.moneyhistory.app.streakOf
@@ -53,7 +57,11 @@ fun BadgeScreen(
     val moods by viewModel.moods.collectAsStateWithLifecycle()
     val grouped = allBadges.groupBy { it.categoryRes }
 
-    // 各勋章的当前进度（current, target）；非线性条件（达成目标/佛系本月）不在其中
+    // 本会话已弹过庆祝动画的勋章：同一天反复进出勋章页不重复庆祝，
+    // 仪式感只在解锁当下给一次，而不是每次进页都「惊喜」一遍
+    var celebratedToday by rememberSaveable { mutableStateOf(listOf<String>()) }
+
+    // 各勋章的当前进度（current, target）；非线性条件（达成目标/佛系本月等）不在其中
     val badgeProgress = remember(transactions, habits, moods) {
         val txCount = transactions.size
         val txStreak = streakOf(transactions)
@@ -61,19 +69,35 @@ fun BadgeScreen(
             .maxOfOrNull { it.buildStreak() } ?: 0
         val maxQuit = habits.filter { it.type == Habit.Type.QUIT }
             .maxOfOrNull { it.quitDays() } ?: 0
+        // 破戒后重新守住的进度：只看「破过戒」的戒断习惯
+        val maxQuitAfterReset = habits.filter {
+            it.type == Habit.Type.QUIT && it.resets.isNotEmpty()
+        }.maxOfOrNull { it.quitDays() } ?: 0
         val anyCheckin = habits.any { it.checkins.isNotEmpty() }
+        val totalCheckins = habits.sumOf { it.checkins.size }
         val moodStreak = moodStreakOf(moods.keys)
+        val nonAngryStreak = consecutiveNonAngryDays(moods)
         mapOf(
             "first_tx" to (txCount to 1),
+            "tx_10" to (txCount to 10),
             "streak_7" to (txStreak to 7),
             "streak_30" to (txStreak to 30),
+            "streak_100" to (txStreak to 100),
             "tx_100" to (txCount to 100),
+            "tx_500" to (txCount to 500),
             "first_checkin" to ((if (anyCheckin) 1 else 0) to 1),
+            "habit_3" to (maxBuild to 3),
             "habit_7" to (maxBuild to 7),
             "habit_21" to (maxBuild to 21),
+            "habit_30" to (maxBuild to 30),
+            "habit_total_100" to (totalCheckins to 100),
+            "quit_7" to (maxQuit to 7),
             "quit_30" to (maxQuit to 30),
+            "comeback" to (maxQuitAfterReset to 7),
             "first_mood" to (moods.size to 1),
-            "mood_7" to (moodStreak to 7)
+            "mood_7" to (moodStreak to 7),
+            "mood_sunny_7" to (nonAngryStreak to 7),
+            "mood_30" to (moods.size to 30)
         )
     }
 
@@ -110,12 +134,14 @@ fun BadgeScreen(
                             }
                         } ?: ""
                     }
-                    // 今天刚解锁的勋章：进页时弹一下——努力被看见的时刻值得一个仪式感
+                    // 今天刚解锁的勋章：进页时弹一下——努力被看见的时刻值得一个仪式感；
+                    // 同一枚勋章只弹一次（celebratedToday 本会话记住）
                     val fresh = unlocked && unlockedDate == DateUtils.today()
+                    val shouldPop = fresh && badge.id !in celebratedToday
                     val popScale = remember { Animatable(1f) }
                     val view = LocalView.current
-                    LaunchedEffect(fresh) {
-                        if (fresh) {
+                    LaunchedEffect(shouldPop) {
+                        if (shouldPop) {
                             // 弹跳动效 + 确认触感：解锁的「落定感」让努力被看见
                             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                             popScale.snapTo(0.6f)
@@ -126,6 +152,7 @@ fun BadgeScreen(
                                     stiffness = Spring.StiffnessMedium
                                 )
                             )
+                            celebratedToday = celebratedToday + badge.id
                         }
                     }
                     AppCard(

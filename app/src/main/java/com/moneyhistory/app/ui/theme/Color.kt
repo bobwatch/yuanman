@@ -38,3 +38,6 @@ val ExpenseRedText = Color(0xFFC62828)
 val IncomeGreenText = Color(0xFF1E8E3E)
 val ExpenseRedTextDark = Color(0xFFEF5350)
 val IncomeGreenTextDark = Color(0xFF66BB6A)
+// 预算警示的「文本」变体：浅色主题压深一档（白底对比度达标），
+// 用于页头预算卡接近上限时的数值/进度条（卡片恒为白底，只用到浅色档）
+val WarningOrangeText = Color(0xFFE65100)

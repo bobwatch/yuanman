@@ -45,6 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +63,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -156,7 +159,8 @@ fun MineScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+    // 底部 TabBar 已占位（Scaffold bottomBar），根节点不再加导航条 inset，避免双重内边距
+    Column(Modifier.fillMaxSize()) {
         YuanmanHeader(
             title = stringResource(R.string.mine_title),
             subtitle = stringResource(
@@ -174,12 +178,23 @@ fun MineScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 勋章墙（页头已显示解锁进度，行内不再重复）
+            // 勋章墙（页头已显示解锁进度，行内再给一条进度条：离下一枚勋章还有多远一眼可见）
             SettingsCard(title = stringResource(R.string.mine_section_achievement)) {
                 SettingRow(
                     icon = Icons.Filled.Star,
                     title = stringResource(R.string.mine_badges),
                     onClick = onNavigateToBadges
+                )
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = {
+                        if (allBadges.isEmpty()) 0f
+                        else badgeUnlocks.size / allBadges.size.toFloat()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
                 )
             }
 
@@ -364,7 +379,11 @@ fun MineScreen(
                         arrayOf("application/json", "text/*", "application/octet-stream")
                     )
                 }) {
-                    Text(stringResource(R.string.import_overwrite))
+                    Text(
+                        stringResource(R.string.import_overwrite),
+                        // 覆盖导入会替换现有数据：用警示色标出代价，选之前先看清
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         )
@@ -411,11 +430,20 @@ fun MineScreen(
     }
 
     if (importing) {
-        // 加载态弹窗：不可关闭，导入完成自动收起
+        // 加载态弹窗：不可关闭，导入完成自动收起；
+        // 转圈带读屏描述：TalkBack 用户能听到「正在导入，请稍候」而不是无声等待
         AlertDialog(
             onDismissRequest = {},
             icon = {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                // stringResource 是 @Composable：先在组合上下文取好，semantics 里只用值
+                val importingWait = stringResource(R.string.importing_wait)
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .semantics {
+                            contentDescription = importingWait
+                        }
+                )
             },
             title = { Text(stringResource(R.string.importing)) },
             text = {},

@@ -1,6 +1,7 @@
 package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,10 +24,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -37,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,15 +66,13 @@ import com.moneyhistory.app.Mood
 import com.moneyhistory.app.MoodEntry
 import com.moneyhistory.app.R
 import com.moneyhistory.app.Transaction
+import com.moneyhistory.app.YearMonth
 import com.moneyhistory.app.consecutiveNonAngryDays
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
-
-// 心情备注上限：单行一句话的长度，输入时边输边显示计数
-private const val MOOD_NOTE_MAX = 50
 
 /** 心情名称文案。 */
 @Composable
@@ -108,10 +110,10 @@ fun MoodScreen(viewModel: MainViewModel) {
     var note by remember(today, todayEntry?.note) {
         mutableStateOf(todayEntry?.note ?: "")
     }
-    // 一句话备注默认折叠；已有备注则展开
-    var noteOpen by remember(today, todayEntry) {
-        mutableStateOf(!todayEntry?.note.isNullOrEmpty())
-    }
+    // 一句话备注默认折叠：保存后以文案展示，再次进入/重组不自动回到编辑态。
+    // 之前按「已有备注则展开」初始化，而 setMood 每次都会发新数据使
+    // todayEntry 换实例，noteOpen 被重置回 true，导致存完备注编辑器又弹开。
+    var noteOpen by remember(today) { mutableStateOf(false) }
 
     // 重复点击底部「心情」Tab：页面滚回顶部
     val scrollState = rememberScrollState()
@@ -149,15 +151,24 @@ fun MoodScreen(viewModel: MainViewModel) {
         }
     }
 
-    // 本月网格数据（跨月后按新月份重算天数）
-    val daysInMonth = remember(monthPrefix) {
-        Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH)
+    // 月历回看：网格月份独立于「本月」，可翻回过去任一月；翻离本月时标题
+    // 变可点，一键回到本月（未来月份不可达）
+    var gridMonth by rememberSaveable { mutableStateOf(DateUtils.monthPrefix()) }
+    val gridDaysInMonth = remember(gridMonth) {
+        val parts = gridMonth.split("-")
+        val cal = Calendar.getInstance().apply {
+            set(parts[0].toInt(), parts[1].toInt() - 1, 1)
+        }
+        cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
+    val gridYear = gridMonth.substringBefore("-").toInt()
+    val gridMonthNum = gridMonth.substringAfter("-").toInt()
     // 心情日历点击回看 / 补记：选中的日期 key（yyyy-MM-dd）
     var dayPicker by remember { mutableStateOf<String?>(null) }
     val dayTitlePattern = stringResource(R.string.mood_day_pattern)
 
-    Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+    // 底部 TabBar 已占位（Scaffold bottomBar），根节点不再加导航条 inset，避免双重内边距
+    Column(Modifier.fillMaxSize()) {
         YuanmanHeader(
             title = stringResource(R.string.tab_mood),
             subtitle = stringResource(R.string.mood_header_sub)
@@ -212,39 +223,72 @@ fun MoodScreen(viewModel: MainViewModel) {
                     }
                     if (todayEntry != null) {
                         if (!noteOpen) {
-                            TextButton(onClick = { noteOpen = true }) {
-                                Text(stringResource(R.string.mood_note_toggle))
+                            // 已保存的一句话：圆角浅底容器承载，右侧铅笔进编辑（保存后不再停在编辑态）
+                            if (todayEntry.note.isNotEmpty()) {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceContainerHighest
+                                                .copy(alpha = 0.55f)
+                                        )
+                                        .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "📝",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = todayEntry.note,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(onClick = { noteOpen = true }) {
+                                        Icon(
+                                            Icons.Outlined.Edit,
+                                            contentDescription =
+                                                stringResource(R.string.mood_note_edit),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                TextButton(onClick = { noteOpen = true }) {
+                                    Text(stringResource(R.string.mood_note_toggle))
+                                }
                             }
                         } else {
                             Spacer(Modifier.height(12.dp))
                             OutlinedTextField(
                                 value = note,
-                                onValueChange = { note = it.take(MOOD_NOTE_MAX) },
+                                // 一句话不限字数：原样接收，长文可换行，不做截断
+                                onValueChange = { note = it },
                                 label = {
                                     Text(stringResource(R.string.mood_note_hint))
                                 },
-                                // 边输边显示计数：不会「打字突然卡住」的错觉（与分类命名一致）
-                                supportingText = {
-                                    if (note.isNotEmpty()) {
-                                        Text(
-                                            stringResource(
-                                                R.string.mood_note_count,
-                                                note.length,
-                                                MOOD_NOTE_MAX
-                                            )
-                                        )
-                                    }
-                                },
-                                singleLine = true,
+                                maxLines = 4,
                                 modifier = Modifier.fillMaxWidth()
                             )
                             TextButton(onClick = {
-                                viewModel.setMood(today, todayEntry.mood, note.trim())
-                                // 保存后给明确反馈，避免「点了没反应」的错觉
-                                viewModel.postMessage(
-                                    noteSavedText,
-                                    MessageVariant.SUCCESS
-                                )
+                                val trimmed = note.trim()
+                                // 内容没变不重复写盘、不弹反馈：改动才算「保存」。
+                                // 清空原文也算改动（保存即删除），同样给一次确认
+                                if (trimmed != todayEntry.note) {
+                                    viewModel.setMood(today, todayEntry.mood, trimmed)
+                                    viewModel.postMessage(
+                                        noteSavedText,
+                                        MessageVariant.SUCCESS
+                                    )
+                                }
+                                // 保存后退出编辑态，回到文案展示
+                                noteOpen = false
                             }) {
                                 Text(stringResource(R.string.mood_note_save))
                             }
@@ -362,7 +406,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                 }
             }
 
-            // 本月心情网格
+            // 心情月历：网格月份可翻月回看，标题行即月份切换条
             AppCard {
                 Column(Modifier.padding(16.dp)) {
                     Text(
@@ -370,14 +414,33 @@ fun MoodScreen(viewModel: MainViewModel) {
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(12.dp))
-                    MoodGrid(
-                        daysInMonth = daysInMonth,
-                        monthPrefix = monthPrefix,
-                        moods = moods,
-                        today = today,
-                        onDayClick = { dayPicker = it }
+                    Spacer(Modifier.height(4.dp))
+                    MonthSelector(
+                        month = YearMonth(gridYear, gridMonthNum),
+                        onPrev = { gridMonth = shiftMonthKey(gridMonth, -1) },
+                        onNext = { gridMonth = shiftMonthKey(gridMonth, 1) },
+                        nextEnabled = gridMonth != monthPrefix,
+                        onTitleClick = if (gridMonth == monthPrefix) {
+                            null
+                        } else {
+                            { gridMonth = monthPrefix }
+                        }
                     )
+                    Spacer(Modifier.height(4.dp))
+                    // 月历网格随月份滑动（与标题同一套过渡），回看不突兀
+                    AnimatedContent(
+                        targetState = YearMonth(gridYear, gridMonthNum),
+                        transitionSpec = { monthPageTransition { it.year * 12 + it.month } },
+                        label = "moodGrid"
+                    ) { _ ->
+                        MoodGrid(
+                            daysInMonth = gridDaysInMonth,
+                            monthPrefix = gridMonth,
+                            moods = moods,
+                            today = today,
+                            onDayClick = { dayPicker = it }
+                        )
+                    }
                 }
             }
         }
@@ -433,9 +496,12 @@ fun MoodScreen(viewModel: MainViewModel) {
                     CompactMoodPicker(
                         current = entry?.mood,
                         onSelect = { mood ->
-                            viewModel.setMood(dayKey, mood, entry?.note ?: "")
-                            // 补记同样给成功反馈（与今日记录一致的「点了有回应」）
-                            viewModel.postMessage(backfillSavedText, MessageVariant.SUCCESS)
+                            // 与当天记录同心情时不重复写盘、不打扰；
+                            // 换心情或补记空白日才算新记录，才给成功反馈
+                            if (entry?.mood != mood) {
+                                viewModel.setMood(dayKey, mood, entry?.note ?: "")
+                                viewModel.postMessage(backfillSavedText, MessageVariant.SUCCESS)
+                            }
                             dayPicker = null
                         }
                     )
@@ -734,6 +800,16 @@ private fun MoodGrid(
             }
         }
     }
+}
+
+/** 月历翻月：把 "yyyy-MM" 位移 [delta] 个月（返回同格式字符串）。 */
+private fun shiftMonthKey(key: String, delta: Int): String {
+    val parts = key.split("-")
+    var y = parts[0].toInt()
+    var m = parts[1].toInt() + delta
+    while (m < 1) { m += 12; y-- }
+    while (m > 12) { m -= 12; y++ }
+    return String.format(Locale.CHINA, "%d-%02d", y, m)
 }
 
 /** 鼓励文案：按统计数据条件选择（7 条分支）。 */

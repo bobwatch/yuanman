@@ -9,6 +9,7 @@ import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.TransactionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -86,6 +87,10 @@ class FamilySyncManager(
         MutableStateFlow(appContext.getString(R.string.sync_status_idle))
     val status: StateFlow<String> = _status.asStateFlow()
 
+    /** 手动同步进行中（UI 据此禁用「立即同步」按钮并转圈）。 */
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+
     private val _pairingCode = MutableStateFlow(loadOrCreatePairingCode())
     val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
 
@@ -156,7 +161,7 @@ class FamilySyncManager(
         _status.value = appContext.getString(R.string.sync_status_stopped)
     }
 
-    /** 手动触发：对所有已发现设备发起一次同步。 */
+    /** 手动触发：对所有已发现设备发起一次同步（全部结束前 syncing 保持 true）。 */
     fun syncNow() {
         val peers = _devices.value
         if (peers.isEmpty()) {
@@ -164,7 +169,12 @@ class FamilySyncManager(
             return
         }
         _status.value = appContext.getString(R.string.sync_status_syncing)
-        peers.forEach { connectAndSync(it) }
+        _syncing.value = true
+        val jobs = peers.map { connectAndSync(it) }
+        scope.launch {
+            jobs.forEach { it.join() }
+            _syncing.value = false
+        }
     }
 
     private fun acquireMulticastLock() {
@@ -261,9 +271,9 @@ class FamilySyncManager(
         if (shouldAutoSync(name)) connectAndSync(device)
     }
 
-    private fun connectAndSync(device: PeerDevice) {
-        if (!running) return
-        scope.launch(Dispatchers.IO) {
+    private fun connectAndSync(device: PeerDevice): Job {
+        if (!running) return scope.launch { }
+        return scope.launch(Dispatchers.IO) {
             try {
                 val socket = Socket()
                 socket.connect(InetSocketAddress(device.host, device.port), CONNECT_TIMEOUT_MS)

@@ -50,11 +50,11 @@ jobs:
           files: ${{ env.APK_FILE }}
           generate_release_notes: true
           body: |
-            Yuanman ${{ github.ref_name }} — polish release
+            Yuanman ${{ github.ref_name }} — categories overhaul
 
-            - Form state survives process death (rememberSaveable everywhere)
-            - Discard confirmation when closing the record sheet with unsaved input
-            - Overview card is tappable → stats; back button closes search first
-            - Snackbars no longer cover the FAB; withdrawal overdraft guard
-            - Density-aware chart labels; refined light/dark contrast
-            - Next-month button disabled at the current month; stats month is local
+            - Categories unified: preset/custom merge into expense & income groups, all editable & deletable
+            - New categories pick their group (expense/income) at add time
+            - Bigger category icons (56dp tiles, 44dp quick-emoji row); 18 common emoji + full picker sheet
+            - Category data migrated to v2 (old custom categories move into the expense group)
+            - Tab bar slimmed for faster switching; search gets a cancel action
+            - Mood note layout polish; classification CRUD with rename syncing history records

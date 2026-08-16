@@ -54,6 +54,8 @@ fun FamilySyncScreen(
     val sync = viewModel.syncManager
     val devices by sync.devices.collectAsStateWithLifecycle()
     val status by sync.status.collectAsStateWithLifecycle()
+    // 同步中标记独立于状态文案：不靠比对本地化字符串判断（换语言/改文案不失效）
+    val syncing by sync.syncing.collectAsStateWithLifecycle()
     val myCode by sync.pairingCode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
@@ -101,6 +103,8 @@ fun FamilySyncScreen(
                 ) {
                     Text(
                         text = myCode,
+                        // 配对码必须完整抄写/比对，字号保持醒目；
+                        // 超长时由 maxLines=1 兜底（复制按钮可完整取码，不靠视觉裁切）
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -182,7 +186,6 @@ fun FamilySyncScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 // 同步进行中：按钮转圈禁用，避免重复触发；结束后恢复
-                val syncing = status == stringResource(R.string.sync_status_syncing)
                 Button(
                     onClick = { sync.syncNow() },
                     enabled = !syncing
@@ -251,6 +254,8 @@ fun FamilySyncScreen(
                 TextButton(onClick = {
                     confirmRegenerate = false
                     sync.regeneratePairingCode()
+                    // 重新生成后清掉旧结果提示，避免「加入失败」残留误导
+                    message = null
                     // 操作发生在页面顶部配对码卡片，用全局 Toast 就近反馈，
                     // 不落到下方「加入家庭」卡片的输入结果位
                     viewModel.postMessage(regeneratedText, MessageVariant.SUCCESS)

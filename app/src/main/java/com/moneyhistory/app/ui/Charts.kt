@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
+import android.view.HapticFeedbackConstants
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -78,6 +81,8 @@ internal fun abbrevYuan(cents: Long, wanUnit: String, kUnit: String, mUnit: Stri
         yuan >= 1_000_000f && mUnit.isNotEmpty() ->
             String.format(locale, "%.1f%s", yuan / 1_000_000f, mUnit)
         yuan >= 1000f -> String.format(locale, "%.1f%s", yuan / 1000f, kUnit)
+        // 不足 1 元的柱子保留一位小数：整取会显示「0」，柱子却立在那，图表撒谎
+        yuan < 1f -> String.format(locale, "%.1f", yuan)
         else -> String.format(locale, "%.0f", yuan)
     }
 }
@@ -89,20 +94,24 @@ data class ChartSlice(val label: String, val value: Float)
 data class MonthPoint(val label: String, val amountCents: Long, val isCurrent: Boolean)
 
 /** 分类占比环形图（drawArc 描边成环，中心显示总额）。[sliceColors] 可逐片指定配色，
- *  缺省用 [ChartPalette]（默认图表色板）。 */
+ *  缺省用 [ChartPalette]（默认图表色板）。[sliceDescription] 可自定义每片读屏文案：
+ *  默认「label 数值」，金额类图表传它换成本地化分类名 + 格式化金额。 */
 @Composable
 fun DonutChart(
     slices: List<ChartSlice>,
     centerTitle: String,
     centerValue: String,
     modifier: Modifier = Modifier,
-    sliceColors: List<Color>? = null
+    sliceColors: List<Color>? = null,
+    sliceDescription: ((ChartSlice) -> String)? = null
 ) {
     // TalkBack 读出每类占比与中心数值（中心可能是金额合计，也可能是心情天数——
     // 统一用「标题: 数值」格式，避免把心情天数误读成「合计」）
     val desc = stringResource(
         R.string.chart_donut_desc,
-        slices.joinToString(", ") { "${it.label} ${it.value.toInt()}" },
+        slices.joinToString(", ") { slice ->
+            sliceDescription?.invoke(slice) ?: "${slice.label} ${slice.value.toInt()}"
+        },
         "$centerTitle: $centerValue"
     )
     Box(
@@ -213,18 +222,34 @@ fun TrendBarChart(
     }
     // 触控选中的月份（按住/拖动跟随，松手后保留；数据变化时重置）
     var selectedIndex by remember(points) { mutableStateOf<Int?>(null) }
+    val view = LocalView.current
     Canvas(
         modifier
             .semantics { contentDescription = desc }
             .pointerInput(points, onBarTap) {
                 if (points.isEmpty()) return@pointerInput
+                // 轻点跳转只认「画了柱子的月份」：按柱体矩形判断，空白区/
+                // 0 金额月份的标签区不响应，避免想滚动却跳走（拖动查值不受限）
+                fun barRect(index: Int): Rect? {
+                    if (index !in points.indices) return null
+                    if (points[index].amountCents <= 0L) return null
+                    val max = points.maxOf { it.amountCents }
+                    val slotW = size.width.toFloat() / points.size
+                    val barW = slotW * 0.5f
+                    val chartH = (size.height.toFloat() - 68f).coerceAtLeast(1f)
+                    val barH = points[index].amountCents.toFloat() / max * chartH
+                    val left = slotW * index + (slotW - barW) / 2f
+                    val top = 34f + (chartH - barH)
+                    return Rect(left, top, left + barW, top + barH)
+                }
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     // 不消费事件：页面纵向滚动不受影响（拖动只取 x 定位柱位）
                     val slotW = size.width.toFloat() / points.size
                     val downIndex = (down.position.x / slotW).toInt()
                         .coerceIn(0, points.size - 1)
-                    // 位移超过触控阈值视为「拖动查数值」，否则松手即「点按跳转」
+                    // 位移超过触控阈值视为「拖动查数值」，否则松手即「点按跳转」；
+                    // x/y 双向都算：手指落在柱子上纵向滚动页面时不算点按
                     val slop = 8.dp.toPx()
                     var moved = false
                     var sel = downIndex
@@ -234,10 +259,22 @@ fun TrendBarChart(
                         val change = event.changes.firstOrNull { it.id == down.id }
                             ?: break
                         if (!change.pressed) {
-                            if (!moved && onBarTap != null) onBarTap(sel)
+                            if (!moved && onBarTap != null) {
+                                // 松手位置必须在柱体矩形内才算「点柱子」：
+                                // 起点在柱上但滑出柱体同样不算
+                                val rect = barRect(sel)
+                                if (rect != null && rect.contains(change.position)) {
+                                    view.performHapticFeedback(
+                                        HapticFeedbackConstants.KEYBOARD_TAP
+                                    )
+                                    onBarTap(sel)
+                                }
+                            }
                             break
                         }
-                        if (abs(change.position.x - down.position.x) > slop) {
+                        if (abs(change.position.x - down.position.x) > slop ||
+                            abs(change.position.y - down.position.y) > slop
+                        ) {
                             moved = true
                         }
                         sel = (change.position.x / slotW).toInt()
