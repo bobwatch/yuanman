@@ -2,6 +2,7 @@ package com.moneyhistory.app.ui
 
 import android.content.Context
 import android.view.HapticFeedbackConstants
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
@@ -59,6 +60,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -77,6 +79,7 @@ import com.moneyhistory.app.RecurringExpense
 import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
+import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
@@ -254,6 +257,19 @@ fun TransactionSheet(
         // FocusOwner 管不到 Dialog 里的文本域，实测 clearFocus 无效果）
         val dialogView = LocalView.current
         val dialogFocusManager = LocalFocusManager.current
+
+        // 全屏记账页是白色 sheet：Dialog 窗口的状态栏切透明、图标随主题
+        // （浅色主题深图标 / 深色主题白图标），否则主题继承的蓝色状态栏
+        // 会压在白色页面上方，顶部一条蓝带
+        val sheetDarkTheme = LocalDarkTheme.current
+        val dialogWindow = (dialogView.context as? android.app.Dialog)?.window
+        LaunchedEffect(Unit) {
+            dialogWindow?.statusBarColor = Color.Transparent.toArgb()
+            dialogWindow?.let { w ->
+                WindowCompat.getInsetsController(w, dialogView)
+                    .isAppearanceLightStatusBars = !sheetDarkTheme
+            }
+        }
 
         fun exitNoteMode() {
             if (noteFocused) dialogFocusManager.clearFocus(true)

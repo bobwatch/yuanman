@@ -87,10 +87,9 @@ fun YuanmanTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // 状态栏底色 = 页面背景色：各页蓝色页头自带 statusBarsPadding 覆盖，
-            // 首页页头随列表滚出后状态栏自然露出背景色，不残留蓝条
-            window.statusBarColor =
-                if (darkTheme) DarkBackground.toArgb() else LightBackground.toArgb()
+            // 状态栏 = 页头渐变顶色：蓝色页头一路延伸到屏幕顶端，顶部无背景色断带。
+            // 首页页头随列表滚出后由 HomeScreen 自行切回背景色（见 HomeHeader 滚动逻辑）。
+            window.statusBarColor = YuanmanGradientTop.toArgb()
             // 底部导航条跟随主题：与底部 Tab 栏（surface 色）融为一体，
             // 全面屏手势横条浅色主题深色、深色主题浅色
             window.navigationBarColor =
