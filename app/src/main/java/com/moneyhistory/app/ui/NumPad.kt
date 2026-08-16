@@ -124,6 +124,7 @@ fun NumPad(
                     // clip 必须在 clickable 之前：Surface 的圆角只裁背景，
                     // 不裁修饰符水波纹，不先裁剪的话按下去是方形涟漪
                     .clip(KeyShape)
+                    .pressScale(0.92f)
                     .clickable(enabled = plusEnabled) {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         onKey("+")
@@ -160,6 +161,7 @@ private fun NumKey(
         modifier = modifier
             .height(48.dp)
             .clip(KeyShape)
+            .pressScale(0.92f)
             .then(
                 if (description != null) {
                     Modifier.clearAndSetSemantics {

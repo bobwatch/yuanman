@@ -511,9 +511,13 @@ private fun HabitCard(
                         )
                     }
                     // 最近 7 天小圆点（打卡日实心）
-                    LastSevenDots(
-                        habit = habit,
+                    WeekDots(
                         today = today,
+                        filled = { habit.checkedOn(it) },
+                        dotColor = MaterialTheme.colorScheme.primary,
+                        description = { lit ->
+                            stringResource(R.string.habit_week_summary, lit)
+                        },
                         modifier = Modifier.padding(end = 4.dp)
                     )
                     HabitMenuButton(onDelete = onDelete)
@@ -571,6 +575,17 @@ private fun HabitCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // 最近 7 天小圆点：未破戒日实心（橙色与戒断身份一致），
+                    // 与打卡卡的 7 天点条同一套视觉节奏
+                    WeekDots(
+                        today = today,
+                        filled = { day -> habit.resets.none { it == day } },
+                        dotColor = habitIconColor(habit),
+                        description = { lit ->
+                            stringResource(R.string.habit_week_clean_summary, lit)
+                        },
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
                     HabitMenuButton(onDelete = onDelete)
                 }
                 Spacer(Modifier.height(12.dp))
@@ -670,16 +685,20 @@ private fun CheckBadge(checked: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** 最近 7 天打卡小圆点：7 个小圆，打卡日实心主色，未打卡浅灰。 */
+/** 最近 7 天小圆点（与打卡卡同一套视觉语言）：[filled] 判定某天是否
+ *  点亮（build 卡 = 打卡日；quit 卡 = 未破戒日），[dotColor] 按习惯身份取色，
+ *  [description] 按点亮天数生成读屏文案。 */
 @Composable
-private fun LastSevenDots(
-    habit: Habit,
+private fun WeekDots(
     today: String,
+    filled: (String) -> Boolean,
+    dotColor: Color,
+    description: @Composable (Int) -> String,
     modifier: Modifier = Modifier
 ) {
     val days = (6 downTo 0).map { DateUtils.addDays(today, -it) }
-    val checkedCount = days.count { habit.checkedOn(it) }
-    val weekDesc = stringResource(R.string.habit_week_summary, checkedCount)
+    val litCount = days.count(filled)
+    val weekDesc = description(litCount)
     Row(
         modifier = modifier.clearAndSetSemantics {
             contentDescription = weekDesc
@@ -687,14 +706,14 @@ private fun LastSevenDots(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         days.forEach { day ->
-            val checked = habit.checkedOn(day)
+            val lit = filled(day)
             Box(
                 Modifier
                     .size(7.dp)
                     .clip(CircleShape)
                     .background(
-                        if (checked) {
-                            MaterialTheme.colorScheme.primary
+                        if (lit) {
+                            dotColor
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         }

@@ -501,5 +501,6 @@
 
     <!-- accessibility -->
     <string name="habit_week_summary">Checked in %1$d of the last 7 days</string>
+    <string name="habit_week_clean_summary">Clean %1$d of the last 7 days</string>
     <string name="mood_day_semantics">Day %1$d, mood: %2$s</string>
 </resources>
