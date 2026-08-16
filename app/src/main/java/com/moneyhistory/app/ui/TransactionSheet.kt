@@ -398,7 +398,9 @@ fun TransactionSheet(
                                 horizontalAlignment = Alignment.End
                             ) {
                                 Text(
-                                    text = segments.joinToString(" + ").ifEmpty { "0" },
+                                    text = segments
+                                        .joinToString(stringResource(R.string.pad_sum_separator))
+                                        .ifEmpty { stringResource(R.string.pad_sum_zero) },
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,

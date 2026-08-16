@@ -1,5 +1,6 @@
 package com.moneyhistory.app.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.platform.LocalView
 import java.util.Random
 import kotlin.math.sin
 
@@ -50,8 +52,11 @@ fun ConfettiOverlay(
     var alpha by remember { mutableFloatStateOf(1f) }
     // 撒花颜色走主题色板：深色主题用提亮版，彩纸在深底上同样醒目
     val palette = chartPalette()
+    // 庆祝时刻给重触感：与目标达成/勋章解锁的「落定」体感一致
+    val view = LocalView.current
 
     LaunchedEffect(Unit) {
+        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         val random = Random()
         particles = List(80) {
             ConfettiParticle(

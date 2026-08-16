@@ -522,7 +522,8 @@ private fun MoodButton(
     }
 }
 
-/** 对话框内的小号心情选择：emoji 圆钮，选中按该情绪本色填充。 */
+/** 对话框内的小号心情选择：emoji 圆钮，选中按该情绪本色填充，
+ *  与主选择器同一套缩放 + 描边选中反馈。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CompactMoodPicker(
@@ -538,21 +539,33 @@ private fun CompactMoodPicker(
     ) {
         Mood.entries.forEach { mood ->
             val label = moodLabel(mood)
+            val isSelected = mood == current
+            val borderWidth by animateDpAsState(
+                targetValue = if (isSelected) 2.dp else 0.dp,
+                label = "compactMoodBorder"
+            )
+            val scale by animateFloatAsState(
+                targetValue = if (isSelected) 1.08f else 1f,
+                label = "compactMoodScale"
+            )
             Box(
                 Modifier
                     .size(48.dp)
+                    .scale(scale)
                     .clip(CircleShape)
                     .background(
-                        if (mood == current) {
+                        if (isSelected) {
                             Color(mood.colorValue)
                         } else {
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         }
                     )
+                    // 描边用卡片底色而非纯白：浅色主题下不消失，深色主题下不刺眼
+                    .border(borderWidth, MaterialTheme.colorScheme.surface, CircleShape)
                     // 与主选择器同一套无障碍语义：读出心情名 + 选中态
                     .clearAndSetSemantics {
                         contentDescription = label
-                        selected = mood == current
+                        selected = isSelected
                     }
                     .clickable {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -564,7 +577,7 @@ private fun CompactMoodPicker(
                 Icon(
                     imageVector = moodIcon(mood),
                     contentDescription = null,
-                    tint = if (mood == current) {
+                    tint = if (isSelected) {
                         Color.White
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
