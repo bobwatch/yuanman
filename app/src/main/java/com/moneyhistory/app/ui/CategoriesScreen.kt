@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -60,7 +61,7 @@ fun CategoriesScreen(
     val addedText = stringResource(R.string.cats_added)
     val deletedText = stringResource(R.string.common_deleted)
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().navigationBarsPadding()) {
         SubPageHeader(
             title = stringResource(R.string.cats_title),
             onBack = onBack

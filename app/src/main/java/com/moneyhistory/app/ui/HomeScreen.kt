@@ -80,7 +80,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
@@ -103,14 +102,11 @@ import com.moneyhistory.app.YearMonth
 import com.moneyhistory.app.dayKeyOf
 import com.moneyhistory.app.ofMonth
 import com.moneyhistory.app.streakOf
-import com.moneyhistory.app.ui.theme.DarkBackground
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
-import com.moneyhistory.app.ui.theme.LightBackground
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import com.moneyhistory.app.ui.theme.WarningOrange
 import com.moneyhistory.app.ui.theme.YuanmanBlueDeep
-import com.moneyhistory.app.ui.theme.YuanmanGradientTop
 import com.moneyhistory.app.ui.theme.expenseAmountColor
 import com.moneyhistory.app.ui.theme.incomeAmountColor
 import java.text.SimpleDateFormat
@@ -280,8 +276,7 @@ fun HomeScreen(
     }
 
     // 整页单列表：蓝色页头随内容一起滚动。页头滚出状态栏区域后，
-    // 状态栏露出页面背景色，浅色主题下把图标切深色保证可读（深色主题图标恒白），
-    // 状态栏底色同步从页头蓝切回背景色——顶部随滚动自然过渡，不残留蓝条
+    // 状态栏露出页面背景色，浅色主题下把图标切深色保证可读（深色主题图标恒白）
     val listState = rememberLazyListState()
     val darkTheme = LocalDarkTheme.current
     val scrolledPastHeader = remember {
@@ -293,26 +288,20 @@ fun HomeScreen(
     val lightStatusIcons = !darkTheme && scrolledPastHeader.value
     val view = LocalView.current
     val window = (view.context as Activity).window
-    val backgroundStatusColor = if (darkTheme) {
-        DarkBackground.toArgb()
-    } else {
-        LightBackground.toArgb()
-    }
     // 搜索框自动聚焦（打开即弹键盘，关闭即收起）
     val searchFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    // 状态栏全透明（见 Theme），这里只需切图标深浅：
+    // 页头在顶 → 白图标；滚出页头露出背景色 → 浅色主题切深图标
     LaunchedEffect(lightStatusIcons) {
         WindowCompat.getInsetsController(window, view)
             .isAppearanceLightStatusBars = lightStatusIcons
-        window.statusBarColor =
-            if (lightStatusIcons) backgroundStatusColor else YuanmanGradientTop.toArgb()
     }
-    // 离开首页（切 Tab / 进子页）恢复白图标与蓝色状态栏：其他页页头都是固定蓝色渐变
+    // 离开首页（切 Tab / 进子页）恢复白图标：其他页页头都是固定蓝色渐变
     DisposableEffect(Unit) {
         onDispose {
             WindowCompat.getInsetsController(window, view)
                 .isAppearanceLightStatusBars = false
-            window.statusBarColor = YuanmanGradientTop.toArgb()
         }
     }
 

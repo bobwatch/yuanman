@@ -283,6 +283,8 @@ fun GoalListSheet(
             decorFitsSystemWindows = false
         )
     ) {
+        // 弹层窗口透明系统条：背景（品牌蓝窗底）铺满屏幕，sheet 浮在上面
+        DialogEdgeToEdge()
         Box(
             Modifier
                 .fillMaxSize()
@@ -352,6 +354,8 @@ fun GoalCreateSheet(
             decorFitsSystemWindows = false
         )
     ) {
+        // 弹层窗口透明系统条：背景（品牌蓝窗底）铺满屏幕，sheet 浮在上面
+        DialogEdgeToEdge()
         Box(
             Modifier
                 .fillMaxSize()

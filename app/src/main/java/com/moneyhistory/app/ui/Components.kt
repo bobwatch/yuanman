@@ -62,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,10 +90,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
 import com.moneyhistory.app.YearMonth
+import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import com.moneyhistory.app.ui.theme.YuanmanGradientBottom
 import com.moneyhistory.app.ui.theme.YuanmanGradientTop
 import java.text.SimpleDateFormat
@@ -559,8 +562,29 @@ fun SheetDragHandle(onDismiss: () -> Unit) {
     }
 }
 
-/** 一级页头（Tab 页）：品牌蓝渐变 + 状态栏融合 + 圆角收底。 */
+/**
+ * Dialog 弹层沉浸：把弹层窗口的状态栏/导航栏切透明、图标深浅随主题。
+ * 全屏（记账）与底部弹层（攒钱）的 Dialog 都调用；不调用则弹层窗口
+ * 继承主题的蓝色状态栏/不透明导航栏，压在弹层内容上方。
+ */
 @Composable
+fun DialogEdgeToEdge() {
+    val view = LocalView.current
+    val darkTheme = LocalDarkTheme.current
+    val dialogWindow = (view.context as? android.app.Dialog)?.window
+    LaunchedEffect(Unit) {
+        dialogWindow?.let { w ->
+            w.statusBarColor = android.graphics.Color.TRANSPARENT
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            WindowCompat.getInsetsController(w, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
+    }
+}
+
+/** 一级页头（Tab 页）：品牌蓝渐变 + 状态栏融合 + 圆角收底。 */@Composable
 fun YuanmanHeader(
     title: String,
     subtitle: String? = null,

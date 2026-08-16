@@ -2,6 +2,7 @@ package com.moneyhistory.app
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
@@ -150,6 +151,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 全面屏：内容延伸到状态栏/导航栏后面（各页自绘页头渐变 + insets padding 隔离内容）。
+        // 在首帧组合之前设置，避免 Compose 挂载后再切换导致布局跳一下
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         handleIntent(intent)
         setContent {
             val viewModel: MainViewModel = viewModel()

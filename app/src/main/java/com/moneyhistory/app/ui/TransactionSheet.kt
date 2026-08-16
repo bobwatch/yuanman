@@ -2,7 +2,6 @@ package com.moneyhistory.app.ui
 
 import android.content.Context
 import android.view.HapticFeedbackConstants
-import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
@@ -21,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -60,7 +60,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -79,7 +78,6 @@ import com.moneyhistory.app.RecurringExpense
 import com.moneyhistory.app.Transaction
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
-import com.moneyhistory.app.ui.theme.LocalDarkTheme
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
@@ -258,18 +256,9 @@ fun TransactionSheet(
         val dialogView = LocalView.current
         val dialogFocusManager = LocalFocusManager.current
 
-        // 全屏记账页是白色 sheet：Dialog 窗口的状态栏切透明、图标随主题
-        // （浅色主题深图标 / 深色主题白图标），否则主题继承的蓝色状态栏
-        // 会压在白色页面上方，顶部一条蓝带
-        val sheetDarkTheme = LocalDarkTheme.current
-        val dialogWindow = (dialogView.context as? android.app.Dialog)?.window
-        LaunchedEffect(Unit) {
-            dialogWindow?.statusBarColor = Color.Transparent.toArgb()
-            dialogWindow?.let { w ->
-                WindowCompat.getInsetsController(w, dialogView)
-                    .isAppearanceLightStatusBars = !sheetDarkTheme
-            }
-        }
+        // 全屏记账页是白色 sheet：窗口状态栏/导航栏透明、图标深浅随主题，
+        // 白色背景一路铺到屏幕最顶端/最底端（否则继承主题的蓝色状态栏会压成一条蓝带）
+        DialogEdgeToEdge()
 
         fun exitNoteMode() {
             if (noteFocused) dialogFocusManager.clearFocus(true)
@@ -585,6 +574,7 @@ fun TransactionSheet(
                 plusEnabled = segments.last().isNotEmpty(),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
                 footer = {

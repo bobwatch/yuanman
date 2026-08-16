@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,7 +53,7 @@ fun RecurringScreen(
     var deleteTarget by remember { mutableStateOf<RecurringExpense?>(null) }
     val view = LocalView.current
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().navigationBarsPadding()) {
         SubPageHeader(
             title = stringResource(R.string.recurring_title),
             onBack = onBack

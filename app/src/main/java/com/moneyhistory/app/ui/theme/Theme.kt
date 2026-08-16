@@ -12,7 +12,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -87,13 +86,12 @@ fun YuanmanTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // 状态栏 = 页头渐变顶色：蓝色页头一路延伸到屏幕顶端，顶部无背景色断带。
-            // 首页页头随列表滚出后由 HomeScreen 自行切回背景色（见 HomeHeader 滚动逻辑）。
-            window.statusBarColor = YuanmanGradientTop.toArgb()
-            // 底部导航条跟随主题：与底部 Tab 栏（surface 色）融为一体，
-            // 全面屏手势横条浅色主题深色、深色主题浅色
-            window.navigationBarColor =
-                if (darkTheme) DarkSurface.toArgb() else LightSurface.toArgb()
+            // 全面屏沉浸：状态栏/导航栏全透明，页面内容（页头渐变 / 背景色）
+            // 一路绘制到屏幕最顶端，时间、电量浮在内容上；图标深浅按页面背景切换。
+            // 布局上各页头自绘渐变 + statusBarsPadding，页面底部 navigationBarsPadding，
+            // 无需系统条占位。
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = false
                 isAppearanceLightNavigationBars = !darkTheme
