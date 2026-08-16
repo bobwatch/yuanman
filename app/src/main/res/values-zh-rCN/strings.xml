@@ -57,6 +57,10 @@
     <string name="home_budget_set">设置月度预算 →</string>
     <string name="budget_left">还可花 %1$s</string>
     <string name="budget_over_amount">已超支 %1$s</string>
+    <!-- 页头胶囊（紧凑，紧挨本月支出） -->
+    <string name="home_pill_budget_left">剩 %1$s</string>
+    <string name="home_pill_budget_over">超 %1$s</string>
+    <string name="home_pill_goal_saved">已攒 %1$s</string>
     <string name="home_section_goal">攒钱目标</string>
     <string name="home_goal_set">定个小目标 →</string>
     <string name="home_goal_progress">%1$s %2$d%%</string>

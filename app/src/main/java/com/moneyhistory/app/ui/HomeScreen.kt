@@ -3,7 +3,6 @@ package com.moneyhistory.app.ui
 import android.app.Activity
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,10 +46,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -79,13 +76,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,7 +100,6 @@ import com.moneyhistory.app.streakOf
 import com.moneyhistory.app.ui.theme.ExpenseRed
 import com.moneyhistory.app.ui.theme.IncomeGreen
 import com.moneyhistory.app.ui.theme.LocalDarkTheme
-import com.moneyhistory.app.ui.theme.WarningOrange
 import com.moneyhistory.app.ui.theme.YuanmanBlueDeep
 import com.moneyhistory.app.ui.theme.expenseAmountColor
 import com.moneyhistory.app.ui.theme.incomeAmountColor
@@ -113,7 +107,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -347,6 +340,19 @@ fun HomeScreen(
                     income = monthIncome,
                     todayExpense = todayExpense,
                     streak = streak,
+                    budgetCents = budgetCents,
+                    goals = goals,
+                    // 预算只约束当前月：翻看历史月时按钮只显示计划名，不显示预算余量
+                    budgetActive = isAtCurrentMonth,
+                    onBudgetClick = { showBudgetDialog = true },
+                    onGoalClick = {
+                        // 无目标时引导新建；单个目标直达详情；多个目标先弹列表选择
+                        when {
+                            goals.isEmpty() -> showGoalSheet = true
+                            goals.size == 1 -> onNavigateToGoal(goals.first().id)
+                            else -> showGoalList = true
+                        }
+                    },
                     onSearch = {
                         searchActive = !searchActive
                         if (!searchActive) searchQuery = ""
@@ -363,25 +369,6 @@ fun HomeScreen(
                     searchFocus = searchFocus,
                     greetingHour = greetingHour,
                     onMonthTitleClick = monthTitleClick
-                )
-            }
-
-            item(key = "budget_goals") {
-                BudgetGoalCard(
-                    expense = monthExpense,
-                    budgetCents = budgetCents,
-                    goals = goals,
-                    // 预算只约束当前月：翻看历史月时隐藏进度条，避免与当月预算错位
-                    isCurrentMonth = isAtCurrentMonth,
-                    onSetBudget = { showBudgetDialog = true },
-                    onGoalClick = {
-                        // 无目标时引导新建；单个目标直达详情；多个目标先弹列表选择
-                        when {
-                            goals.isEmpty() -> showGoalSheet = true
-                            goals.size == 1 -> onNavigateToGoal(goals.first().id)
-                            else -> showGoalList = true
-                        }
-                    }
                 )
             }
 
@@ -620,7 +607,7 @@ fun HomeScreen(
 
 /**
  * 品牌蓝渐变大页头（随列表滚动）：时段问候 + 月份切换 + 本月支出大数字 +
- * 三个宽松小指标（收入 / 今日 / 连续）+ 激活时的搜索区。
+ * 预算/攒钱目标按钮 + 三个宽松小指标（收入 / 今日 / 连续）+ 激活时的搜索区。
  */
 @Composable
 private fun HomeHeader(
@@ -632,6 +619,11 @@ private fun HomeHeader(
     income: Long,
     todayExpense: Long,
     streak: Int,
+    budgetCents: Long,
+    goals: List<Goal>,
+    budgetActive: Boolean,
+    onBudgetClick: () -> Unit,
+    onGoalClick: () -> Unit,
     onSearch: () -> Unit,
     onMenu: () -> Unit,
     menuOpen: Boolean,
@@ -728,11 +720,52 @@ private fun HomeHeader(
 
         Column(Modifier.padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = stringResource(R.string.home_overview_expense),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f)
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.home_overview_expense),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                    modifier = Modifier.weight(1f)
+                )
+                // 月度计划 / 攒钱目标按钮：紧挨「本月支出」，随手就能点进
+                val overBudget = budgetCents > 0 && budgetActive && expense > budgetCents
+                HeaderActionPill(
+                    text = when {
+                        overBudget -> stringResource(
+                            R.string.home_pill_budget_over,
+                            MoneyUtils.formatCents(expense - budgetCents)
+                        )
+                        budgetCents > 0 && budgetActive -> stringResource(
+                            R.string.home_pill_budget_left,
+                            MoneyUtils.formatCents(budgetCents - expense)
+                        )
+                        else -> stringResource(R.string.budget_title)
+                    },
+                    tint = if (overBudget) {
+                        expenseAmountColor()
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    onClick = onBudgetClick
+                )
+                Spacer(Modifier.width(8.dp))
+                val goalSaved = goals.sumOf { it.savedCents }
+                HeaderActionPill(
+                    text = if (goalSaved > 0) {
+                        stringResource(
+                            R.string.home_pill_goal_saved,
+                            MoneyUtils.formatCents(goalSaved)
+                        )
+                    } else {
+                        stringResource(R.string.home_section_goal)
+                    },
+                    tint = MaterialTheme.colorScheme.primary,
+                    onClick = onGoalClick
+                )
+            }
             Spacer(Modifier.height(2.dp))
             // 本月支出大数字：进页从 0 滚到当前值，之后每次变化（记一笔/翻月/
             // 删除撤销）都从旧值滚到新值——钱在动的实感。动画期间显示插值，
@@ -864,6 +897,34 @@ private fun SearchTypeChip(
     )
 }
 
+/** 页头胶囊按钮：白底 + 主题色文字，紧挨「本月支出」；预算超支时文字变红。 */
+@Composable
+private fun HeaderActionPill(
+    text: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.92f))
+            .pressScale(pressedScale = 0.95f)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 /** 页头小指标列：白字 label 在上、白字加粗 value 在下。 */
 @Composable
 private fun HeaderStat(label: String, value: String, modifier: Modifier = Modifier) {
@@ -926,159 +987,6 @@ private fun MonthSummaryCard(list: List<Transaction>, onClose: () -> Unit) {
                     Icons.Filled.Close,
                     contentDescription = stringResource(R.string.summary_close),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-/** 预算 + 攒钱目标合并的紧凑双行卡：单卡两行各自可点，压缩首页占位。
- *  [isCurrentMonth] 为 false（翻看历史月）时预算行不显示进度——预算只约束
- *  当前月，拿历史月支出比当月预算会误导，改为直接展示该月支出额。 */
-@Composable
-private fun BudgetGoalCard(
-    expense: Long,
-    budgetCents: Long,
-    goals: List<Goal>,
-    isCurrentMonth: Boolean,
-    onSetBudget: () -> Unit,
-    onGoalClick: () -> Unit
-) {
-    AppCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Column {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .pressScale()
-                    .clickable(onClick = onSetBudget)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "💰", fontSize = 16.sp)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.budget_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                if (budgetCents > 0 && isCurrentMonth) {
-                    Spacer(Modifier.width(12.dp))
-                    val fraction = (expense.toFloat() / budgetCents).coerceIn(0f, 1f)
-                    val overBudget = expense > budgetCents
-                    // 记一笔后进度条平滑滚到新位置；超支瞬间变色也淡切而非「硬跳」
-                    val animatedFraction by animateFloatAsState(
-                        targetValue = fraction,
-                        animationSpec = tween(600, easing = FastOutSlowInEasing),
-                        label = "budgetFraction"
-                    )
-                    val barColor by animateColorAsState(
-                        targetValue = when {
-                            overBudget -> ExpenseRed
-                            fraction > 0.8f -> WarningOrange
-                            else -> MaterialTheme.colorScheme.primary
-                        },
-                        animationSpec = tween(350),
-                        label = "budgetBarColor"
-                    )
-                    LinearProgressIndicator(
-                        progress = { animatedFraction },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(CircleShape),
-                        color = barColor,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        strokeCap = StrokeCap.Round
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    // 右侧直给「还可花多少 / 已超支多少」：比百分比更有行动指导
-                    Text(
-                        text = if (overBudget) {
-                            stringResource(
-                                R.string.budget_over_amount,
-                                MoneyUtils.formatCents(expense - budgetCents)
-                            )
-                        } else {
-                            stringResource(
-                                R.string.budget_left,
-                                MoneyUtils.formatCents(budgetCents - expense)
-                            )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (overBudget) {
-                            expenseAmountColor()
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        maxLines = 1
-                    )
-                } else if (budgetCents > 0) {
-                    // 历史月：预算行退化为「该月支出」信息行，点击仍可设预算
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = stringResource(
-                            R.string.budget_month_spent,
-                            MoneyUtils.formatCents(expense)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
-                } else {
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = stringResource(R.string.home_budget_set),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .pressScale()
-                    .clickable(onClick = onGoalClick)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "🎯", fontSize = 16.sp)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.home_section_goal),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.width(12.dp))
-                val topGoal = goals.maxByOrNull { it.progress }
-                Text(
-                    text = if (topGoal == null) {
-                        stringResource(R.string.home_goal_set)
-                    } else {
-                        stringResource(
-                            R.string.home_goal_progress,
-                            topGoal.name,
-                            (topGoal.progress * 100).roundToInt().coerceAtMost(100)
-                        )
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = if (topGoal == null) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End
                 )
             }
         }
