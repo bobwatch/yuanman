@@ -134,6 +134,9 @@
     <string name="stats_donut_income">Income by category</string>
     <string name="stats_empty_expense">No expenses this month</string>
     <string name="stats_empty_income">No income this month</string>
+    <string name="stats_page_empty_title">Nothing to chart yet</string>
+    <string name="stats_page_empty_sub">Every record you add becomes a chart here — start with today</string>
+    <string name="stats_page_empty_action">Record now</string>
     <string name="stats_total_expense">Total</string>
     <string name="stats_total_income">Total</string>
     <string name="stats_trend_expense">6-month spending trend</string>
@@ -442,6 +445,9 @@
     <string name="record_saved">Recorded ✓</string>
     <string name="record_again">Record again</string>
     <string name="pad_amount_exceeds">Exceeds available balance</string>
+    <string name="pad_sum_separator"> + </string>
+    <string name="pad_sum_zero">0</string>
+    <string name="pad_sum_approx_prefix">≈ </string>
 
     <!-- preset category display names (stored data keeps the original names) -->
     <string name="cat_food">Food</string>

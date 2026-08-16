@@ -4,7 +4,7 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -55,13 +55,18 @@ fun SuccessOverlay(trigger: Int, modifier: Modifier = Modifier) {
     }
 
     if (active) {
-        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // 对勾位置按屏幕高度取比例（视觉中心偏上），不用固定像素偏移：
+        // 小屏/大字号下页头更高时也不会与页头重叠
+        BoxWithConstraints(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
             val p = progress.value
             val a = alpha.value
             Canvas(
                 Modifier
                     .size(96.dp)
-                    .offset(y = (-80).dp)
+                    .offset(y = -(maxHeight * 0.09f))
             ) {
                 val strokeWidth = 6.dp.toPx()
                 // 圆形描边：前 60% 时间

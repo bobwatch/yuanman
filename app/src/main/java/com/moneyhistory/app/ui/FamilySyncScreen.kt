@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -41,7 +43,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.MainViewModel
 import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.R
-import com.moneyhistory.app.ui.theme.IncomeGreen
 import com.moneyhistory.app.ui.theme.incomeAmountColor
 
 /** 家庭同步：配对码管理 + 设备列表 + 手动同步。 */
@@ -180,7 +181,20 @@ fun FamilySyncScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = { sync.syncNow() }) {
+                // 同步进行中：按钮转圈禁用，避免重复触发；结束后恢复
+                val syncing = status == stringResource(R.string.sync_status_syncing)
+                Button(
+                    onClick = { sync.syncNow() },
+                    enabled = !syncing
+                ) {
+                    if (syncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Text(stringResource(R.string.family_sync_now))
                 }
                 Spacer(Modifier.height(12.dp))
@@ -216,7 +230,7 @@ fun FamilySyncScreen(
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (device.connected) {
-                                    IncomeGreen
+                                    incomeAmountColor()
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 }

@@ -288,9 +288,9 @@ fun StatsScreen(
             if (monthTransactions.isEmpty()) {
                 EmptyState(
                     emoji = "📊",
-                    title = stringResource(R.string.home_empty_title),
-                    subtitle = stringResource(R.string.home_empty_sub),
-                    actionLabel = stringResource(R.string.home_empty_action),
+                    title = stringResource(R.string.stats_page_empty_title),
+                    subtitle = stringResource(R.string.stats_page_empty_sub),
+                    actionLabel = stringResource(R.string.stats_page_empty_action),
                     onAction = {
                         // 跨页闭环：回首页的同时打开记账面板
                         viewModel.requestAddSheet()

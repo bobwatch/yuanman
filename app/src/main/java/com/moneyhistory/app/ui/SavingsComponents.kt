@@ -1,6 +1,9 @@
 package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,18 +72,22 @@ import kotlin.math.roundToInt
 // 目标名称上限：与 emoji 并排时一屏可读，输入时边输边显示计数
 private const val GOAL_NAME_MAX = 12
 
-/** 圆环进度（Canvas 自绘，animateFloatAsState 过渡动画），中心可放文字。 */
+/** 圆环进度（Canvas 自绘），中心可放文字。动效与环形图同一语言：
+ *  首次出现从 0 扫入到当前进度，之后每次变化（存入/取出）平滑过渡。 */
 @Composable
 fun ProgressRing(
     progress: Float,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit = {}
 ) {
-    val animated by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = androidx.compose.animation.core.tween(600),
-        label = "ring"
-    )
+    val target = progress.coerceIn(0f, 1f)
+    val ring = remember { Animatable(0f) }
+    LaunchedEffect(target) {
+        ring.animateTo(
+            targetValue = target,
+            animationSpec = tween(600, easing = FastOutSlowInEasing)
+        )
+    }
     val primary = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     androidx.compose.foundation.layout.Box(
@@ -87,7 +95,7 @@ fun ProgressRing(
         // 中心文字并入同一节点读出
         modifier = modifier.semantics(mergeDescendants = true) {
             progressBarRangeInfo = ProgressBarRangeInfo(
-                current = animated.coerceIn(0f, 1f),
+                current = ring.value.coerceIn(0f, 1f),
                 range = 0f..1f
             )
         },
@@ -121,7 +129,7 @@ fun ProgressRing(
             drawArc(
                 color = primary,
                 startAngle = -90f,
-                sweepAngle = 360f * animated,
+                sweepAngle = 360f * ring.value,
                 useCenter = false,
                 topLeft = topLeft,
                 size = arcSize,
@@ -549,10 +557,13 @@ fun AmountPadDialog(
         text = {
             // 内容含整块数字键盘，小屏/大字号下可能超高：
             // 加滚动兜底，键盘行与按钮永不超出窗口被裁
+            val sumSeparator = stringResource(R.string.pad_sum_separator)
+            val sumZero = stringResource(R.string.pad_sum_zero)
+            val approxPrefix = stringResource(R.string.pad_sum_approx_prefix)
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
                     Text(
-                        text = segments.joinToString(" + ").ifEmpty { "0" },
+                        text = segments.joinToString(sumSeparator).ifEmpty { sumZero },
                         style = MaterialTheme.typography.headlineSmall,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -560,7 +571,7 @@ fun AmountPadDialog(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "≈ ${MoneyUtils.formatCents(liveCents)}",
+                        text = approxPrefix + MoneyUtils.formatCents(liveCents),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )

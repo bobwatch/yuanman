@@ -69,6 +69,9 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 
+// 心情备注上限：单行一句话的长度，输入时边输边显示计数
+private const val MOOD_NOTE_MAX = 50
+
 /** 心情名称文案。 */
 @Composable
 private fun moodLabel(mood: Mood): String = stringResource(
@@ -216,7 +219,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                             Spacer(Modifier.height(12.dp))
                             OutlinedTextField(
                                 value = note,
-                                onValueChange = { note = it.take(50) },
+                                onValueChange = { note = it.take(MOOD_NOTE_MAX) },
                                 label = {
                                     Text(stringResource(R.string.mood_note_hint))
                                 },
@@ -227,7 +230,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                                             stringResource(
                                                 R.string.mood_note_count,
                                                 note.length,
-                                                50
+                                                MOOD_NOTE_MAX
                                             )
                                         )
                                     }
