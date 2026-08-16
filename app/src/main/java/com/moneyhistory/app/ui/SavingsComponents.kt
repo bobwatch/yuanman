@@ -5,13 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -29,7 +29,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -429,30 +429,27 @@ fun GoalCreateSheet(
                         style = MaterialTheme.typography.titleSmall
                     )
                     Spacer(Modifier.height(8.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        goalEmojiCandidates.forEach { candidate ->
-                            FilterChip(
-                                selected = emoji == candidate,
-                                onClick = { emoji = candidate },
-                                label = { Text(candidate) }
-                            )
-                        }
-                    }
+                    EmojiPickerRow(
+                        candidates = goalEmojiCandidates,
+                        selected = emoji,
+                        onSelect = { emoji = it }
+                    )
                     Spacer(Modifier.height(8.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 无障碍：开关自身读出身旁文案，TalkBack 不悬空
+                        val deadlineLabel = stringResource(R.string.goal_deadline_toggle)
                         Text(
-                            text = stringResource(R.string.goal_deadline_toggle),
+                            text = deadlineLabel,
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f)
                         )
                         Switch(
                             checked = deadlineEnabled,
-                            onCheckedChange = { deadlineEnabled = it }
+                            onCheckedChange = { deadlineEnabled = it },
+                            modifier = Modifier.semantics {
+                                contentDescription = deadlineLabel
+                            }
                         )
                     }
                     if (deadlineEnabled) {
@@ -485,7 +482,9 @@ fun GoalCreateSheet(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
                         Text(stringResource(R.string.common_create))
                     }

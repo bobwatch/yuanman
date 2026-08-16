@@ -302,6 +302,7 @@ private fun InlineHabitForm(
     var nameError by rememberSaveable { mutableStateOf(false) }
     var emoji by rememberSaveable { mutableStateOf(habitEmojiCandidates.first()) }
     var type by rememberSaveable { mutableStateOf(Habit.Type.BUILD) }
+    val view = LocalView.current
 
     AppCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Column(Modifier.padding(16.dp)) {
@@ -314,13 +315,21 @@ private fun InlineHabitForm(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = type == Habit.Type.BUILD,
-                    onClick = { type = Habit.Type.BUILD },
-                    label = { Text(stringResource(R.string.habit_type_build)) }
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        type = Habit.Type.BUILD
+                    },
+                    label = { Text(stringResource(R.string.habit_type_build)) },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
                 FilterChip(
                     selected = type == Habit.Type.QUIT,
-                    onClick = { type = Habit.Type.QUIT },
-                    label = { Text(stringResource(R.string.habit_type_quit)) }
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        type = Habit.Type.QUIT
+                    },
+                    label = { Text(stringResource(R.string.habit_type_quit)) },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
             Spacer(Modifier.height(10.dp))
@@ -336,11 +345,13 @@ private fun InlineHabitForm(
                     FilterChip(
                         selected = name == presetName,
                         onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             name = presetName
                             emoji = preset.emoji
                             nameError = false
                         },
-                        label = { Text("${preset.emoji} $presetName") }
+                        label = { Text("${preset.emoji} $presetName") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                 }
             }
@@ -378,19 +389,11 @@ private fun InlineHabitForm(
                 style = MaterialTheme.typography.titleSmall
             )
             Spacer(Modifier.height(8.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                habitEmojiCandidates.forEach { candidate ->
-                    FilterChip(
-                        selected = emoji == candidate,
-                        onClick = { emoji = candidate },
-                        label = { Text(candidate) }
-                    )
-                }
-            }
+            EmojiPickerRow(
+                candidates = habitEmojiCandidates,
+                selected = emoji,
+                onSelect = { emoji = it }
+            )
             Spacer(Modifier.height(16.dp))
 
             Button(

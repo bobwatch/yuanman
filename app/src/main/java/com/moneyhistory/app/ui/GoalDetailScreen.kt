@@ -34,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -273,13 +275,21 @@ fun GoalDetailScreen(
                 showDepositDialog = false
             },
             extraContent = {
+                // 无障碍：开关自身读出身旁文案，TalkBack 不悬空
+                val recordExpenseLabel = stringResource(R.string.goal_record_expense)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = stringResource(R.string.goal_record_expense),
+                        text = recordExpenseLabel,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f)
                     )
-                    Switch(checked = recordExpense, onCheckedChange = { recordExpense = it })
+                    Switch(
+                        checked = recordExpense,
+                        onCheckedChange = { recordExpense = it },
+                        modifier = Modifier.semantics {
+                            contentDescription = recordExpenseLabel
+                        }
+                    )
                 }
             }
         )

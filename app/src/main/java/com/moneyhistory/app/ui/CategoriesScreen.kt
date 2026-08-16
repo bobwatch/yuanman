@@ -4,7 +4,6 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +19,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -84,19 +82,11 @@ fun CategoriesScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Categories.emojiCandidates.forEach { emoji ->
-                                FilterChip(
-                                    selected = selectedEmoji == emoji,
-                                    onClick = { selectedEmoji = emoji },
-                                    label = { Text(emoji) }
-                                )
-                            }
-                        }
+                        EmojiPickerRow(
+                            candidates = Categories.emojiCandidates,
+                            selected = selectedEmoji,
+                            onSelect = { selectedEmoji = it }
+                        )
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(

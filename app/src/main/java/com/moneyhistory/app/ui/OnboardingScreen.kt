@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -147,12 +149,16 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     index + 1,
                     pages.size
                 )
-                // 外层 36dp 触达区承载点击（远超 8dp 圆点本体），内层圆点只做动画视觉
+                // 外层 48dp 触达区承载点击（远超 8dp 圆点本体），内层圆点只做动画视觉；
+                // 无障碍读出「第 X 页，共 Y 页」+ 当前页选中态
                 Box(
                     Modifier
-                        .size(36.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
-                        .semantics { contentDescription = dotLabel }
+                        .semantics {
+                            contentDescription = dotLabel
+                            selected = active
+                        }
                         .clickable {
                             scope.launch {
                                 pagerState.animateScrollToPage(index)
@@ -180,7 +186,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
             shape = MaterialTheme.shapes.large,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.White,
@@ -197,7 +205,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         if (!isLast) {
             TextButton(
                 onClick = onFinish,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
             ) {
                 Text(stringResource(R.string.onboard_skip), color = Color.White)
             }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -193,20 +194,33 @@ fun MineScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val view = LocalView.current
                     FilterChip(
                         selected = themeMode == ThemeMode.SYSTEM,
-                        onClick = { viewModel.settings.setThemeMode(ThemeMode.SYSTEM) },
-                        label = { Text(stringResource(R.string.theme_system)) }
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.settings.setThemeMode(ThemeMode.SYSTEM)
+                        },
+                        label = { Text(stringResource(R.string.theme_system)) },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                     FilterChip(
                         selected = themeMode == ThemeMode.LIGHT,
-                        onClick = { viewModel.settings.setThemeMode(ThemeMode.LIGHT) },
-                        label = { Text(stringResource(R.string.theme_light)) }
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.settings.setThemeMode(ThemeMode.LIGHT)
+                        },
+                        label = { Text(stringResource(R.string.theme_light)) },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                     FilterChip(
                         selected = themeMode == ThemeMode.DARK,
-                        onClick = { viewModel.settings.setThemeMode(ThemeMode.DARK) },
-                        label = { Text(stringResource(R.string.theme_dark)) }
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.settings.setThemeMode(ThemeMode.DARK)
+                        },
+                        label = { Text(stringResource(R.string.theme_dark)) },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                 }
             }

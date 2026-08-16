@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -147,7 +146,7 @@ fun BadgeScreen(
                                 tint = if (unlocked) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 },
                                 container = if (unlocked) {
                                     MaterialTheme.colorScheme.primaryContainer
@@ -155,8 +154,7 @@ fun BadgeScreen(
                                     MaterialTheme.colorScheme.surfaceContainerHighest
                                 },
                                 size = 48.dp,
-                                iconSize = 24.dp,
-                                modifier = Modifier.alpha(if (unlocked) 1f else 0.6f)
+                                iconSize = 24.dp
                             )
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {

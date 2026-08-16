@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.DateUtils
 import com.moneyhistory.app.MainViewModel
@@ -266,7 +265,7 @@ fun MoodScreen(viewModel: MainViewModel) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(16.dp)
                 )
             }
 
@@ -397,7 +396,13 @@ fun MoodScreen(viewModel: MainViewModel) {
                 Column {
                     if (entry != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(entry.mood.emoji, fontSize = 32.sp)
+                            // 与主选择器同一套矢量表情图标（emoji 在不同设备渲染不一，矢量保设计意图）
+                            Icon(
+                                imageVector = moodIcon(entry.mood),
+                                contentDescription = null,
+                                tint = Color(entry.mood.colorValue),
+                                modifier = Modifier.size(36.dp)
+                            )
                             Spacer(Modifier.width(12.dp))
                             Text(
                                 text = moodLabel(entry.mood),
@@ -551,7 +556,17 @@ private fun CompactMoodPicker(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = mood.emoji, fontSize = 20.sp)
+                // 与主选择器同款矢量图标 + 同款选中配色，两处选择器视觉完全一致
+                Icon(
+                    imageVector = moodIcon(mood),
+                    contentDescription = null,
+                    tint = if (mood == current) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }
