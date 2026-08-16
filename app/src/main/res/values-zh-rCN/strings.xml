@@ -504,4 +504,7 @@
     <string name="habit_week_summary">近 7 天打卡 %1$d 天</string>
     <string name="habit_week_clean_summary">近 7 天有 %1$d 天未破戒</string>
     <string name="mood_day_semantics">第 %1$d 天，心情：%2$s</string>
+
+    <!-- 关怀时刻 -->
+    <string name="late_night_hint">夜深了，记完这笔就早点休息吧 🌙</string>
 </resources>

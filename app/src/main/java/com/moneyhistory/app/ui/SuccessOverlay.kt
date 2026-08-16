@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalView
@@ -29,12 +30,17 @@ import kotlinx.coroutines.delay
  * 操作成功的对勾微动效：屏幕中央偏上 Canvas 自绘
  * （圆形描边 300ms + 对勾路径，随后 200ms 淡出）+ 确认触感。
  *
- * 由 [trigger] 自增计数驱动：每次 +1 播放一次（0 或重复值不触发）。
+ * 由 [trigger] 自增计数驱动：每次 +1 播放一次（0 或重复值不触发）；
+ * [tint] 决定对勾颜色（收入绿勾、其余品牌蓝勾）。
  */
 @Composable
-fun SuccessOverlay(trigger: Int, modifier: Modifier = Modifier) {
+fun SuccessOverlay(
+    trigger: Int,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    modifier: Modifier = Modifier
+) {
     val view = LocalView.current
-    val color = MaterialTheme.colorScheme.primary
+    val color = tint
     val progress = remember { Animatable(0f) }
     val alpha = remember { Animatable(1f) }
     var active by remember { mutableStateOf(false) }

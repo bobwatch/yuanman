@@ -555,6 +555,8 @@ fun HomeScreen(
                                 sheetOpen = true
                             }
                         )
+                        // 夜深了：记完这笔早点休息（同一会话只提示一次）
+                        viewModel.maybePostLateNightHint()
                     } else {
                         viewModel.postMessage(savedText, MessageVariant.SUCCESS)
                     }

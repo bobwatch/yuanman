@@ -20,6 +20,9 @@ import kotlin.math.roundToInt
 /** 当前查看的月份（month 为 1~12）。 */
 data class YearMonth(val year: Int, val month: Int)
 
+/** 成功微动效的语义色：收入记绿勾，其余记品牌蓝勾。 */
+enum class SuccessTone { DEFAULT, INCOME }
+
 /** 筛选出指定月份的流水（保持时间倒序）。 */
 internal fun List<Transaction>.ofMonth(ym: YearMonth): List<Transaction> {
     val cal = Calendar.getInstance()
@@ -99,6 +102,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val _moods = MutableStateFlow(moodStore.all())
     val moods: StateFlow<Map<String, MoodEntry>> = _moods.asStateFlow()
+
+    /** 成功微动效的语义色：收入用绿、其余用品牌蓝。 */
+    private val _successTone = MutableStateFlow(SuccessTone.DEFAULT)
+    val successTone: StateFlow<SuccessTone> = _successTone.asStateFlow()
 
     /** 记账/存入成功的微动效触发（自增计数，UI 监听变化播放对勾动画）。 */
     private val _successNonce = MutableStateFlow(0)
@@ -312,7 +319,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             )
             refresh()
         }
-        _successNonce.value += 1
+        bumpSuccess()
         if (!isWithdraw) {
             val percent = (updated.progress * 100).roundToInt()
             goalMilestones.forEach { m ->
@@ -344,7 +351,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 记账保存成功：记录最近使用分类 + 触发对勾微动效。 */
     fun onTransactionSaved(t: Transaction) {
         settings.pushRecentCategory(t.type, t.category)
+        bumpSuccess(
+            if (t.type == Transaction.Type.INCOME) SuccessTone.INCOME
+            else SuccessTone.DEFAULT
+        )
+    }
+
+    /** 触发一次成功对勾微动效（tone 决定对勾颜色）。 */
+    private fun bumpSuccess(tone: SuccessTone = SuccessTone.DEFAULT) {
         _successNonce.value += 1
+        _successTone.value = tone
     }
 
     // ---------- 打卡 ----------
@@ -367,7 +383,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             checkBadges()
             val streak = _habits.value.firstOrNull { it.id == id }
                 ?.buildStreak(DateUtils.today()) ?: 0
-            _successNonce.value += 1
+            bumpSuccess()
             viewModelScope.launch {
                 _messages.emit(
                     UiMessage(
@@ -397,6 +413,19 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 供 UI 发全局 Toast 消息（由 MainActivity 顶层宿主统一展示）。 */
     fun postMessage(msg: String, variant: MessageVariant = MessageVariant.INFO) {
         viewModelScope.launch { _messages.emit(UiMessage(msg, variant)) }
+    }
+
+    /** 深夜关怀：同一会话只提示一次，不打扰连续记账。 */
+    private var lateNightHintShown = false
+
+    /** 深夜（23:00–03:59）记完新账时提示早点休息，给记账人一点温度。 */
+    fun maybePostLateNightHint() {
+        if (lateNightHintShown) return
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        if (hour >= 23 || hour < 4) {
+            lateNightHintShown = true
+            postMessage(app.getString(R.string.late_night_hint), MessageVariant.INFO)
+        }
     }
 
     // ---------- 勋章 ----------

@@ -92,6 +92,7 @@ import com.moneyhistory.app.ui.SuccessOverlay
 import com.moneyhistory.app.ui.ToastHost
 import com.moneyhistory.app.ui.ToastHostState
 import com.moneyhistory.app.ui.theme.YuanmanTheme
+import com.moneyhistory.app.ui.theme.incomeAmountColor
 
 private data class BottomTab(
     val route: String,
@@ -162,6 +163,7 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle()
             val confettiVisible by viewModel.confettiVisible.collectAsStateWithLifecycle()
             val successNonce by viewModel.successNonce.collectAsStateWithLifecycle()
+            val successTone by viewModel.successTone.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val darkTheme = when (themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -403,8 +405,15 @@ class MainActivity : ComponentActivity() {
                             onFinished = { viewModel.dismissConfetti() }
                         )
 
-                        // 记账 / 打卡 / 存入成功的全局对勾动效：任何页面都可见
-                        SuccessOverlay(trigger = successNonce)
+                        // 记账 / 打卡 / 存入成功的全局对勾动效：任何页面都可见；
+                        // 收入记绿勾（进账的喜悦感），其余动作记品牌蓝勾
+                        SuccessOverlay(
+                            trigger = successNonce,
+                            tint = when (successTone) {
+                                SuccessTone.INCOME -> incomeAmountColor()
+                                SuccessTone.DEFAULT -> MaterialTheme.colorScheme.primary
+                            }
+                        )
 
                         // 全局 Toast：顶部向下一点，避开状态栏
                         ToastHost(
