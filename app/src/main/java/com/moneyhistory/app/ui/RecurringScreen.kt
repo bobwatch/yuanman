@@ -1,8 +1,14 @@
 package com.moneyhistory.app.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,12 +18,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,20 +40,25 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +66,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyhistory.app.Categories
 import com.moneyhistory.app.MainViewModel
@@ -60,6 +75,7 @@ import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.RecurringExpense
+import kotlinx.coroutines.launch
 
 /** 周期账单管理：每月预计合计 + 列表（编辑/暂停/恢复/删除）+ 新建/编辑弹层。 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -344,7 +360,6 @@ private fun RecurringEditSheet(
     onDismiss: () -> Unit,
     onSave: (RecurringExpense) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var amountText by remember(initial) {
         mutableStateOf(
             if (initial != null) MoneyUtils.formatCentsPlain(initial.amountCents) else ""
@@ -363,145 +378,201 @@ private fun RecurringEditSheet(
     var paused by remember(initial) { mutableStateOf(initial?.paused ?: false) }
     var amountError by remember { mutableStateOf(false) }
     val view = LocalView.current
+    // 收起动画：点遮罩 / 下滑手柄 / 返回都先下滑收起再真正关闭，与 TransactionSheet 同语言
+    val sheetOffset = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        // 内容可滚动：编辑态 + 键盘弹出时内容超高，不滚动会把底部保存按钮
-        // 挤出屏幕（v0.0.3 保存按钮显示不完整的原因）
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(
-                    if (initial != null) R.string.recurring_edit_title
-                    else R.string.recurring_create_title
-                ),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = {
-                    amountText = it
-                    amountError = false
-                },
-                label = { Text(stringResource(R.string.recurring_amount)) },
-                isError = amountError,
-                supportingText = {
-                    if (amountError) Text(stringResource(R.string.sheet_amount_error))
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                text = stringResource(R.string.recurring_category),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                categories.forEach { c ->
-                    FilterChip(
-                        selected = category == c,
-                        onClick = { category = c },
-                        label = { Text(Categories.displayName(c)) }
-                    )
-                }
+    // 全屏 Dialog 而非 M3 1.2 的 ModalBottomSheet（Popup 窗口收不到 IME inset，
+    // 键盘弹出时会在键盘上方漏出背景色块——「莫名奇妙的方框」的根因）。
+    // Dialog + decorFitsSystemWindows=false 能收到 IME inset，内容靠 imePadding
+    // 随键盘收缩，与记账弹层同一套已验证的机制。
+    Dialog(
+        onDismissRequest = {
+            scope.launch {
+                sheetOffset.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                onDismiss()
             }
-            Text(
-                text = stringResource(R.string.recurring_cycle),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        DialogEdgeToEdge()
+        // 关掉平台 Dialog 默认的淡入缩放，入场由 sheetOffset 滑动驱动
+        (view.context as? android.app.Dialog)?.window?.setWindowAnimations(0)
+        LaunchedEffect(Unit) {
+            sheetOffset.animateTo(0f, tween(340, easing = FastOutSlowInEasing))
+        }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val sheetHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+            // 遮罩：半透明黑 + 点击关闭
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(onClick = {
+                        scope.launch {
+                            sheetOffset.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                            onDismiss()
+                        }
+                    })
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                RecurringExpense.Cycle.entries.forEach { c ->
-                    FilterChip(
-                        selected = cycle == c,
-                        onClick = { cycle = c },
-                        label = { Text(cycleLabel(c)) }
-                    )
-                }
-            }
-            DatePickerButton(
-                label = stringResource(R.string.recurring_next_due),
-                millis = nextDue,
-                onDateSelected = { nextDue = it },
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(stringResource(R.string.recurring_note)) },
-                placeholder = { Text(stringResource(R.string.recurring_note_hint)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (initial != null) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.recurring_pause_action),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = stringResource(R.string.recurring_paused_sub),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = paused, onCheckedChange = { paused = it })
-                }
-            }
-            Button(
-                onClick = {
-                    val cents = MoneyUtils.parseToCents(amountText)
-                    if (cents == null) {
-                        amountError = true
-                        return@Button
-                    }
-                    val base = initial ?: RecurringExpense(
-                        amountCents = cents,
-                        category = category,
-                        note = note.trim(),
-                        cycle = cycle,
-                        nextDue = nextDue
-                    )
-                    onSave(
-                        base.copy(
-                            amountCents = cents,
-                            category = category,
-                            note = note.trim(),
-                            cycle = cycle,
-                            nextDue = nextDue,
-                            paused = paused
-                        )
-                    )
-                },
-                shape = MaterialTheme.shapes.large,
+            Surface(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .graphicsLayer { translationY = sheetOffset.value * sheetHeightPx },
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 3.dp
             ) {
-                Text(
-                    text = stringResource(R.string.common_save),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                // 内容可滚动：编辑态 + 键盘弹出时内容超高，不滚动会把底部保存按钮
+                // 挤出屏幕（保存按钮显示不完整的原因）；imePadding 让内容随键盘收缩
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .imePadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    SheetDragHandle(onDismiss = {
+                        scope.launch {
+                            sheetOffset.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                            onDismiss()
+                        }
+                    })
+                    Text(
+                        text = stringResource(
+                            if (initial != null) R.string.recurring_edit_title
+                            else R.string.recurring_create_title
+                        ),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = {
+                            amountText = it
+                            amountError = false
+                        },
+                        label = { Text(stringResource(R.string.recurring_amount)) },
+                        isError = amountError,
+                        supportingText = {
+                            if (amountError) Text(stringResource(R.string.sheet_amount_error))
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.recurring_category),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        categories.forEach { c ->
+                            FilterChip(
+                                selected = category == c,
+                                onClick = { category = c },
+                                label = { Text(Categories.displayName(c)) }
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.recurring_cycle),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        RecurringExpense.Cycle.entries.forEach { c ->
+                            FilterChip(
+                                selected = cycle == c,
+                                onClick = { cycle = c },
+                                label = { Text(cycleLabel(c)) }
+                            )
+                        }
+                    }
+                    DatePickerButton(
+                        label = stringResource(R.string.recurring_next_due),
+                        millis = nextDue,
+                        onDateSelected = { nextDue = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it },
+                        label = { Text(stringResource(R.string.recurring_note)) },
+                        placeholder = { Text(stringResource(R.string.recurring_note_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (initial != null) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.recurring_pause_action),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = stringResource(R.string.recurring_paused_sub),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = paused, onCheckedChange = { paused = it })
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            val cents = MoneyUtils.parseToCents(amountText)
+                            if (cents == null) {
+                                amountError = true
+                                return@Button
+                            }
+                            val base = initial ?: RecurringExpense(
+                                amountCents = cents,
+                                category = category,
+                                note = note.trim(),
+                                cycle = cycle,
+                                nextDue = nextDue
+                            )
+                            onSave(
+                                base.copy(
+                                    amountCents = cents,
+                                    category = category,
+                                    note = note.trim(),
+                                    cycle = cycle,
+                                    nextDue = nextDue,
+                                    paused = paused
+                                )
+                            )
+                        },
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.common_save),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
             }
         }
     }
