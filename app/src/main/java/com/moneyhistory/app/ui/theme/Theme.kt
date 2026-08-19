@@ -3,6 +3,7 @@ package com.moneyhistory.app.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -99,7 +100,15 @@ fun YuanmanTheme(
         }
     }
 
-    CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+    // M3 1.2.x 的 MaterialTheme 只提供 colorScheme/shapes/typography 等六个 Local，
+    // 并不提供 LocalContentColor（其默认值是 Color.Black）——只有 Surface/Card 这类
+    // 自带 contentColor 的容器才会覆盖它。页面根容器是 Box 时，所有未显式指定 color
+    // 的 Text/Icon 在深色主题下会渲染成纯黑（v0.0.3 深色主题文字不可读的根因）。
+    // 这里显式提供主题 onSurface：浅色主题下与默认近黑等价，深色主题下变成亮色文字。
+    CompositionLocalProvider(
+        LocalDarkTheme provides darkTheme,
+        LocalContentColor provides colorScheme.onSurface
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = AppShapes,

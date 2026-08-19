@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -363,9 +365,12 @@ private fun RecurringEditSheet(
     val view = LocalView.current
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        // 内容可滚动：编辑态 + 键盘弹出时内容超高，不滚动会把底部保存按钮
+        // 挤出屏幕（v0.0.3 保存按钮显示不完整的原因）
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp),
@@ -402,8 +407,8 @@ private fun RecurringEditSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 categories.forEach { c ->
                     FilterChip(
@@ -419,8 +424,8 @@ private fun RecurringEditSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 RecurringExpense.Cycle.entries.forEach { c ->
                     FilterChip(
