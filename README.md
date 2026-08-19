@@ -84,7 +84,7 @@
 **Project layout**
 
 ```
-app/src/main/java/com/moneyhistory/app/
+app/src/main/java/com/yuanman/app/
 ├── MainActivity.kt            # Single activity, bottom tabs, lifecycle
 ├── MainViewModel.kt           # All screen state & operations (badge engine driver)
 ├── Transaction.kt(Store)      # Ledger model & JSON store (v2 tombstones/merge/atomic writes)

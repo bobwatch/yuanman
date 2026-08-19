@@ -83,7 +83,7 @@
 **目录结构**
 
 ```
-app/src/main/java/com/moneyhistory/app/
+app/src/main/java/com/yuanman/app/
 ├── MainActivity.kt            # 单 Activity，底部 Tab 导航与生命周期
 ├── MainViewModel.kt           # 全部页面状态与业务操作（含勋章引擎调度）
 ├── Transaction.kt(Store)      # 流水模型与 JSON 存储（v2 墓碑/合并/原子写入）

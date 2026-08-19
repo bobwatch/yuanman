@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Compose 启动前的窗口主题（状态栏颜色由 YuanmanTheme 在运行时接管）。
-         windowSplashScreen* 仅 API 31+ 生效，31 以下由 windowBackground 呈现品牌启动屏。 -->
+         API 31+ 的系统启动画面见 values-v31/themes.xml；31 以下由 windowBackground 呈现品牌启动屏。 -->
     <style name="Theme.Yuanman" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@color/splash_blue</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowBackground">@drawable/splash_bg</item>
-        <item name="android:windowSplashScreenBackground">@color/splash_blue</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
-        <item name="android:windowSplashScreenAnimationDuration">500</item>
     </style>
 </resources>

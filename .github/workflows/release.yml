@@ -50,11 +50,11 @@ jobs:
           files: ${{ env.APK_FILE }}
           generate_release_notes: true
           body: |
-            Yuanman ${{ github.ref_name }} — categories overhaul
+            Yuanman ${{ github.ref_name }} — update install fix, budget history, recurring bills polish
 
-            - Categories unified: preset/custom merge into expense & income groups, all editable & deletable
-            - New categories pick their group (expense/income) at add time
-            - Bigger category icons (56dp tiles, 44dp quick-emoji row); 18 common emoji + full picker sheet
-            - Category data migrated to v2 (old custom categories move into the expense group)
-            - Tab bar slimmed for faster switching; search gets a cancel action
-            - Mood note layout polish; classification CRUD with rename syncing history records
+            - Fixed: downloaded update APK now installs reliably (FileProvider path + ACTION_VIEW)
+            - Budget history page with trend line chart (12 months) and per-month drill-down
+            - Recurring bills: create/edit sheet, pause & resume, monthly total card
+            - Record sheet opens with the same smooth slide animation as the icon picker
+            - Habits / Mood / Mine headers now scroll away with the content
+            - Sub-pages open with a cleaner transition (no corner pop)

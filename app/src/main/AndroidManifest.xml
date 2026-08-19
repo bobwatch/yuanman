@@ -48,7 +48,7 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="com.moneyhistory.app.action.MIDNIGHT" />
+                <action android:name="com.yuanman.action.MIDNIGHT" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

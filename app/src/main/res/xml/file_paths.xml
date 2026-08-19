@@ -3,4 +3,9 @@
     <cache-path
         name="exports"
         path="exports/" />
+    <!-- 升级 APK 下载到 cacheDir 根目录（yuanman-update.apk），
+         必须覆盖整个缓存根，否则 FileProvider 找不到授权路径、安装直接失败 -->
+    <cache-path
+        name="downloads"
+        path="." />
 </paths>

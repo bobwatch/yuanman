@@ -8,8 +8,8 @@
         android:shortcutLongLabel="@string/shortcut_add">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.moneyhistory.app"
-            android:targetClass="com.moneyhistory.app.MainActivity">
+            android:targetPackage="com.yuanman"
+            android:targetClass="com.yuanman.MainActivity">
             <extra
                 android:name="action"
                 android:value="add" />

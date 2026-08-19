@@ -25,7 +25,7 @@
 ## 约定
 
 - **品牌**：应用名「沅满 Yuanman」；主题色「沅满蓝」#2AABEE；仓库 bobwatch/yuanman；不使用任何其他产品的品牌字眼
-- applicationId 保持 `com.moneyhistory.app` 不变（Android 应用身份标识，改名会导致老用户无法覆盖升级）；包名同理不迁移
+- applicationId 为 `com.yuanman`（2026-08 从 `com.moneyhistory.app` 迁移而来，代码包名与 applicationId 一致）；保持不再变更（Android 应用身份标识，再改名会导致老用户无法覆盖升级）
 - **Commit message 一律英文**
 - **UI 文案必须走字符串资源**：`res/values/strings.xml` 为英文（默认），`res/values-zh-rCN/strings.xml` 为中文，两文件 key 必须完全一致；Compose 用 `stringResource(R.string.xxx)`，非 Compose 层用 `context.getString(...)`；禁止硬编码 UI 文案
 - 存入 JSON 的用户可见数据（分类名、习惯名、备注等）保持字符串原样，不做迁移

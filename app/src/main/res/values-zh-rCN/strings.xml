@@ -196,7 +196,7 @@
     <string name="goal_deadline_label">目标日期</string>
     <string name="goal_card_saved">已存 %1$s</string>
     <string name="goal_card_target">目标 %1$s</string>
-    <string name="goal_prediction_done">已达成 100% 🎉</string>
+    <string name="goal_prediction_done">已达成 100%% 🎉</string>
     <string name="goal_prediction_percent">已达成 %1$d%%</string>
     <string name="goal_progress_percent">%1$d%%</string>
     <string name="goal_prediction_date">预计 %1$d月%2$d日 达成</string>
@@ -218,9 +218,9 @@
     <string name="goal_deleted">目标已删除</string>
     <string name="goal_deleted_sub">点提示条「撤销」即可找回</string>
     <string name="goal_not_found">这个目标已不存在</string>
-    <string name="milestone_25">🌱 好的开始！目标已攒下 25%</string>
-    <string name="milestone_50">💪 半程达成！目标已攒下 50%</string>
-    <string name="milestone_75">🔥 胜利在望！目标已攒下 75%</string>
+    <string name="milestone_25">🌱 好的开始！目标已攒下 25%%</string>
+    <string name="milestone_50">💪 半程达成！目标已攒下 50%%</string>
+    <string name="milestone_75">🔥 胜利在望！目标已攒下 75%%</string>
     <string name="milestone_100">🎉 目标达成！太棒了！</string>
 
     <!-- habits -->
@@ -577,4 +577,42 @@
     <string name="custom_range_start">开始</string>
     <string name="custom_range_end">结束</string>
     <string name="custom_range_apply">应用</string>
+
+    <!-- 预算历史 -->
+    <string name="budget_history_title">历史记录</string>
+    <string name="budget_current_title">本月</string>
+    <string name="budget_not_set">未设置</string>
+    <string name="budget_edit">编辑预算</string>
+    <string name="budget_set_hint">还没有预算，点这里设置</string>
+    <string name="budget_trend_title">预算与支出</string>
+    <string name="budget_trend_sub">近 12 个月</string>
+    <string name="budget_legend_budget">预算</string>
+    <string name="budget_legend_spent">支出</string>
+    <string name="budget_month_pattern">yyyy年M月</string>
+    <string name="budget_chart_month_pattern">M月</string>
+    <string name="chart_budget_desc">预算与支出趋势：%1$s</string>
+    <string name="chart_budget_entry">%1$s支出%2$s，预算%3$s</string>
+    <string name="chart_budget_callout_budget">预算 %s</string>
+    <string name="chart_budget_callout_none">未设预算</string>
+
+    <!-- 周期账单 -->
+    <string name="recurring_monthly_total">每月预计</string>
+    <string name="recurring_monthly_total_sub">全部按期支付时的每月支出</string>
+    <string name="recurring_add">新建</string>
+    <string name="recurring_create_title">新建周期账单</string>
+    <string name="recurring_edit_title">编辑周期账单</string>
+    <string name="recurring_amount">金额</string>
+    <string name="recurring_category">分类</string>
+    <string name="recurring_cycle">周期</string>
+    <string name="recurring_note">备注</string>
+    <string name="recurring_note_hint">如：房租、视频会员</string>
+    <string name="recurring_paused">已暂停</string>
+    <string name="recurring_paused_sub">已暂停，不会再自动记账</string>
+    <string name="recurring_paused_count">已暂停 %1$d 条</string>
+    <string name="recurring_pause_action">暂停</string>
+    <string name="recurring_resume_action">恢复</string>
+    <string name="recurring_need_next_due">请选择下次扣款日期</string>
+    <string name="recurring_need_amount">请输入金额</string>
+    <string name="recurring_updated">周期账单已更新</string>
+    <string name="recurring_created">周期账单已创建</string>
 </resources>

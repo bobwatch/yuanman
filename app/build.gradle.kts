@@ -7,15 +7,15 @@ plugins {
 val keystoreFile = System.getenv("KEYSTORE_FILE")
 
 android {
-    namespace = "com.moneyhistory.app"
+    namespace = "com.yuanman"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.moneyhistory.app"
+        applicationId = "com.yuanman"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.0.2"
+        versionCode = 13
+        versionName = "0.0.3"
     }
 
     signingConfigs {

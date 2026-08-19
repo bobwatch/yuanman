@@ -196,7 +196,7 @@
     <string name="goal_deadline_label">Target date</string>
     <string name="goal_card_saved">Saved %1$s</string>
     <string name="goal_card_target">of %1$s</string>
-    <string name="goal_prediction_done">100% achieved 🎉</string>
+    <string name="goal_prediction_done">100%% achieved 🎉</string>
     <string name="goal_prediction_percent">%1$d%% done</string>
     <string name="goal_progress_percent">%1$d%%</string>
     <string name="goal_prediction_date">Est. done on %1$d/%2$d</string>
@@ -218,9 +218,9 @@
     <string name="goal_deleted">Goal deleted</string>
     <string name="goal_deleted_sub">Tap undo on the toast to restore it</string>
     <string name="goal_not_found">This goal no longer exists</string>
-    <string name="milestone_25">🌱 Nice start! 25% saved</string>
-    <string name="milestone_50">💪 Halfway there! 50% saved</string>
-    <string name="milestone_75">🔥 Almost there! 75% saved</string>
+    <string name="milestone_25">🌱 Nice start! 25%% saved</string>
+    <string name="milestone_50">💪 Halfway there! 50%% saved</string>
+    <string name="milestone_75">🔥 Almost there! 75%% saved</string>
     <string name="milestone_100">🎉 Goal achieved!</string>
 
     <!-- habits -->
@@ -576,4 +576,42 @@
     <string name="custom_range_start">Start</string>
     <string name="custom_range_end">End</string>
     <string name="custom_range_apply">Apply</string>
+
+    <!-- budget history -->
+    <string name="budget_history_title">History</string>
+    <string name="budget_current_title">This month</string>
+    <string name="budget_not_set">Not set</string>
+    <string name="budget_edit">Edit budget</string>
+    <string name="budget_set_hint">No budget yet — tap to set one</string>
+    <string name="budget_trend_title">Budget &amp; spending</string>
+    <string name="budget_trend_sub">Past 12 months</string>
+    <string name="budget_legend_budget">Budget</string>
+    <string name="budget_legend_spent">Spent</string>
+    <string name="budget_month_pattern">MMM yyyy</string>
+    <string name="budget_chart_month_pattern">MMM</string>
+    <string name="chart_budget_desc">Budget and spending trend: %1$s</string>
+    <string name="chart_budget_entry">%1$s spent %2$s, budget %3$s</string>
+    <string name="chart_budget_callout_budget">Budget %s</string>
+    <string name="chart_budget_callout_none">No budget</string>
+
+    <!-- recurring bills -->
+    <string name="recurring_monthly_total">Monthly total</string>
+    <string name="recurring_monthly_total_sub">Estimated if all are paid on time</string>
+    <string name="recurring_add">Add</string>
+    <string name="recurring_create_title">New recurring bill</string>
+    <string name="recurring_edit_title">Edit recurring bill</string>
+    <string name="recurring_amount">Amount</string>
+    <string name="recurring_category">Category</string>
+    <string name="recurring_cycle">Repeat</string>
+    <string name="recurring_note">Note</string>
+    <string name="recurring_note_hint">e.g. rent, streaming</string>
+    <string name="recurring_paused">Paused</string>
+    <string name="recurring_paused_sub">Paused — won\'t be recorded</string>
+    <string name="recurring_paused_count">%1$d paused</string>
+    <string name="recurring_pause_action">Pause</string>
+    <string name="recurring_resume_action">Resume</string>
+    <string name="recurring_need_next_due">Pick a due date</string>
+    <string name="recurring_need_amount">Enter an amount</string>
+    <string name="recurring_updated">Recurring bill updated</string>
+    <string name="recurring_created">Recurring bill created</string>
 </resources>
