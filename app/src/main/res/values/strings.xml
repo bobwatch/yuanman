@@ -404,6 +404,9 @@
     <string name="update_install_failed">Could not open the installer.</string>
     <string name="update_download_progress">%1$d%% downloaded</string>
     <string name="update_cancel">Cancel</string>
+    <string name="update_latest_already">You\'re on the latest version</string>
+    <string name="update_check_failed">Update check failed. Check your network and try again.</string>
+    <string name="update_available_hint">Update available</string>
 
     <!-- badges -->
     <string name="badge_screen_title">Badges (%1$d / %2$d)</string>

@@ -75,6 +75,7 @@ import com.moneyhistory.app.MessageVariant
 import com.moneyhistory.app.MoneyUtils
 import com.moneyhistory.app.R
 import com.moneyhistory.app.ThemeMode
+import com.moneyhistory.app.UpdateState
 import com.moneyhistory.app.allBadges
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -96,6 +97,8 @@ fun MineScreen(
     val themeMode by viewModel.settings.themeMode.collectAsStateWithLifecycle()
     val budgetCents by viewModel.settings.budgetCents.collectAsStateWithLifecycle()
     val badgeUnlocks by viewModel.settings.badgeUnlocks.collectAsStateWithLifecycle()
+    // 有新版本时关于页版本行亮小红点（自动/手动检查共用同一状态）
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
 
     var showImportChooser by remember { mutableStateOf(false) }
     var importMergeMode by remember { mutableStateOf(false) }
@@ -320,7 +323,23 @@ fun MineScreen(
                     subtitle = stringResource(
                         R.string.mine_about_version,
                         BuildConfig.VERSION_NAME
-                    )
+                    ),
+                    // 有新版本：版本行亮小红点；点击立即检查最新版本
+                    trailing = if (updateState is UpdateState.Available) {
+                        {
+                            val dotDesc = stringResource(R.string.update_available_hint)
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.error)
+                                    .semantics { contentDescription = dotDesc }
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onClick = { viewModel.checkForUpdatesManually() }
                 )
                 SettingRow(
                     icon = Icons.Filled.Favorite,
@@ -476,12 +495,13 @@ internal fun SettingsCard(
     }
 }
 
-/** 设置行：左侧品牌色圆底图标 + 标题/副标题 + 右侧箭头。 */
+/** 设置行：左侧品牌色圆底图标 + 标题/副标题 + 右侧箭头（trailing 为箭头前的附加内容，如小红点）。 */
 @Composable
 internal fun SettingRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
     val view = LocalView.current
@@ -528,6 +548,10 @@ internal fun SettingRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.size(4.dp))
+            trailing()
         }
         if (onClick != null) {
             Icon(

@@ -575,6 +575,35 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 关于页手动检查：无视「稍后再说」直接弹更新窗（用户主动要最新版），
+     * 无新版本或检查失败时用 Toast 给出明确反馈（自动检查保持静默）。
+     */
+    fun checkForUpdatesManually() {
+        if (updateChecking) return
+        updateChecking = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val latest = UpdateChecker.checkLatest()
+                if (latest == null) {
+                    postMessage(
+                        app.getString(R.string.update_check_failed),
+                        MessageVariant.ERROR
+                    )
+                    return@launch
+                }
+                if (!UpdateChecker.isNewer(latest.versionName, BuildConfig.VERSION_NAME)) {
+                    postMessage(app.getString(R.string.update_latest_already))
+                    return@launch
+                }
+                _updateState.value = UpdateState.Available(latest)
+            } finally {
+                updateChecking = false
+            }
+        }
+    }
+
+
     /** 用户点「稍后再说」：记住该版本，不再弹窗。 */
     fun dismissUpdate() {
         val info = (_updateState.value as? UpdateState.Available)?.info ?: return
