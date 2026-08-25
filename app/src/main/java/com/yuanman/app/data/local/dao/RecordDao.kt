@@ -30,6 +30,9 @@ interface RecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: RecordEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecords(records: List<RecordEntity>)
+
     @Update
     suspend fun updateRecord(record: RecordEntity)
 

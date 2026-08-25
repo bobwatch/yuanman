@@ -16,11 +16,20 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+enum class RecordSortOrder(val title: String) {
+    TIME_DESC("时间最新"),
+    TIME_ASC("时间最早"),
+    AMOUNT_DESC("金额最大"),
+    AMOUNT_ASC("金额最小")
+}
+
 data class RecordListUiState(
     val selectedYear: Int,
     val selectedMonth: Int,
     val selectedType: RecordType? = null, // null means 全部
     val selectedCategoryId: Long? = null,
+    val selectedPaymentMethod: String? = null,
+    val sortOrder: RecordSortOrder = RecordSortOrder.TIME_DESC,
     val searchQuery: String = "",
     val availableCategories: List<CategoryEntity> = emptyList(),
     val filteredRecords: List<RecordWithCategory> = emptyList(),
@@ -38,6 +47,8 @@ private data class FilterParams(
     val month: Int,
     val type: RecordType?,
     val categoryId: Long?,
+    val paymentMethod: String?,
+    val sortOrder: RecordSortOrder,
     val query: String
 )
 
@@ -52,6 +63,8 @@ class RecordListViewModel(
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
     private val _selectedType = MutableStateFlow<RecordType?>(null)
     private val _selectedCategoryId = MutableStateFlow<Long?>(null)
+    private val _selectedPaymentMethod = MutableStateFlow<String?>(null)
+    private val _sortOrder = MutableStateFlow(RecordSortOrder.TIME_DESC)
     private val _searchQuery = MutableStateFlow("")
 
     val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
@@ -69,9 +82,17 @@ class RecordListViewModel(
         _selectedMonth,
         _selectedType,
         _selectedCategoryId,
-        _searchQuery
-    ) { year, month, type, categoryId, query ->
-        FilterParams(year, month, type, categoryId, query)
+        _selectedPaymentMethod
+    ) { year, month, type, categoryId, paymentMethod ->
+        Triple(Pair(year, month), Pair(type, categoryId), paymentMethod)
+    }.combine(
+        combine(_sortOrder, _searchQuery) { sort, query -> Pair(sort, query) }
+    ) { mainFilters, secondFilters ->
+        val (year, month) = mainFilters.first
+        val (type, categoryId) = mainFilters.second
+        val paymentMethod = mainFilters.third
+        val (sortOrder, query) = secondFilters
+        FilterParams(year, month, type, categoryId, paymentMethod, sortOrder, query)
     }
 
     val uiState: StateFlow<RecordListUiState> = combine(
@@ -84,12 +105,21 @@ class RecordListViewModel(
         val filtered = rawRecords.filter { item ->
             val matchType = filters.type == null || item.record.type == filters.type.name
             val matchCategory = filters.categoryId == null || item.record.categoryId == filters.categoryId
+            val matchPayment = filters.paymentMethod == null || item.record.paymentMethod == filters.paymentMethod
             val matchQuery = filters.query.isBlank() ||
                     item.record.remark.contains(filters.query, ignoreCase = true) ||
                     (item.category?.name?.contains(filters.query, ignoreCase = true) == true) ||
                     item.record.paymentMethod.contains(filters.query, ignoreCase = true)
 
-            matchType && matchCategory && matchQuery
+            matchType && matchCategory && matchPayment && matchQuery
+        }
+
+        // 排序处理
+        val sorted = when (filters.sortOrder) {
+            RecordSortOrder.TIME_DESC -> filtered.sortedByDescending { it.record.recordTime }
+            RecordSortOrder.TIME_ASC -> filtered.sortedBy { it.record.recordTime }
+            RecordSortOrder.AMOUNT_DESC -> filtered.sortedByDescending { it.record.amount }
+            RecordSortOrder.AMOUNT_ASC -> filtered.sortedBy { it.record.amount }
         }
 
         var totalExp = 0L
@@ -97,7 +127,7 @@ class RecordListViewModel(
         val grouped = LinkedHashMap<Long, MutableList<RecordWithCategory>>()
         val daySums = HashMap<Long, Pair<Long, Long>>()
 
-        filtered.forEach { item ->
+        sorted.forEach { item ->
             val cal = Calendar.getInstance().apply {
                 timeInMillis = item.record.recordTime
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -124,14 +154,16 @@ class RecordListViewModel(
             selectedMonth = filters.month,
             selectedType = filters.type,
             selectedCategoryId = filters.categoryId,
+            selectedPaymentMethod = filters.paymentMethod,
+            sortOrder = filters.sortOrder,
             searchQuery = filters.query,
             availableCategories = categories,
-            filteredRecords = filtered,
+            filteredRecords = sorted,
             groupedRecords = grouped,
             daySummaries = daySums,
             totalExpense = totalExp,
             totalIncome = totalInc,
-            recordCount = filtered.size,
+            recordCount = sorted.size,
             isPrivacyMode = privacy,
             isLoading = false
         )
@@ -177,6 +209,14 @@ class RecordListViewModel(
 
     fun selectCategory(categoryId: Long?) {
         _selectedCategoryId.value = categoryId
+    }
+
+    fun selectPaymentMethod(method: String?) {
+        _selectedPaymentMethod.value = method
+    }
+
+    fun setSortOrder(order: RecordSortOrder) {
+        _sortOrder.value = order
     }
 
     fun updateSearchQuery(query: String) {

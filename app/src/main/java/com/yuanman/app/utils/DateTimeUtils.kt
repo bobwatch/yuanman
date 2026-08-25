@@ -93,6 +93,32 @@ object DateTimeUtils {
         return cal.timeInMillis
     }
 
+    fun getYearStartTimestamp(year: Int): Long {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, 0)
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
+    }
+
+    fun getYearEndTimestamp(year: Int): Long {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, 11)
+            set(Calendar.DAY_OF_MONTH, 31)
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+        return cal.timeInMillis
+    }
+
     fun getCurrentYearMonth(): Pair<Int, Int> {
         val cal = Calendar.getInstance()
         return Pair(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1)

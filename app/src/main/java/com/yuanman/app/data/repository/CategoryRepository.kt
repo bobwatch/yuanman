@@ -29,6 +29,10 @@ class CategoryRepository(
         categoryDao.insertCategory(category)
     }
 
+    suspend fun insertCategories(categories: List<CategoryEntity>) = withContext(Dispatchers.IO) {
+        categoryDao.insertCategories(categories)
+    }
+
     suspend fun updateCategory(category: CategoryEntity) = withContext(Dispatchers.IO) {
         categoryDao.updateCategory(category)
     }

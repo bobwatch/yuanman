@@ -1,5 +1,6 @@
 package com.yuanman.app.ui.screens.list
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
@@ -35,6 +38,7 @@ fun RecordListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showMonthPicker by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
@@ -137,45 +141,85 @@ fun RecordListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 筛选标签栏（类型 + 分类）
+            // 筛选标签栏（类型 + 支付方式 + 排序）
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
                     .padding(vertical = 4.dp)
             ) {
-                // 类型筛选：全部、支出、收入
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // 第一行：类型筛选与排序
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    item {
-                        FilterChip(
-                            selected = uiState.selectedType == null,
-                            onClick = { viewModel.selectType(null) },
-                            label = { Text("全部类型", fontSize = 12.sp) }
-                        )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = uiState.selectedType == null,
+                                onClick = { viewModel.selectType(null) },
+                                label = { Text("全部", fontSize = 12.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = uiState.selectedType == RecordType.EXPENSE,
+                                onClick = { viewModel.selectType(RecordType.EXPENSE) },
+                                label = { Text("仅支出", fontSize = 12.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = uiState.selectedType == RecordType.INCOME,
+                                onClick = { viewModel.selectType(RecordType.INCOME) },
+                                label = { Text("仅收入", fontSize = 12.sp) }
+                            )
+                        }
                     }
-                    item {
-                        FilterChip(
-                            selected = uiState.selectedType == RecordType.EXPENSE,
-                            onClick = { viewModel.selectType(RecordType.EXPENSE) },
-                            label = { Text("仅看支出", fontSize = 12.sp) }
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = uiState.selectedType == RecordType.INCOME,
-                            onClick = { viewModel.selectType(RecordType.INCOME) },
-                            label = { Text("仅看收入", fontSize = 12.sp) }
-                        )
+
+                    // 排序下拉菜单
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showSortMenu = true }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序", modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(uiState.sortOrder.title, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            RecordSortOrder.values().forEach { order ->
+                                DropdownMenuItem(
+                                    text = { Text(order.title) },
+                                    onClick = {
+                                        viewModel.setSortOrder(order)
+                                        showSortMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // 分类筛选
+                // 第二行：分类筛选
                 val relevantCategories = uiState.availableCategories.filter {
                     uiState.selectedType == null || it.type == uiState.selectedType?.name
                 }
@@ -231,7 +275,7 @@ fun RecordListScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "共 ${uiState.recordCount} 笔记录",
+                        text = "共 ${uiState.recordCount} 笔明细",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -259,7 +303,7 @@ fun RecordListScreen(
             if (uiState.groupedRecords.isEmpty()) {
                 EmptyStateView(
                     title = "未检索到符合条件的账单",
-                    description = "请尝试更换月份或筛选条件",
+                    description = "请尝试更换月份、分类或搜索关键词",
                     modifier = Modifier.weight(1f)
                 )
             } else {

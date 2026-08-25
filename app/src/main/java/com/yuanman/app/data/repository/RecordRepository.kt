@@ -19,6 +19,12 @@ class RecordRepository(
         return recordDao.getRecordsByDateRange(start, end)
     }
 
+    fun getRecordsByYear(year: Int): Flow<List<RecordWithCategory>> {
+        val start = DateTimeUtils.getYearStartTimestamp(year)
+        val end = DateTimeUtils.getYearEndTimestamp(year)
+        return recordDao.getRecordsByDateRange(start, end)
+    }
+
     fun getRecentRecords(limit: Int = 10): Flow<List<RecordWithCategory>> {
         return recordDao.getRecentRecords(limit)
     }
@@ -33,6 +39,10 @@ class RecordRepository(
 
     suspend fun insertRecord(record: RecordEntity): Long = withContext(Dispatchers.IO) {
         recordDao.insertRecord(record)
+    }
+
+    suspend fun insertRecords(records: List<RecordEntity>) = withContext(Dispatchers.IO) {
+        recordDao.insertRecords(records)
     }
 
     suspend fun updateRecord(record: RecordEntity) = withContext(Dispatchers.IO) {

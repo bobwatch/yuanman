@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.yuanman.app.data.model.BrandTheme
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
@@ -20,6 +21,7 @@ class PreferencesRepository(private val context: Context) {
 
     private object PreferencesKeys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val BRAND_THEME = stringPreferencesKey("brand_theme")
         val DEFAULT_RECORD_TYPE = stringPreferencesKey("default_record_type")
         val DEFAULT_PAYMENT_METHOD = stringPreferencesKey("default_payment_method")
         val MONTHLY_BUDGET = longPreferencesKey("monthly_budget")
@@ -34,6 +36,11 @@ class PreferencesRepository(private val context: Context) {
         } catch (e: Exception) {
             ThemeMode.SYSTEM
         }
+    }
+
+    val brandTheme: Flow<BrandTheme> = context.dataStore.data.map { preferences ->
+        val id = preferences[PreferencesKeys.BRAND_THEME]
+        BrandTheme.fromId(id)
     }
 
     val defaultRecordType: Flow<RecordType> = context.dataStore.data.map { preferences ->
@@ -64,6 +71,12 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
+        }
+    }
+
+    suspend fun setBrandTheme(theme: BrandTheme) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BRAND_THEME] = theme.id
         }
     }
 
