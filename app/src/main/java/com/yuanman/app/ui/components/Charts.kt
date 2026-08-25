@@ -1,0 +1,381 @@
+package com.yuanman.app.ui.components
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.yuanman.app.data.model.CategoryStatItem
+import com.yuanman.app.data.model.DailyTrendItem
+import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.utils.MoneyUtils
+import kotlin.math.max
+
+/**
+ * 支出/收入分类占比环形图
+ */
+@Composable
+fun DonutChart(
+    items: List<CategoryStatItem>,
+    totalAmount: Long,
+    centerTitle: String = "总支出",
+    modifier: Modifier = Modifier,
+    strokeWidth: Dp = 26.dp,
+    chartSize: Dp = 200.dp
+) {
+    val animatedProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(items, totalAmount) {
+        animatedProgress.snapTo(0f)
+        animatedProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Box(
+        modifier = modifier.size(chartSize),
+        contentAlignment = Alignment.Center
+    ) {
+        val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidthPx = strokeWidth.toPx()
+            val arcSize = Size(size.width - strokeWidthPx, size.height - strokeWidthPx)
+            val topLeft = Offset(strokeWidthPx / 2, strokeWidthPx / 2)
+
+            if (items.isEmpty() || totalAmount <= 0L) {
+                drawArc(
+                    color = emptyColor,
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidthPx)
+                )
+            } else {
+                var startAngle = -90f
+                val gapAngle = if (items.size > 1) 2f else 0f
+
+                items.forEach { item ->
+                    val sweepAngle = (item.percentage * 360f * animatedProgress.value) - gapAngle
+                    if (sweepAngle > 0f) {
+                        drawArc(
+                            color = Color(item.category.colorHex),
+                            startAngle = startAngle + (gapAngle / 2),
+                            sweepAngle = sweepAngle,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+                        )
+                    }
+                    startAngle += item.percentage * 360f * animatedProgress.value
+                }
+            }
+        }
+
+        // 中心文字
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = centerTitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "¥${MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)}",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+/**
+ * 每日支出趋势柱状图
+ */
+@Composable
+fun BarTrendChart(
+    items: List<DailyTrendItem>,
+    modifier: Modifier = Modifier,
+    height: Dp = 180.dp,
+    barColor: Color = MaterialTheme.colorScheme.primary,
+    selectedBarColor: Color = MaterialTheme.colorScheme.tertiary
+) {
+    if (items.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "本月暂无每日消费明细",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        return
+    }
+
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    val maxExpense = remember(items) { max(items.maxOfOrNull { it.expenseAmount } ?: 1L, 1L) }
+    val animatedProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(items) {
+        animatedProgress.snapTo(0f)
+        animatedProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        // 选中某天时的提示框
+        if (selectedIndex != null && selectedIndex!! in items.indices) {
+            val selected = items[selectedIndex!!]
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${selected.day}日 支出:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = MoneyUtils.formatCurrency(selected.expenseAmount, isExpense = true),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.height(28.dp))
+        }
+
+        // Canvas 绘制每日柱子
+        val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        val defaultBarColor = barColor.copy(alpha = 0.8f)
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .pointerInput(items) {
+                    detectTapGestures { offset ->
+                        val barWidthWithGap = size.width / items.size
+                        val index = (offset.x / barWidthWithGap).toInt()
+                        selectedIndex = if (index in items.indices) index else null
+                    }
+                }
+        ) {
+            val count = items.size
+            val barGap = 4f
+            val totalGap = barGap * (count - 1)
+            val barWidth = max((size.width - totalGap) / count, 4f)
+            val maxHeight = size.height - 30.dp.toPx()
+
+            // 绘制底线
+            drawLine(
+                color = gridLineColor,
+                start = Offset(0f, maxHeight),
+                end = Offset(size.width, maxHeight),
+                strokeWidth = 2f
+            )
+
+            items.forEachIndexed { i, item ->
+                val x = i * (barWidth + barGap)
+                val barHeight = (item.expenseAmount.toFloat() / maxExpense) * maxHeight * animatedProgress.value
+                val isSelected = selectedIndex == i
+
+                val color = when {
+                    isSelected -> selectedBarColor
+                    item.expenseAmount > 0L -> defaultBarColor
+                    else -> gridLineColor.copy(alpha = 0.2f)
+                }
+
+                val currentHeight = if (barHeight < 4f && item.expenseAmount > 0L) 6f else barHeight
+
+                // 绘制圆角柱状体
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(x, maxHeight - currentHeight),
+                    size = Size(barWidth, currentHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
+                )
+            }
+        }
+
+        // X轴日期标签
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            val keyDays = listOf(1, 5, 10, 15, 20, 25, items.size)
+            keyDays.distinct().filter { it <= items.size }.forEach { day ->
+                Text(
+                    text = "${day}日",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 分类支出排行榜列表项
+ */
+@Composable
+fun CategoryRankItem(
+    item: CategoryStatItem,
+    rank: Int,
+    modifier: Modifier = Modifier
+) {
+    val categoryColor = Color(item.category.colorHex)
+    val rankBadgeColor = when (rank) {
+        1 -> Color(0xFFFFB300) // 金
+        2 -> Color(0xFF90A4AE) // 银
+        3 -> Color(0xFFBCAAA4) // 铜
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val rankTextColor = when (rank) {
+        1, 2, 3 -> Color.White
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 排名序号
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(rankBadgeColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$rank",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = rankTextColor
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // 分类图标
+        CategoryIconView(
+            iconName = item.category.iconName,
+            colorHex = item.category.colorHex,
+            size = 38.dp,
+            iconSize = 20.dp
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // 分类名称与笔数 + 进度条
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = item.category.name,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                )
+
+                Text(
+                    text = MoneyUtils.formatCurrency(item.totalAmount),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 进度条
+            LinearProgressIndicator(
+                progress = item.percentage,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = categoryColor,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${item.count} 笔账单",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+
+                val pctText = String.format(java.util.Locale.CHINA, "%.1f%%", item.percentage * 100)
+                Text(
+                    text = pctText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+    }
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Wallet/Coin graphic for Yuanman -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,36h48c3.31,0 6,2.69 6,6v24c0,3.31 -2.69,6 -6,6H30c-3.31,0 -6,-2.69 -6,-6V42c0,-3.31 2.69,-6 6,-6z" />
+    <path
+        android:fillColor="#81C784"
+        android:pathData="M32,40h44c2.2,0 4,1.8 4,4v20c0,2.2 -1.8,4 -4,4H32c-2.2,0 -4,-1.8 -4,-4V44c0,-2.2 1.8,-4 4,-4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,50h12v8H66z" />
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M72,54m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+    <!-- Yuan symbol shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,48l4,6l4,-6h3l-5.5,8v2h5v2h-5v4h-3v-4h-5v-2h5v-2l-5.5,-8z" />
+</vector>
