@@ -126,11 +126,11 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // WiFi 局域网同步 (基于 NSD 自动发现 + 配对码)
+                    // 设备同步 (基于 NSD 自动发现 + 配对码)
                     SettingsRowItem(
                         icon = Icons.Outlined.Wifi,
-                        title = "局域网跨设备同步",
-                        subtitle = "同一 WiFi 自动发现设备，配对极速同步",
+                        title = "设备同步",
+                        subtitle = "同一 WiFi 自动发现与同步",
                         onClick = { showWifiSyncModal = true }
                     )
 
@@ -443,29 +443,23 @@ private fun FamilySyncBottomSheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "局域网跨设备同步",
+                    text = "设备同步",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
-
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
-                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "同一 WiFi 下自动发现并加密同步数据",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
-
-            Text(
-                text = "在同一 WiFi 下自动发现彼此设备，双向加密全量同步账本。不经过任何服务器，100% 隐私安全。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
 
             // 🌟 本机配对码展示卡片
             Card(
@@ -476,7 +470,7 @@ private fun FamilySyncBottomSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -489,7 +483,7 @@ private fun FamilySyncBottomSheet(
 
                     Text(
                         text = myCode,
-                        fontSize = 38.sp,
+                        fontSize = 36.sp,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor,
                         letterSpacing = 6.sp,
@@ -497,25 +491,25 @@ private fun FamilySyncBottomSheet(
                     )
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(top = 2.dp)
                     ) {
                         TextButton(
                             onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
-                                onShowSnackbar("配对码已复制到剪贴板")
+                                onShowSnackbar("配对码已复制")
                             }
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("复制配对码")
+                            Text("复制")
                         }
 
                         TextButton(onClick = { confirmRegenerate = true }) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("重新生成")
+                            Text("换一个")
                         }
                     }
                 }
@@ -530,11 +524,11 @@ private fun FamilySyncBottomSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "加入已有配对码",
+                        text = "加入配对",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                     )
 
@@ -548,26 +542,26 @@ private fun FamilySyncBottomSheet(
                                 inputCode = input.filter { it.isDigit() }.take(6)
                                 joinMessage = null
                             },
-                            label = { Text("输入另一台手机的 6 位配对码") },
+                            placeholder = { Text("输入对方 6 位配对码", fontSize = 13.sp) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         Button(
                             onClick = {
                                 if (syncManager.setPairingCode(inputCode)) {
                                     joinMessage = "已设置配对码 $inputCode"
-                                    onShowSnackbar("配对码设置成功，正在自动同步")
+                                    onShowSnackbar("配对码已设置，正在同步")
                                 } else {
                                     joinMessage = "请输入 6 位数字配对码"
                                 }
                             },
                             enabled = inputCode.length == 6
                         ) {
-                            Text("确认")
+                            Text("连接")
                         }
                     }
 
@@ -590,8 +584,8 @@ private fun FamilySyncBottomSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -599,7 +593,7 @@ private fun FamilySyncBottomSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "局域网在线设备 (${devices.size})",
+                            text = "在线设备 (${devices.size})",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                         )
 
@@ -613,16 +607,16 @@ private fun FamilySyncBottomSheet(
                     if (devices.isEmpty()) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            modifier = Modifier.padding(vertical = 4.dp)
                         ) {
                             CircularProgressIndicator(
                                 strokeWidth = 2.dp,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(14.dp),
                                 color = primaryColor
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "正在搜索同一 WiFi 下的设备...",
+                                text = "正在搜索同一 WiFi 设备...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -643,7 +637,7 @@ private fun FamilySyncBottomSheet(
                                         imageVector = Icons.Default.PhoneAndroid,
                                         contentDescription = null,
                                         tint = primaryColor,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
@@ -677,14 +671,14 @@ private fun FamilySyncBottomSheet(
                             CircularProgressIndicator(
                                 color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("正在同步中...")
+                            Text("正在同步...")
                         } else {
-                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("立即同步全部数据")
+                            Text("立即同步")
                         }
                     }
                 }
@@ -697,8 +691,8 @@ private fun FamilySyncBottomSheet(
     if (confirmRegenerate) {
         AlertDialog(
             onDismissRequest = { confirmRegenerate = false },
-            title = { Text("重新生成配对码") },
-            text = { Text("重新生成后，之前已配对的设备将需要重新输入新的配对码才能同步。确定要重新生成吗？") },
+            title = { Text("换一个配对码") },
+            text = { Text("生成新配对码后，另一台手机需重新输入该配对码才能同步。确定更换吗？") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -707,7 +701,7 @@ private fun FamilySyncBottomSheet(
                         onShowSnackbar("已生成新配对码")
                     }
                 ) {
-                    Text("确定重新生成")
+                    Text("确定更换")
                 }
             },
             dismissButton = {

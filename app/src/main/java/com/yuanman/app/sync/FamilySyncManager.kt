@@ -169,10 +169,12 @@ class FamilySyncManager(
     }
 
     private fun acquireMulticastLock() {
-        val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        multicastLock = wifi.createMulticastLock("yuanman_nsd").apply {
-            setReferenceCounted(true)
-            acquire()
+        runCatching {
+            val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wifi?.createMulticastLock("yuanman_nsd")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
         }
     }
 
