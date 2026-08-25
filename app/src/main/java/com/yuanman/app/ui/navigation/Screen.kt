@@ -27,6 +27,13 @@ sealed class Screen(val route: String) {
             return "record_detail/$recordId"
         }
     }
+
+    object AddEditCategory : Screen("add_edit_category?categoryId={categoryId}&type={type}") {
+        fun createRoute(categoryId: Long = 0L, type: RecordType? = null): String {
+            val typeParam = type?.name ?: ""
+            return "add_edit_category?categoryId=$categoryId&type=$typeParam"
+        }
+    }
 }
 
 sealed class BottomNavTab(

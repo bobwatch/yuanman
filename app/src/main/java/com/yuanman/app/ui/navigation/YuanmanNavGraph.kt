@@ -26,6 +26,8 @@ import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.BottomNavBar
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordViewModel
+import com.yuanman.app.ui.screens.category.AddEditCategoryScreen
+import com.yuanman.app.ui.screens.category.AddEditCategoryViewModel
 import com.yuanman.app.ui.screens.category.CategoryManageScreen
 import com.yuanman.app.ui.screens.category.CategoryManageViewModel
 import com.yuanman.app.ui.screens.detail.RecordDetailScreen
@@ -196,7 +198,13 @@ fun YuanmanNavGraph(
                 )
                 CategoryManageScreen(
                     viewModel = categoryViewModel,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToAddCategory = { type ->
+                        navController.navigate(Screen.AddEditCategory.createRoute(type = type))
+                    },
+                    onNavigateToEditCategory = { categoryId ->
+                        navController.navigate(Screen.AddEditCategory.createRoute(categoryId = categoryId))
+                    }
                 )
             }
 
@@ -282,6 +290,39 @@ fun YuanmanNavGraph(
                     onNavigateToEdit = { editRecordId ->
                         navController.navigate(Screen.AddEditRecord.createRoute(recordId = editRecordId))
                     }
+                )
+            }
+
+            // 8. 新增 / 编辑分类及其子标签 (全屏二级页面)
+            composable(
+                route = Screen.AddEditCategory.route,
+                arguments = listOf(
+                    navArgument("categoryId") {
+                        type = NavType.LongType
+                        defaultValue = 0L
+                    },
+                    navArgument("type") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                val categoryId = backStackEntry.arguments?.getLong("categoryId") ?: 0L
+                val typeStr = backStackEntry.arguments?.getString("type") ?: ""
+                val initialType = if (typeStr.isNotBlank()) RecordType.fromString(typeStr) else null
+
+                val addEditCategoryViewModel: AddEditCategoryViewModel = viewModel(
+                    key = "cat_edit_${categoryId}_$typeStr",
+                    factory = AddEditCategoryViewModel.Factory(
+                        categoryId = categoryId,
+                        initialType = initialType,
+                        categoryRepository = app.categoryRepository
+                    )
+                )
+
+                AddEditCategoryScreen(
+                    viewModel = addEditCategoryViewModel,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }

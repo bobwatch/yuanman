@@ -31,15 +31,14 @@ import com.yuanman.app.ui.components.LocalToastHostState
 fun CategoryManageScreen(
     viewModel: CategoryManageViewModel,
     onNavigateBack: (() -> Unit)? = null,
+    onNavigateToAddCategory: (RecordType) -> Unit = {},
+    onNavigateToEditCategory: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val toast = LocalToastHostState.current
 
-    var showAddEditCategoryDialog by remember { mutableStateOf(false) }
-    var categoryToEdit by remember { mutableStateOf<CategoryEntity?>(null) }
     var categoryToDelete by remember { mutableStateOf<CategoryEntity?>(null) }
-
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Scaffold(
@@ -59,8 +58,7 @@ fun CategoryManageScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {
-                    categoryToEdit = null
-                    showAddEditCategoryDialog = true
+                    onNavigateToAddCategory(uiState.currentType)
                 },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("新增分类", fontWeight = FontWeight.Bold) },
@@ -202,8 +200,7 @@ fun CategoryManageScreen(
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(14.dp))
                                         .clickable {
-                                            categoryToEdit = category
-                                            showAddEditCategoryDialog = true
+                                            onNavigateToEditCategory(category.id)
                                         }
                                 ) {
                                     Column(
@@ -294,25 +291,6 @@ fun CategoryManageScreen(
             }
         }
     }
-
-    // 🌟 新增 / 编辑分类及其子标签弹窗
-    AddEditCategoryDialog(
-        visible = showAddEditCategoryDialog,
-        categoryToEdit = categoryToEdit,
-        onDismiss = {
-            showAddEditCategoryDialog = false
-            categoryToEdit = null
-        },
-        onConfirm = { name, icon, colorHex, tags ->
-            if (categoryToEdit == null) {
-                viewModel.addCategory(name, icon, colorHex, tags)
-                toast.success("已新增分类「$name」及其专属标签")
-            } else {
-                viewModel.updateCategory(categoryToEdit!!, name, icon, colorHex, tags)
-                toast.success("已更新分类「$name」与子标签")
-            }
-        }
-    )
 
     // 🌟 删除分类确认弹窗
     ConfirmDeleteDialog(
