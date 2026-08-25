@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -182,7 +183,8 @@ fun DonutChart(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .padding(20.dp)
+                .widthIn(max = 136.dp)
+                .padding(horizontal = 4.dp, vertical = 2.dp)
                 .clip(CircleShape)
                 .clickable { onSelectCategory(null) }
         ) {
@@ -190,43 +192,52 @@ fun DonutChart(
                 Text(
                     text = selectedCategory.category.name,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color(selectedCategory.category.colorHex)
+                    color = Color(selectedCategory.category.colorHex),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
+                val amountStr = MoneyUtils.centsToYuanString(selectedCategory.totalAmount, withGrouping = true)
                 Text(
-                    text = "¥${MoneyUtils.centsToYuanString(selectedCategory.totalAmount, withGrouping = true)}",
+                    text = "¥$amountStr",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize = if (amountStr.length > 8) 14.sp else 16.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "${String.format(java.util.Locale.CHINA, "%.1f", selectedCategory.percentage * 100)}% · ${selectedCategory.count}笔",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1
                 )
             } else {
                 Text(
                     text = centerTitle,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1
                 )
                 Spacer(modifier = Modifier.height(2.dp))
+                val amountStr = MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)
                 Text(
-                    text = "¥${MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)}",
+                    text = "¥$amountStr",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize = if (amountStr.length > 8) 14.sp else 16.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "轻触扇区看明细",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                    maxLines = 1
                 )
             }
         }

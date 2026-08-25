@@ -219,9 +219,15 @@ class HomeViewModel(
         }
     }
 
-    fun deleteRecord(recordWithCategory: RecordWithCategory) {
+    fun setMonthlyBudget(budgetCents: Long) {
         viewModelScope.launch {
-            recordRepository.deleteRecord(recordWithCategory.record)
+            preferencesRepository.setMonthlyBudget(budgetCents)
+        }
+    }
+
+    fun deleteRecord(record: RecordWithCategory) {
+        viewModelScope.launch {
+            recordRepository.deleteRecord(record.record)
         }
     }
 

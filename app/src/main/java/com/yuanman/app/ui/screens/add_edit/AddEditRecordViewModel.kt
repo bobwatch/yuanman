@@ -240,6 +240,10 @@ class AddEditRecordViewModel(
         }
     }
 
+    fun clearSavedFeedbackMessage() {
+        _uiState.update { it.copy(savedFeedbackMessage = null) }
+    }
+
     fun deleteRecord() {
         if (_uiState.value.isEditMode && _uiState.value.recordId > 0L) {
             viewModelScope.launch {

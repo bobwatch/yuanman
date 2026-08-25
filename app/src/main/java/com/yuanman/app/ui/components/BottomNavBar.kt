@@ -11,11 +11,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,16 +26,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.yuanman.app.ui.navigation.BottomNavTab
 
 /**
- * 沅满·Bitget Wallet 极简灵动悬浮导航 Dock
+ * 沅满·纯Icon灵动悬浮导航栏 (Minimalist Icon Dock with Delicate Micro-Indicator)
  */
 @Composable
 fun BottomNavBar(
@@ -57,14 +55,14 @@ fun BottomNavBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 32.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = if (isDark) Color(0xF5141922) else Color(0xF8FFFFFF),
-            tonalElevation = 8.dp,
-            shadowElevation = 14.dp,
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
             border = BorderStroke(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
@@ -83,44 +81,64 @@ fun BottomNavBar(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(54.dp)
         ) {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 val tabCount = tabs.size
                 val itemWidth = maxWidth / tabCount
 
-                // 🌟 弹性滑动微光胶囊
-                val animatedIndicatorOffset by animateDpAsState(
-                    targetValue = itemWidth * selectedIndex + (itemWidth - (itemWidth * 0.88f)) / 2,
+                // 🌟 微型滑动光晕小块 (比 Icon 还小，直径 18dp 的微型柔光球 + 底部小滑点)
+                val indicatorCenterOffset by animateDpAsState(
+                    targetValue = itemWidth * selectedIndex + (itemWidth - 18.dp) / 2,
                     animationSpec = spring(
-                        dampingRatio = 0.74f,
+                        dampingRatio = 0.72f,
                         stiffness = Spring.StiffnessMediumLow
                     ),
                     label = "tabIndicatorOffset"
                 )
 
+                // 1. 图标背后的小微光层 (直径 18dp，小于 24dp 图标，形成立体层次)
                 Box(
                     modifier = Modifier
-                        .offset(x = animatedIndicatorOffset)
-                        .width(itemWidth * 0.88f)
-                        .fillMaxHeight(0.86f)
+                        .offset(x = indicatorCenterOffset)
+                        .size(18.dp)
                         .align(Alignment.CenterStart)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(CircleShape)
                         .background(
                             if (isDark) {
-                                Color(0xFF34D399).copy(alpha = 0.15f)
+                                Color(0xFF34D399).copy(alpha = 0.22f)
                             } else {
-                                Color(0xFF059669).copy(alpha = 0.10f)
+                                Color(0xFF059669).copy(alpha = 0.15f)
                             }
                         )
                 )
 
-                // 🌟 Tab 项层
+                // 2. 底部极细小光标条 (12dp x 3dp)
+                val bottomDotOffset by animateDpAsState(
+                    targetValue = itemWidth * selectedIndex + (itemWidth - 12.dp) / 2,
+                    animationSpec = spring(
+                        dampingRatio = 0.72f,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "bottomDotOffset"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = bottomDotOffset)
+                        .padding(bottom = 5.dp)
+                        .size(width = 12.dp, height = 3.dp)
+                        .align(Alignment.BottomStart)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(activeColor)
+                )
+
+                // 🌟 3. 纯 Icon 层
                 Row(
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -131,33 +149,18 @@ fun BottomNavBar(
                         val targetRoute = tab.screen.route
 
                         val iconScale by animateFloatAsState(
-                            targetValue = if (isSelected) 1.12f else 1.0f,
+                            targetValue = if (isSelected) 1.15f else 1.0f,
                             animationSpec = spring(
-                                dampingRatio = 0.58f,
+                                dampingRatio = 0.55f,
                                 stiffness = Spring.StiffnessMediumLow
                             ),
                             label = "tabIconScale"
                         )
 
-                        val iconOffset by animateDpAsState(
-                            targetValue = if (isSelected) (-1).dp else 0.dp,
-                            animationSpec = spring(
-                                dampingRatio = 0.65f,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            label = "tabIconOffset"
-                        )
-
                         val iconTint by animateColorAsState(
                             targetValue = if (isSelected) activeColor else inactiveColor,
-                            animationSpec = tween(200),
+                            animationSpec = tween(180),
                             label = "tabIconColor"
-                        )
-
-                        val textColor by animateColorAsState(
-                            targetValue = if (isSelected) activeColor else inactiveColor,
-                            animationSpec = tween(200),
-                            label = "tabTextColor"
                         )
 
                         val interactionSource = remember { MutableInteractionSource() }
@@ -166,7 +169,6 @@ fun BottomNavBar(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(20.dp))
                                 .clickable(
                                     interactionSource = interactionSource,
                                     indication = null
@@ -184,31 +186,14 @@ fun BottomNavBar(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-                                    contentDescription = tab.title,
-                                    tint = iconTint,
-                                    modifier = Modifier
-                                        .offset(y = iconOffset)
-                                        .scale(iconScale)
-                                        .size(22.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                Text(
-                                    text = tab.title,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    ),
-                                    color = textColor
-                                )
-                            }
+                            Icon(
+                                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                                contentDescription = tab.title,
+                                tint = iconTint,
+                                modifier = Modifier
+                                    .scale(iconScale)
+                                    .size(24.dp)
+                            )
                         }
                     }
                 }

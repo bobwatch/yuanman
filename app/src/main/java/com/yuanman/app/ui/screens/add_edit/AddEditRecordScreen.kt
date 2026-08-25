@@ -18,8 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,8 +53,12 @@ fun AddEditRecordScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val density = LocalDensity.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showMoreOptions by remember { mutableStateOf(false) }
+
+    // 监听软键盘状态：当系统键盘弹出输入备注时，自动隐藏自定义计算器键盘以防止遮挡输入框
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isImeOpen = imeBottom > 0
 
     LaunchedEffect(uiState.isSavedSuccess) {
         if (uiState.isSavedSuccess) {
@@ -73,12 +78,14 @@ fun AddEditRecordScreen(
     LaunchedEffect(uiState.savedFeedbackMessage) {
         uiState.savedFeedbackMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
-            viewModel.clearFeedbackMessage()
+            viewModel.clearSavedFeedbackMessage()
         }
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -143,16 +150,18 @@ fun AddEditRecordScreen(
                 )
             }
 
-            // 可滚动的内容区（金额展示 + 分类选择 + 快捷标签 + 扩展选项）
+            // 可滚动的内容区
+            val scrollState = rememberScrollState()
+
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
             ) {
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 金额展示大卡片
+                // 金额展示卡片
                 val amountColor = if (uiState.type == RecordType.EXPENSE) {
                     MaterialTheme.colorScheme.error
                 } else {
@@ -177,94 +186,110 @@ fun AddEditRecordScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "¥",
-                                    fontSize = 28.sp,
+                                    fontSize = 26.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = amountColor
+                                    color = amountColor,
+                                    modifier = Modifier.padding(bottom = 2.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (uiState.expression.isEmpty()) "0.00" else uiState.expression,
+                                    text = uiState.expression.ifEmpty { "0.00" },
                                     fontSize = 32.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (uiState.expression.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else amountColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = amountColor,
+                                    letterSpacing = (-0.5).sp
                                 )
                             }
 
-                            // 如果包含算式运算符，实时展示计算结果提示
-                            if (uiState.expression.contains("+") || uiState.expression.contains("-")) {
-                                val computed = KeypadEngine.evaluateExpression(uiState.expression)
-                                if (computed != null) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                            if (uiState.selectedCategory != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color(uiState.selectedCategory!!.colorHex).copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
+                                        CategoryIconView(
+                                            iconName = uiState.selectedCategory!!.iconName,
+                                            colorHex = uiState.selectedCategory!!.colorHex,
+                                            size = 20.dp,
+                                            iconSize = 12.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "= ¥${KeypadEngine.formatDecimal(computed)}",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            text = uiState.selectedCategory!!.name,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                color = Color(uiState.selectedCategory!!.colorHex),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
                                         )
                                     }
                                 }
                             }
                         }
+
+                        // 算式计算结果预览
+                        val resultPreview = KeypadEngine.calculate(uiState.expression)
+                        if (resultPreview != null && KeypadEngine.hasOperator(uiState.expression)) {
+                            Text(
+                                text = "= ¥${resultPreview.setScale(2, BigDecimal.ROUND_HALF_UP)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // 分类选择网格
+                // 分类选择区标头
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "分类",
+                        text = "选择分类",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.outline
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (onNavigateToCategoryManage != null) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onNavigateToCategoryManage() }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "管理分类",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(12.dp)
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "管理分类",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "管理分类",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
                                 )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(
-                                    text = "管理分类",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                )
-                            }
+                            )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // 分类网格
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 160.dp)
+                        .heightIn(max = 150.dp)
                 ) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
@@ -294,8 +319,8 @@ fun AddEditRecordScreen(
                                 CategoryIconView(
                                     iconName = category.iconName,
                                     colorHex = category.colorHex,
-                                    size = 38.dp,
-                                    iconSize = 20.dp
+                                    size = 36.dp,
+                                    iconSize = 18.dp
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
@@ -316,28 +341,87 @@ fun AddEditRecordScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 智能推荐快捷备注标签
-                if (uiState.quickRemarks.isNotEmpty()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                // 🌟 极简记账时间与支付方式行 (日历 Icon + 日期选择胶囊)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 日期时间选择胶囊
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                val cal = Calendar.getInstance().apply { timeInMillis = uiState.recordTime }
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        cal.set(Calendar.YEAR, year)
+                                        cal.set(Calendar.MONTH, month)
+                                        cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+                                        TimePickerDialog(
+                                            context,
+                                            { _, hourOfDay, minute ->
+                                                cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                cal.set(Calendar.MINUTE, minute)
+                                                viewModel.setRecordTime(cal.timeInMillis)
+                                            },
+                                            cal.get(Calendar.HOUR_OF_DAY),
+                                            cal.get(Calendar.MINUTE),
+                                            true
+                                        ).show()
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Label,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "快捷备注",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CalendarToday,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = DateTimeUtils.formatDateTime(uiState.recordTime),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // 支付方式滑动行
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(PaymentMethod.ALL) { method ->
+                            FilterChip(
+                                selected = uiState.paymentMethod == method,
+                                onClick = { viewModel.setPaymentMethod(method) },
+                                label = { Text(method, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 快捷推荐备注
+                if (uiState.quickRemarks.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -349,7 +433,7 @@ fun AddEditRecordScreen(
                                 label = {
                                     Text(
                                         text = tag,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
@@ -357,157 +441,45 @@ fun AddEditRecordScreen(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // 更多选项折叠栏（时间、支付方式、手动备注）
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { showMoreOptions = !showMoreOptions }
-                        .padding(vertical = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "${DateTimeUtils.formatMonthDayWithWeek(uiState.recordTime)} · ${uiState.paymentMethod}${if (uiState.remark.isNotBlank()) " · ${uiState.remark}" else ""}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.outline,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Icon(
-                            imageVector = if (showMoreOptions) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                AnimatedVisibility(visible = showMoreOptions) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // 日期时间选择
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    val cal = Calendar.getInstance().apply { timeInMillis = uiState.recordTime }
-                                    DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            cal.set(Calendar.YEAR, year)
-                                            cal.set(Calendar.MONTH, month)
-                                            cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-                                            TimePickerDialog(
-                                                context,
-                                                { _, hourOfDay, minute ->
-                                                    cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                    cal.set(Calendar.MINUTE, minute)
-                                                    viewModel.setRecordTime(cal.timeInMillis)
-                                                },
-                                                cal.get(Calendar.HOUR_OF_DAY),
-                                                cal.get(Calendar.MINUTE),
-                                                true
-                                            ).show()
-                                        },
-                                        cal.get(Calendar.YEAR),
-                                        cal.get(Calendar.MONTH),
-                                        cal.get(Calendar.DAY_OF_MONTH)
-                                    ).show()
-                                }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Event, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.outline)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("记账时间", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                Text(
-                                    text = DateTimeUtils.formatDateTime(uiState.recordTime),
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                )
+                // 🌟 备注输入框 (带一键清空，配合软键盘自动适配，不遮挡)
+                OutlinedTextField(
+                    value = uiState.remark,
+                    onValueChange = { viewModel.setRemark(it) },
+                    label = { Text("备注说明") },
+                    placeholder = { Text("如：朋友聚餐、买咖啡等") },
+                    singleLine = true,
+                    trailingIcon = {
+                        if (uiState.remark.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setRemark("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "清空", modifier = Modifier.size(16.dp))
                             }
                         }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
 
-                        // 支付方式
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(PaymentMethod.ALL) { method ->
-                                FilterChip(
-                                    selected = uiState.paymentMethod == method,
-                                    onClick = { viewModel.setPaymentMethod(method) },
-                                    label = { Text(method, fontSize = 12.sp) }
-                                )
-                            }
-                        }
-
-                        // 备注输入框
-                        OutlinedTextField(
-                            value = uiState.remark,
-                            onValueChange = { viewModel.setRemark(it) },
-                            label = { Text("备注说明") },
-                            placeholder = { Text("如：朋友聚餐、买咖啡等") },
-                            singleLine = true,
-                            trailingIcon = {
-                                if (uiState.remark.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setRemark("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "清空", modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 底部沉浸式计算器键盘
-            CustomKeypad(
-                expression = uiState.expression,
-                onExpressionChange = { viewModel.setExpression(it) },
-                onComplete = { viewModel.saveRecord(continueNext = false) },
-                onSaveAndContinue = { viewModel.saveRecord(continueNext = true) },
-                isEditMode = uiState.isEditMode,
-                hapticEnabled = uiState.hapticEnabled
-            )
+            // 🌟 底部沉浸式计算器键盘 (当系统键盘弹出输入备注时自动收起，关闭后自动恢复)
+            AnimatedVisibility(
+                visible = !isImeOpen,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            ) {
+                CustomKeypad(
+                    expression = uiState.expression,
+                    onExpressionChange = { viewModel.setExpression(it) },
+                    onComplete = { viewModel.saveRecord(continueNext = false) },
+                    onSaveAndContinue = { viewModel.saveRecord(continueNext = true) },
+                    isEditMode = uiState.isEditMode,
+                    hapticEnabled = uiState.hapticEnabled
+                )
+            }
         }
     }
 

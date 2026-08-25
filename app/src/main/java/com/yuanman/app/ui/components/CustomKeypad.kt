@@ -86,6 +86,12 @@ object KeypadEngine {
         }
     }
 
+    fun hasOperator(expr: String): Boolean {
+        return expr.contains("+") || expr.contains("-")
+    }
+
+    fun calculate(expr: String): BigDecimal? = evaluateExpression(expr)
+
     /**
      * 格式化 BigDecimal 为简洁展示字符串（如 20.00 -> "20", 20.50 -> "20.5"）
      */

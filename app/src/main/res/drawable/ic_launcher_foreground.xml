@@ -1,33 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 沅满·方案6：羊脂白玉·森林暮松 (黄金比例雅致中圆环版) -->
+<!-- 沅满·方案6：羊脂白玉·森林暮松 (精致微缩适中圆环版) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 剪裁为居中正圆 (中心 54, 54，黄金比例半径 29) -->
+    <!-- 剪裁为居中正圆 (中心 54, 54，精致半径 26.5) -->
     <group>
-        <clip-path android:pathData="M25,54 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0" />
+        <clip-path android:pathData="M27.5,54 a26.5,26.5 0 1,0 53,0 a26.5,26.5 0 1,0 -53,0" />
 
         <!-- 深层水波：暮松微澜 35% 透光 -->
         <path
             android:fillColor="#4F7767"
             android:fillAlpha="0.35"
-            android:pathData="M23,55 C33,49 44,49 54,55 C64,61 75,61 85,55 L89,89 L19,89 Z" />
+            android:pathData="M25,55 C34,49 44,49 54,55 C64,61 74,61 83,55 L87,87 L21,87 Z" />
 
         <!-- 浅层水波：暮松青绿水面 -->
         <path
             android:fillColor="#3D6657"
-            android:pathData="M23,55 C33,61 44,61 54,55 C64,49 75,49 85,55 L89,89 L19,89 Z" />
+            android:pathData="M25,55 C34,61 44,61 54,55 C64,49 74,49 83,55 L87,87 L21,87 Z" />
     </group>
 
-    <!-- 主圆环：暮松墨绿 (优雅适中粗细) -->
+    <!-- 主圆环：暮松墨绿 -->
     <path
-        android:pathData="M25,54 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0"
+        android:pathData="M27.5,54 a26.5,26.5 0 1,0 53,0 a26.5,26.5 0 1,0 -53,0"
         android:fillColor="#00000000"
         android:strokeColor="#284A3E"
-        android:strokeWidth="4.0"
+        android:strokeWidth="3.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 </vector>

@@ -189,45 +189,48 @@ fun RecordDetailScreen(
                 // 底部操作按钮栏 (复制再记、编辑、删除)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = { viewModel.copyRecord() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("复制一笔", fontSize = 13.sp)
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("复制一笔", fontSize = 13.sp, maxLines = 1)
                     }
 
                     Button(
                         onClick = { onNavigateToEdit(record.id) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("编辑", fontSize = 13.sp)
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("编辑", fontSize = 13.sp, maxLines = 1)
                     }
 
                     OutlinedButton(
                         onClick = { showDeleteDialog = true },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp),
+                            .height(46.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
-                        )
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("删除", fontSize = 13.sp)
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("删除", fontSize = 13.sp, maxLines = 1)
                     }
                 }
 
