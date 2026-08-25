@@ -39,6 +39,7 @@ import com.yuanman.app.data.model.DailyTrendItem
 import com.yuanman.app.utils.MoneyUtils
 import kotlin.math.atan2
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -52,8 +53,8 @@ fun DonutChart(
     selectedCategory: CategoryStatItem? = null,
     onSelectCategory: (CategoryStatItem?) -> Unit = {},
     modifier: Modifier = Modifier,
-    strokeWidth: Dp = 26.dp,
-    chartSize: Dp = 210.dp
+    strokeWidth: Dp = 22.dp,
+    chartSize: Dp = 200.dp
 ) {
     val animatedProgress = remember { Animatable(0f) }
 
@@ -66,104 +67,115 @@ fun DonutChart(
     }
 
     Box(
-        modifier = modifier.size(chartSize),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(items, totalAmount) {
-                    detectTapGestures { offset ->
-                        if (items.isEmpty() || totalAmount <= 0L) return@detectTapGestures
-
-                        val centerX = size.width / 2f
-                        val centerY = size.height / 2f
-                        val dx = offset.x - centerX
-                        val dy = offset.y - centerY
-                        val dist = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-
-                        val innerR = (size.width - strokeWidth.toPx() * 2) / 2f
-                        val outerR = size.width / 2f
-
-                        if (dist < innerR) {
-                            // 点击中心重置选择
-                            onSelectCategory(null)
-                            return@detectTapGestures
-                        }
-
-                        if (dist <= outerR + 10f) {
-                            // 计算点击角度（从 12 点钟方向即 -90 度开始算）
-                            var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                            if (angle < -90f) {
-                                angle += 450f
-                            } else {
-                                angle += 90f
-                            }
-
-                            var currentAngle = 0f
-                            for (item in items) {
-                                val sweep = item.percentage * 360f
-                                if (angle >= currentAngle && angle <= currentAngle + sweep) {
-                                    if (selectedCategory?.category?.id == item.category.id) {
-                                        onSelectCategory(null)
-                                    } else {
-                                        onSelectCategory(item)
-                                    }
-                                    return@detectTapGestures
-                                }
-                                currentAngle += sweep
-                            }
-                        }
-                    }
-                }
+        Box(
+            modifier = Modifier.size(chartSize),
+            contentAlignment = Alignment.Center
         ) {
-            val strokeWidthPx = strokeWidth.toPx()
-            val arcSize = Size(size.width - strokeWidthPx, size.height - strokeWidthPx)
-            val topLeft = Offset(strokeWidthPx / 2, strokeWidthPx / 2)
+            val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
 
-            if (items.isEmpty() || totalAmount <= 0L) {
-                drawArc(
-                    color = emptyColor,
-                    startAngle = 0f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = strokeWidthPx)
-                )
-            } else {
-                var startAngle = -90f
-                val gapAngle = if (items.size > 1) 2.5f else 0f
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(items, totalAmount) {
+                        detectTapGestures { offset ->
+                            if (items.isEmpty() || totalAmount <= 0L) return@detectTapGestures
 
-                items.forEach { item ->
-                    val isSelected = selectedCategory?.category?.id == item.category.id
-                    val currentStroke = if (isSelected) strokeWidthPx + 6f else strokeWidthPx
-                    val sweepAngle = (item.percentage * 360f * animatedProgress.value) - gapAngle
+                            val widthF = size.width.toFloat()
+                            val heightF = size.height.toFloat()
+                            val centerX = widthF / 2f
+                            val centerY = heightF / 2f
+                            val dx = offset.x - centerX
+                            val dy = offset.y - centerY
+                            val dist = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
 
-                    if (sweepAngle > 0f) {
-                        val baseColor = Color(item.category.colorHex)
-                        val drawColor = if (selectedCategory != null && !isSelected) {
-                            baseColor.copy(alpha = 0.35f)
-                        } else {
-                            baseColor
+                            val strokeWidthPx = strokeWidth.toPx()
+                            val radius = (min(widthF, heightF) - strokeWidthPx - 16f) / 2f
+                            val innerR = radius - strokeWidthPx / 2f
+                            val outerR = radius + strokeWidthPx / 2f
+
+                            if (dist < innerR) {
+                                // 点击中心重置选择
+                                onSelectCategory(null)
+                                return@detectTapGestures
+                            }
+
+                            if (dist >= innerR && dist <= outerR + 12f) {
+                                var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                if (angle < -90f) {
+                                    angle += 450f
+                                } else {
+                                    angle += 90f
+                                }
+
+                                var currentAngle = 0f
+                                for (item in items) {
+                                    val sweep = item.percentage * 360f
+                                    if (angle >= currentAngle && angle <= currentAngle + sweep) {
+                                        if (selectedCategory?.category?.id == item.category.id) {
+                                            onSelectCategory(null)
+                                        } else {
+                                            onSelectCategory(item)
+                                        }
+                                        return@detectTapGestures
+                                    }
+                                    currentAngle += sweep
+                                }
+                            }
                         }
-
-                        drawArc(
-                            color = drawColor,
-                            startAngle = startAngle + (gapAngle / 2),
-                            sweepAngle = sweepAngle,
-                            useCenter = false,
-                            topLeft = topLeft,
-                            size = arcSize,
-                            style = Stroke(width = currentStroke, cap = StrokeCap.Round)
-                        )
                     }
-                    startAngle += item.percentage * 360f * animatedProgress.value
+            ) {
+                val strokeWidthPx = strokeWidth.toPx()
+                val radius = (min(size.width, size.height) - strokeWidthPx - 16f) / 2f
+                val diameter = radius * 2f
+                val arcSize = Size(diameter, diameter)
+                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+
+                if (items.isEmpty() || totalAmount <= 0L) {
+                    drawArc(
+                        color = emptyColor,
+                        startAngle = 0f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(width = strokeWidthPx)
+                    )
+                } else {
+                    var startAngle = -90f
+                    val gapAngle = if (items.size > 1) 2.5f else 0f
+
+                    items.forEach { item ->
+                        val isSelected = selectedCategory?.category?.id == item.category.id
+                        val currentStroke = if (isSelected) strokeWidthPx + 5f else strokeWidthPx
+                        val sweepAngle = (item.percentage * 360f * animatedProgress.value) - gapAngle
+
+                        if (sweepAngle > 0f) {
+                            val baseColor = Color(item.category.colorHex)
+                            val drawColor = if (selectedCategory != null && !isSelected) {
+                                baseColor.copy(alpha = 0.35f)
+                            } else {
+                                baseColor
+                            }
+
+                            drawArc(
+                                color = drawColor,
+                                startAngle = startAngle + (gapAngle / 2),
+                                sweepAngle = sweepAngle,
+                                useCenter = false,
+                                topLeft = topLeft,
+                                size = arcSize,
+                                style = Stroke(width = currentStroke, cap = StrokeCap.Round)
+                            )
+                        }
+                        startAngle += item.percentage * 360f * animatedProgress.value
+                    }
                 }
             }
-        }
 
         // 中心文字区（点击可重置）
         Column(
@@ -219,6 +231,7 @@ fun DonutChart(
             }
         }
     }
+}
 }
 
 /**

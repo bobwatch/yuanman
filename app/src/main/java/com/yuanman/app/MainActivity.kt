@@ -11,7 +11,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
-import com.yuanman.app.data.model.BrandTheme
 import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.ui.navigation.YuanmanNavGraph
 import com.yuanman.app.ui.theme.YuanmanTheme
@@ -25,12 +24,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode by app.preferencesRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-            val brandTheme by app.preferencesRepository.brandTheme.collectAsState(initial = BrandTheme.EMERALD)
 
-            YuanmanTheme(
-                themeMode = themeMode,
-                brandTheme = brandTheme
-            ) {
+            YuanmanTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

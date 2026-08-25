@@ -1,24 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面启动图标前景：圆环（满）与绿波浪（沅） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Wallet/Coin graphic for Yuanman -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,36h48c3.31,0 6,2.69 6,6v24c0,3.31 -2.69,6 -6,6H30c-3.31,0 -6,-2.69 -6,-6V42c0,-3.31 2.69,-6 6,-6z" />
-    <path
-        android:fillColor="#81C784"
-        android:pathData="M32,40h44c2.2,0 4,1.8 4,4v20c0,2.2 -1.8,4 -4,4H32c-2.2,0 -4,-1.8 -4,-4V44c0,-2.2 1.8,-4 4,-4z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M66,50h12v8H66z" />
-    <path
-        android:fillColor="#FFD54F"
-        android:pathData="M72,54m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
-    <!-- Yuan symbol shape -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M44,48l4,6l4,-6h3l-5.5,8v2h5v2h-5v4h-3v-4h-5v-2h5v-2l-5.5,-8z" />
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="15.12"
+        android:translateY="15.12">
+        <group>
+            <clip-path android:pathData="M19,50 a31,31 0 1,0 62,0 a31,31 0 1,0 -62,0" />
+            <path
+                android:fillColor="#A7F3D0"
+                android:pathData="M18.5,53.7 C27.8,46.3 37,61.1 50,53.7 C63,46.3 72.2,61.1 81.5,53.7 L81.5,81.5 L18.5,81.5 Z" />
+        </group>
+        <path
+            android:pathData="M19,50 a31,31 0 1,0 62,0 a31,31 0 1,0 -62,0"
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="4.5" />
+    </group>
 </vector>

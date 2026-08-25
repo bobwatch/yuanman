@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
-import com.yuanman.app.data.model.BrandTheme
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
@@ -20,7 +19,6 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val brandTheme: BrandTheme = BrandTheme.EMERALD,
     val defaultRecordType: RecordType = RecordType.EXPENSE,
     val defaultPaymentMethod: String = PaymentMethod.defaultMethod(),
     val monthlyBudget: Long = 0L,
@@ -35,7 +33,6 @@ data class SettingsUiState(
 
 private data class GeneralPrefs(
     val theme: ThemeMode,
-    val brandTheme: BrandTheme,
     val defaultType: RecordType,
     val defaultMethod: String
 )
@@ -56,10 +53,9 @@ class SettingsViewModel(
 
     private val generalPrefsFlow = combine(
         preferencesRepository.themeMode,
-        preferencesRepository.brandTheme,
         preferencesRepository.defaultRecordType,
         preferencesRepository.defaultPaymentMethod
-    ) { theme, brand, type, method -> GeneralPrefs(theme, brand, type, method) }
+    ) { theme, type, method -> GeneralPrefs(theme, type, method) }
 
     private val featurePrefsFlow = combine(
         preferencesRepository.monthlyBudget,
@@ -75,7 +71,6 @@ class SettingsViewModel(
     ) { general, feature, records, categories ->
         SettingsUiState(
             themeMode = general.theme,
-            brandTheme = general.brandTheme,
             defaultRecordType = general.defaultType,
             defaultPaymentMethod = general.defaultMethod,
             monthlyBudget = feature.budget,
@@ -96,12 +91,6 @@ class SettingsViewModel(
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
             preferencesRepository.setThemeMode(mode)
-        }
-    }
-
-    fun setBrandTheme(theme: BrandTheme) {
-        viewModelScope.launch {
-            preferencesRepository.setBrandTheme(theme)
         }
     }
 

@@ -305,7 +305,7 @@ fun SettingsScreen(
 
             // 3. 主题与外观
             Text(
-                text = "外观与主题",
+                text = "外观与显示",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -316,10 +316,10 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "暗色/明亮模式",
+                        text = "暗色 / 明亮模式",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -333,51 +333,6 @@ fun SettingsScreen(
                                 label = { Text(mode.title, fontSize = 12.sp) },
                                 modifier = Modifier.weight(1f)
                             )
-                        }
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    Text(
-                        text = "品牌个性主题色",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(com.yuanman.app.data.model.BrandTheme.values()) { theme ->
-                            val isSelected = uiState.brandTheme == theme
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) theme.primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                border = if (isSelected) BorderStroke(1.5.dp, theme.primaryColor) else null,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { viewModel.setBrandTheme(theme) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(16.dp)
-                                            .clip(androidx.compose.foundation.shape.CircleShape)
-                                            .background(theme.primaryColor)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = theme.title,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) theme.primaryColor else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    )
-                                }
-                            }
                         }
                     }
                 }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动屏与桌面 logo：白色圆环（满）+ 嫩绿波浪水面（沅） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <group>
+        <clip-path android:pathData="M19,50 a31,31 0 1,0 62,0 a31,31 0 1,0 -62,0" />
+        <path
+            android:fillColor="#A7F3D0"
+            android:pathData="M18.5,53.7 C27.8,46.3 37,61.1 50,53.7 C63,46.3 72.2,61.1 81.5,53.7 L81.5,81.5 L18.5,81.5 Z" />
+    </group>
+    <path
+        android:pathData="M19,50 a31,31 0 1,0 62,0 a31,31 0 1,0 -62,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5" />
+</vector>

@@ -1,11 +1,9 @@
 package com.yuanman.app.ui.screens.stats
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,7 +36,7 @@ fun StatisticsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("数据洞察与统计", fontWeight = FontWeight.Bold) },
+                title = { Text("数据统计", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     if (onNavigateBack != null) {
                         IconButton(onClick = onNavigateBack) {
@@ -144,29 +142,25 @@ fun StatisticsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         StatSummaryColumn(
-                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "本月收入" else "全年收入",
+                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "总收入" else "全年收入",
                             amount = uiState.summary.totalIncome,
-                            amountColor = MaterialTheme.colorScheme.primary,
-                            diffPercent = uiState.incomeDiffPercent,
-                            isExpense = false
+                            amountColor = MaterialTheme.colorScheme.primary
                         )
                         VerticalDivider(
                             modifier = Modifier.height(36.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant
                         )
                         StatSummaryColumn(
-                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "本月支出" else "全年支出",
+                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "总支出" else "全年支出",
                             amount = uiState.summary.totalExpense,
-                            amountColor = MaterialTheme.colorScheme.error,
-                            diffPercent = uiState.expenseDiffPercent,
-                            isExpense = true
+                            amountColor = MaterialTheme.colorScheme.error
                         )
                         VerticalDivider(
                             modifier = Modifier.height(36.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant
                         )
                         StatSummaryColumn(
-                            title = "净结余",
+                            title = "结余",
                             amount = uiState.summary.balance,
                             amountColor = if (uiState.summary.balance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                         )
@@ -174,47 +168,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // 2. 消费生活画像与智能洞察卡片
-            if (uiState.smartInsight.isNotBlank()) {
-                item {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                        ),
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = if (uiState.periodMode == StatisticsPeriod.MONTH) "月度消费画像 · 智能洞察" else "年度财务画像 · 智能洞察",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = uiState.smartInsight,
-                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. 统计类型选择：支出分类 / 收入分类
+            // 2. 统计类型选择：支出结构 / 收入结构
             item {
                 TabRow(
                     selectedTabIndex = if (uiState.selectedType == RecordType.EXPENSE) 0 else 1,
@@ -244,7 +198,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // 4. 高阶交互式环形分类占比图
+            // 3. 结构分布图
             item {
                 Card(
                     shape = RoundedCornerShape(20.dp),
@@ -258,12 +212,12 @@ fun StatisticsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = if (uiState.selectedType == RecordType.EXPENSE) "结构分布与占比" else "来源分布与占比",
+                            text = if (uiState.selectedType == RecordType.EXPENSE) "支出结构占比" else "收入来源占比",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             modifier = Modifier.align(Alignment.Start)
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         val totalTarget = if (uiState.selectedType == RecordType.EXPENSE) {
                             uiState.summary.totalExpense
@@ -285,7 +239,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // 5. 走势图
+            // 4. 走势图
             if (uiState.dailyTrends.isNotEmpty()) {
                 item {
                     Card(
@@ -326,10 +280,10 @@ fun StatisticsScreen(
                 }
             }
 
-            // 6. 分类排行榜清单
+            // 5. 分类排行榜清单
             item {
                 Text(
-                    text = "分类排行榜明细 (${uiState.categoryStats.size} 项)",
+                    text = "分类排行 (${uiState.categoryStats.size} 项)",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                 )
@@ -349,7 +303,7 @@ fun StatisticsScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (uiState.selectedType == RecordType.EXPENSE) "该周期暂无支出" else "该周期暂无收入",
+                                text = if (uiState.selectedType == RecordType.EXPENSE) "暂无支出数据" else "暂无收入数据",
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -390,9 +344,7 @@ fun StatisticsScreen(
 private fun StatSummaryColumn(
     title: String,
     amount: Long,
-    amountColor: Color,
-    diffPercent: Float? = null,
-    isExpense: Boolean = false
+    amountColor: Color
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -400,34 +352,11 @@ private fun StatSummaryColumn(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline
         )
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = MoneyUtils.formatCurrency(amount),
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = amountColor
         )
-
-        if (diffPercent != null) {
-            val isPositive = diffPercent > 0f
-            val pctVal = (kotlin.math.abs(diffPercent) * 100).toInt()
-            val badgeColor = if (isExpense) {
-                if (isPositive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            } else {
-                if (isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-            }
-            val arrow = if (isPositive) "↑" else "↓"
-            val label = if (isExpense) {
-                if (isPositive) "比上月多 $pctVal%" else "比上月省 $pctVal%"
-            } else {
-                if (isPositive) "比上月增 $pctVal%" else "比上月少 $pctVal%"
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "$arrow $label",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
-                color = badgeColor
-            )
-        }
     }
 }

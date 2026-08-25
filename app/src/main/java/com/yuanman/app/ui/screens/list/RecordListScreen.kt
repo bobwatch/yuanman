@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.RecordWithCategory
-import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
@@ -47,47 +46,11 @@ fun RecordListScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = {
-                    // 顶部搜索输入框
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.updateSearchQuery(it) },
-                        placeholder = { Text("搜索备注、分类或支付方式...", fontSize = 13.sp) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = "搜索",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                    Icon(
-                                        Icons.Default.Clear,
-                                        contentDescription = "清除",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp)
-                    )
-                },
+                title = { Text("账单明细", fontWeight = FontWeight.Bold) },
                 actions = {
                     // 月份快捷切换按钮 (< 2026年8月 >)
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
                         modifier = Modifier.padding(end = 12.dp)
                     ) {
@@ -141,7 +104,49 @@ fun RecordListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 筛选标签栏（类型 + 支付方式 + 排序）
+            // 全宽搜索输入框
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = { viewModel.updateSearchQuery(it) },
+                    placeholder = { Text("搜索备注、分类或支付方式...", fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "搜索",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                Icon(
+                                    Icons.Default.Clear,
+                                    contentDescription = "清除",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                )
+            }
+
+            // 筛选标签栏（类型 + 排序 + 分类）
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -282,14 +287,14 @@ fun RecordListScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            text = if (uiState.isPrivacyMode) "支出 ****" else "支出 ${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
+                            text = "支出 ¥${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.error
                             )
                         )
                         Text(
-                            text = if (uiState.isPrivacyMode) "收入 ****" else "收入 ${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
+                            text = "收入 ¥${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary
@@ -330,7 +335,6 @@ fun RecordListScreen(
                         ) { item ->
                             RecordCardItem(
                                 item = item,
-                                isPrivacyMode = uiState.isPrivacyMode,
                                 onClick = { onNavigateToDetail(item.record.id) },
                                 onLongClick = { activeMenuRecord = item }
                             )
