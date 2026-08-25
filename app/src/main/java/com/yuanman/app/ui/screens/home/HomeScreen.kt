@@ -108,7 +108,6 @@ fun HomeScreen(
                 onNextMonth = { viewModel.nextMonth() },
                 onMonthClick = { showMonthPicker = true },
                 onBudgetClick = { showBudgetDialog = true },
-                onCardClick = onNavigateToStatistics,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -366,15 +365,12 @@ private fun FinancialOverviewCard(
     onNextMonth: () -> Unit,
     onMonthClick: () -> Unit,
     onBudgetClick: () -> Unit,
-    onCardClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Card(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .clickable { onCardClick() },
+        modifier = modifier.clip(RoundedCornerShape(22.dp)),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -385,12 +381,29 @@ private fun FinancialOverviewCard(
                 .fillMaxWidth()
                 .padding(18.dp)
         ) {
-            // 顶栏：月份切换器 + 统计跳转指示
+            // 顶栏：账本标题 + 月份切换器
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor)
+                    )
+                    Text(
+                        text = "沅满账本",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
                 // 月份胶囊
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -435,26 +448,6 @@ private fun FinancialOverviewCard(
                             )
                         }
                     }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "统计分析",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(14.dp)
-                    )
                 }
             }
 

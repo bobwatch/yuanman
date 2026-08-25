@@ -54,8 +54,8 @@ fun DonutChart(
     selectedCategory: CategoryStatItem? = null,
     onSelectCategory: (CategoryStatItem?) -> Unit = {},
     modifier: Modifier = Modifier,
-    strokeWidth: Dp = 22.dp,
-    chartSize: Dp = 200.dp
+    strokeWidth: Dp = 18.dp,
+    chartSize: Dp = 220.dp
 ) {
     val animatedProgress = remember { Animatable(0f) }
 
@@ -70,7 +70,7 @@ fun DonutChart(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Box(
@@ -183,8 +183,8 @@ fun DonutChart(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .widthIn(max = 136.dp)
-                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .widthIn(max = 160.dp)
+                .padding(horizontal = 6.dp, vertical = 2.dp)
                 .clip(CircleShape)
                 .clickable { onSelectCategory(null) }
         ) {
@@ -200,9 +200,9 @@ fun DonutChart(
                 val amountStr = MoneyUtils.centsToYuanString(selectedCategory.totalAmount, withGrouping = true)
                 Text(
                     text = "¥$amountStr",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (amountStr.length > 8) 14.sp else 16.sp
+                        fontSize = if (amountStr.length > 9) 15.sp else 18.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
@@ -217,7 +217,7 @@ fun DonutChart(
             } else {
                 Text(
                     text = centerTitle,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1
                 )
@@ -225,9 +225,9 @@ fun DonutChart(
                 val amountStr = MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)
                 Text(
                     text = "¥$amountStr",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (amountStr.length > 8) 14.sp else 16.sp
+                        fontSize = if (amountStr.length > 9) 15.sp else 18.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
@@ -235,8 +235,8 @@ fun DonutChart(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "轻触扇区看明细",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f),
                     maxLines = 1
                 )
             }

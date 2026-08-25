@@ -163,6 +163,41 @@ class SettingsViewModel(
         }
     }
 
+    fun startWifiServer(onStarted: (Boolean, String?) -> Unit) {
+        val ip = com.yuanman.app.utils.WifiSyncManager.getLocalIpAddress()
+        if (ip == null) {
+            onStarted(false, null)
+            return
+        }
+        viewModelScope.launch {
+            val categories = uiState.value.allCategories
+            val records = uiState.value.allRecords
+            val success = com.yuanman.app.utils.WifiSyncManager.startServer(categories, records)
+            onStarted(success, ip)
+        }
+    }
+
+    fun stopWifiServer() {
+        com.yuanman.app.utils.WifiSyncManager.stopServer()
+    }
+
+    fun syncFromPeer(targetIp: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = com.yuanman.app.utils.WifiSyncManager.pullDataFromPeer(targetIp)
+            result.onSuccess { data ->
+                if (data.categories.isNotEmpty()) {
+                    categoryRepository.insertCategories(data.categories)
+                }
+                if (data.records.isNotEmpty()) {
+                    recordRepository.insertRecords(data.records)
+                }
+                onResult(true, "同步成功！已拉取并导入 ${data.records.size} 笔账单与 ${data.categories.size} 个分类")
+            }.onFailure { error ->
+                onResult(false, error.message ?: "同步失败")
+            }
+        }
+    }
+
     fun resetClearedFlag() {
         _isClearedSuccess.value = false
     }

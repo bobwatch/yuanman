@@ -14,7 +14,7 @@ import com.yuanman.app.utils.DateTimeUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Calendar
+import java.util.*
 
 enum class RecordSortOrder(val title: String) {
     TIME_DESC("时间最新"),
@@ -23,10 +23,17 @@ enum class RecordSortOrder(val title: String) {
     AMOUNT_ASC("金额最小")
 }
 
+data class DayGroupSummary(
+    val dayTimestamp: Long,
+    val totalExpense: Long,
+    val totalIncome: Long
+)
+
 data class RecordListUiState(
-    val selectedYear: Int,
-    val selectedMonth: Int,
-    val selectedType: RecordType? = null, // null means 全部
+    val selectedYear: Int = 2026,
+    val selectedMonth: Int = 8,
+    val selectedDay: Int? = null,
+    val selectedType: RecordType? = null,
     val selectedCategoryId: Long? = null,
     val selectedPaymentMethod: String? = null,
     val sortOrder: RecordSortOrder = RecordSortOrder.TIME_DESC,
@@ -34,7 +41,7 @@ data class RecordListUiState(
     val availableCategories: List<CategoryEntity> = emptyList(),
     val filteredRecords: List<RecordWithCategory> = emptyList(),
     val groupedRecords: Map<Long, List<RecordWithCategory>> = emptyMap(),
-    val daySummaries: Map<Long, Pair<Long, Long>> = emptyMap(),
+    val daySummaries: Map<Long, DayGroupSummary> = emptyMap(),
     val totalExpense: Long = 0L,
     val totalIncome: Long = 0L,
     val recordCount: Int = 0,
@@ -45,6 +52,7 @@ data class RecordListUiState(
 private data class FilterParams(
     val year: Int,
     val month: Int,
+    val day: Int?,
     val type: RecordType?,
     val categoryId: Long?,
     val paymentMethod: String?,
@@ -61,6 +69,7 @@ class RecordListViewModel(
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
+    private val _selectedDay = MutableStateFlow<Int?>(null)
     private val _selectedType = MutableStateFlow<RecordType?>(null)
     private val _selectedCategoryId = MutableStateFlow<Long?>(null)
     private val _selectedPaymentMethod = MutableStateFlow<String?>(null)
@@ -80,19 +89,26 @@ class RecordListViewModel(
     private val filtersFlow = combine(
         _selectedYear,
         _selectedMonth,
+        _selectedDay,
         _selectedType,
-        _selectedCategoryId,
-        _selectedPaymentMethod
-    ) { year, month, type, categoryId, paymentMethod ->
-        Triple(Pair(year, month), Pair(type, categoryId), paymentMethod)
+        _selectedCategoryId
+    ) { year, month, day, type, categoryId ->
+        Tuple5(year, month, day, type, categoryId)
     }.combine(
-        combine(_sortOrder, _searchQuery) { sort, query -> Pair(sort, query) }
-    ) { mainFilters, secondFilters ->
-        val (year, month) = mainFilters.first
-        val (type, categoryId) = mainFilters.second
-        val paymentMethod = mainFilters.third
-        val (sortOrder, query) = secondFilters
-        FilterParams(year, month, type, categoryId, paymentMethod, sortOrder, query)
+        combine(_selectedPaymentMethod, _sortOrder, _searchQuery) { pay, sort, query ->
+            Triple(pay, sort, query)
+        }
+    ) { firstPart, secondPart ->
+        FilterParams(
+            year = firstPart.a,
+            month = firstPart.b,
+            day = firstPart.c,
+            type = firstPart.d,
+            categoryId = firstPart.e,
+            paymentMethod = secondPart.first,
+            sortOrder = secondPart.second,
+            query = secondPart.third
+        )
     }
 
     val uiState: StateFlow<RecordListUiState> = combine(
@@ -103,6 +119,7 @@ class RecordListViewModel(
     ) { filters, rawRecords, categories, privacy ->
 
         val filtered = rawRecords.filter { item ->
+            val matchDay = filters.day == null || DateTimeUtils.getDayOfMonth(item.record.recordTime) == filters.day
             val matchType = filters.type == null || item.record.type == filters.type.name
             val matchCategory = filters.categoryId == null || item.record.categoryId == filters.categoryId
             val matchPayment = filters.paymentMethod == null || item.record.paymentMethod == filters.paymentMethod
@@ -111,7 +128,7 @@ class RecordListViewModel(
                     (item.category?.name?.contains(filters.query, ignoreCase = true) == true) ||
                     item.record.paymentMethod.contains(filters.query, ignoreCase = true)
 
-            matchType && matchCategory && matchPayment && matchQuery
+            matchDay && matchType && matchCategory && matchPayment && matchQuery
         }
 
         // 排序处理
@@ -122,12 +139,8 @@ class RecordListViewModel(
             RecordSortOrder.AMOUNT_ASC -> filtered.sortedBy { it.record.amount }
         }
 
-        var totalExp = 0L
-        var totalInc = 0L
-        val grouped = LinkedHashMap<Long, MutableList<RecordWithCategory>>()
-        val daySums = HashMap<Long, Pair<Long, Long>>()
-
-        sorted.forEach { item ->
+        // 按自然日分组 (截取当天 00:00:00 毫秒戳)
+        val grouped = sorted.groupBy { item ->
             val cal = Calendar.getInstance().apply {
                 timeInMillis = item.record.recordTime
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -135,23 +148,33 @@ class RecordListViewModel(
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             }
-            val dayKey = cal.timeInMillis
+            cal.timeInMillis
+        }
 
-            grouped.getOrPut(dayKey) { mutableListOf() }.add(item)
+        // 计算每日小计与月度总和
+        val daySums = mutableMapOf<Long, DayGroupSummary>()
+        var totalExp = 0L
+        var totalInc = 0L
 
-            val currentDaySum = daySums[dayKey] ?: Pair(0L, 0L)
-            if (item.record.type == RecordType.EXPENSE.name) {
-                totalExp += item.record.amount
-                daySums[dayKey] = Pair(currentDaySum.first + item.record.amount, currentDaySum.second)
-            } else {
-                totalInc += item.record.amount
-                daySums[dayKey] = Pair(currentDaySum.first, currentDaySum.second + item.record.amount)
+        grouped.forEach { (dayTimestamp, list) ->
+            var dayExp = 0L
+            var dayInc = 0L
+            list.forEach { rwc ->
+                if (rwc.record.type == RecordType.EXPENSE.name) {
+                    dayExp += rwc.record.amount
+                    totalExp += rwc.record.amount
+                } else {
+                    dayInc += rwc.record.amount
+                    totalInc += rwc.record.amount
+                }
             }
+            daySums[dayTimestamp] = DayGroupSummary(dayTimestamp, dayExp, dayInc)
         }
 
         RecordListUiState(
             selectedYear = filters.year,
             selectedMonth = filters.month,
+            selectedDay = filters.day,
             selectedType = filters.type,
             selectedCategoryId = filters.categoryId,
             selectedPaymentMethod = filters.paymentMethod,
@@ -180,6 +203,17 @@ class RecordListViewModel(
     fun selectMonth(year: Int, month: Int) {
         _selectedYear.value = year
         _selectedMonth.value = month
+        _selectedDay.value = null
+    }
+
+    fun selectDay(day: Int?) {
+        _selectedDay.value = if (_selectedDay.value == day) null else day
+    }
+
+    fun selectDate(year: Int, month: Int, day: Int?) {
+        _selectedYear.value = year
+        _selectedMonth.value = month
+        _selectedDay.value = day
     }
 
     fun previousMonth() {
@@ -240,6 +274,8 @@ class RecordListViewModel(
             recordRepository.deleteRecord(recordWithCategory.record)
         }
     }
+
+    private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
 
     class Factory(
         private val recordRepository: RecordRepository,

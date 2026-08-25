@@ -184,6 +184,9 @@ fun YuanmanNavGraph(
                     viewModel = listViewModel,
                     onNavigateToDetail = { recordId ->
                         navController.navigate(Screen.RecordDetail.createRoute(recordId))
+                    },
+                    onNavigateToEdit = { recordId ->
+                        navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
                     }
                 )
             }
