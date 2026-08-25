@@ -25,9 +25,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -42,11 +42,10 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.CustomKeypad
 import com.yuanman.app.ui.components.KeypadEngine
 import com.yuanman.app.utils.DateTimeUtils
-import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditRecordScreen(
     viewModel: AddEditRecordViewModel,
@@ -56,13 +55,13 @@ fun AddEditRecordScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    // 监听系统软键盘高度（大于0即软键盘弹出）
-    val imeBottom = WindowInsets.ime.getBottom(density)
-    val isImeOpen = imeBottom > 0
+    // 聚焦与软键盘状态（避免逐帧重组，保证极致丝滑）
+    var isRemarkFocused by remember { mutableStateOf(false) }
+    val isImeVisible = WindowInsets.isImeVisible
+    val isKeyboardOpen = isRemarkFocused || isImeVisible
 
     LaunchedEffect(uiState.isSavedSuccess) {
         if (uiState.isSavedSuccess) {
@@ -87,9 +86,7 @@ fun AddEditRecordScreen(
     }
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding(),
+        modifier = modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -122,6 +119,7 @@ fun AddEditRecordScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
         ) {
             // 支出 / 收入 切换 Tab
             TabRow(
@@ -424,7 +422,7 @@ fun AddEditRecordScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 快捷推荐备注 (支持点击选中与再次点击取消选中)
+                // 快捷推荐备注
                 if (uiState.quickRemarks.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -448,7 +446,7 @@ fun AddEditRecordScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                // 🌟 备注输入框 (原生丝滑响应，带完成按钮与清空按钮)
+                // 🌟 备注输入框 (原生硬件级顺滑响应，带完成按钮与清空按钮)
                 OutlinedTextField(
                     value = uiState.remark,
                     onValueChange = { viewModel.setRemark(it) },
@@ -456,7 +454,10 @@ fun AddEditRecordScreen(
                     placeholder = { Text("如：朋友聚餐、买咖啡等") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus()
+                        isRemarkFocused = false
+                    }),
                     trailingIcon = {
                         if (uiState.remark.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setRemark("") }) {
@@ -464,15 +465,17 @@ fun AddEditRecordScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isRemarkFocused = it.isFocused },
                     shape = RoundedCornerShape(12.dp)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 🌟 底部沉浸式计算器键盘 (无额外重叠动效，与输入法升降原生硬件同步)
-            if (!isImeOpen) {
+            // 🌟 底部沉浸式计算器键盘 (键盘弹起时隐藏，平滑稳定无逐帧重组)
+            if (!isKeyboardOpen) {
                 CustomKeypad(
                     expression = uiState.expression,
                     onExpressionChange = { viewModel.setExpression(it) },
