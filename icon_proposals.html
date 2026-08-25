@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>「沅满记账」羊脂白玉系图标配色提案</title>
+    <style>
+        :root {
+            --bg-color: #121418;
+            --card-bg: #1C2028;
+            --card-hover: #242934;
+            --text-primary: #F9FAFB;
+            --text-secondary: #9CA3AF;
+            --accent: #2E7D32;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            padding: 40px 20px 80px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #FFF 30%, #D1D5DB 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 16px;
+            max-width: 720px;
+            margin: 0 auto 24px;
+        }
+
+        /* 形状切换控制栏 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 36px;
+            flex-wrap: wrap;
+        }
+
+        .shape-btn {
+            background: #252A34;
+            color: #D1D5DB;
+            border: 1px solid var(--border);
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .shape-btn.active, .shape-btn:hover {
+            background: #374151;
+            color: #FFF;
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        /* 网格布局 */
+        .schemes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 24px;
+            margin-bottom: 56px;
+        }
+
+        .scheme-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 24px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .scheme-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.5);
+            background: var(--card-hover);
+        }
+
+        .scheme-card.selected {
+            border: 2px solid #34D399;
+            box-shadow: 0 0 25px rgba(52, 211, 153, 0.25);
+        }
+
+        .card-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #9CA3AF;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .scheme-card.selected .card-badge {
+            background: #10B981;
+            color: #FFF;
+        }
+
+        /* 图标展示区 */
+        .icon-preview-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px 0 16px;
+        }
+
+        .app-icon {
+            width: 108px;
+            height: 108px;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        /* 动态遮罩形状 */
+        .shape-squircle { border-radius: 24px; }
+        .shape-circle { border-radius: 50%; }
+        .shape-ios { border-radius: 22.5%; }
+
+        .scheme-meta {
+            margin-top: 16px;
+        }
+
+        .scheme-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .scheme-tagline {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        /* 颜色色板 */
+        .color-swatches {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 12px;
+        }
+
+        .swatch {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .swatch-hex {
+            font-family: monospace;
+            font-size: 11px;
+            color: #9CA3AF;
+            margin-left: auto;
+        }
+
+        /* 桌面实机效果预览区 */
+        .desktop-preview-section {
+            background: #181C24;
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 40px 32px;
+            margin-top: 40px;
+        }
+
+        .section-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .phone-mockup-wrapper {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+
+        .phone-mockup {
+            width: 280px;
+            height: 520px;
+            border-radius: 42px;
+            padding: 18px 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            border: 4px solid #374151;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .phone-dark-bg {
+            background: radial-gradient(circle at 50% 20%, #1F2937, #0B0F17);
+        }
+
+        .phone-light-bg {
+            background: linear-gradient(180deg, #F3F4F6 0%, #E5E7EB 100%);
+        }
+
+        .phone-notch {
+            width: 90px;
+            height: 18px;
+            background: #000;
+            border-radius: 12px;
+            margin: 0 auto 28px;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px 12px;
+            padding: 0 4px;
+        }
+
+        .mock-app-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mock-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+        }
+
+        .mock-app-name {
+            font-size: 10px;
+            font-weight: 500;
+            color: #9CA3AF;
+        }
+
+        .phone-dark-bg .mock-app-name { color: #D1D5DB; }
+        .phone-light-bg .mock-app-name { color: #4B5563; }
+
+        .action-bar {
+            text-align: center;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>💎「沅满记账」羊脂白玉系图标提案</h1>
+        <p class="subtitle">已按您的要求：<strong>① 放大中间圆环与水韵水面（视觉更加饱满大气）</strong>；<strong>② 采用温润典雅的“羊脂白玉”底色</strong>。以下 6 款针对白玉质感定制的顶级美学配色供您挑选。</p>
+        
+        <div class="controls">
+            <span style="font-size: 13px; color: #9CA3AF; margin-right: 6px;">图标外框预览：</span>
+            <button class="shape-btn active" onclick="setShape('squircle')">澎湃/安卓圆角 (Squircle)</button>
+            <button class="shape-btn" onclick="setShape('ios')">iOS 经典平滑圆角</button>
+            <button class="shape-btn" onclick="setShape('circle')">原生圆形 (Circle)</button>
+        </div>
+    </header>
+
+    <!-- 方案网格 -->
+    <div class="schemes-grid" id="schemesGrid"></div>
+
+    <!-- 手机实机环境预览 -->
+    <div class="desktop-preview-section">
+        <h2 class="section-title">📱 手机桌面实际效果预览</h2>
+        <p class="section-desc">当前选中的方案：<strong id="selectedTitleText" style="color: #34D399;">方案 1 · 羊脂白玉 · 翡翠浓墨</strong></p>
+        
+        <div class="phone-mockup-wrapper">
+            <!-- 暗色壁纸 -->
+            <div class="phone-mockup phone-dark-bg">
+                <div class="phone-notch"></div>
+                <div style="font-size: 11px; font-weight: 700; color: #9CA3AF; margin-bottom: 20px; text-align: center;">深色桌面环境</div>
+                <div class="app-grid">
+                    <div class="mock-app-item featured-app">
+                        <div class="mock-icon" id="previewIconDark"></div>
+                        <span class="mock-app-name" style="font-weight: 700; color: #FFF;">沅满记账</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #07C160;"></div>
+                        <span class="mock-app-name">微信</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #1677FF;"></div>
+                        <span class="mock-app-name">支付宝</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #FF2442;"></div>
+                        <span class="mock-app-name">小红书</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #22252A;"></div>
+                        <span class="mock-app-name">相机</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #3B82F6;"></div>
+                        <span class="mock-app-name">相册</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #10B981;"></div>
+                        <span class="mock-app-name">电话</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #6B7280;"></div>
+                        <span class="mock-app-name">设置</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 浅色壁纸 -->
+            <div class="phone-mockup phone-light-bg">
+                <div class="phone-notch"></div>
+                <div style="font-size: 11px; font-weight: 700; color: #6B7280; margin-bottom: 20px; text-align: center;">浅色桌面环境</div>
+                <div class="app-grid">
+                    <div class="mock-app-item featured-app">
+                        <div class="mock-icon" id="previewIconLight"></div>
+                        <span class="mock-app-name" style="font-weight: 700; color: #111827;">沅满记账</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #07C160;"></div>
+                        <span class="mock-app-name">微信</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #1677FF;"></div>
+                        <span class="mock-app-name">支付宝</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #FF2442;"></div>
+                        <span class="mock-app-name">小红书</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #374151;"></div>
+                        <span class="mock-app-name">相机</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #2563EB;"></div>
+                        <span class="mock-app-name">相册</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #059669;"></div>
+                        <span class="mock-app-name">电话</span>
+                    </div>
+                    <div class="mock-app-item">
+                        <div class="mock-icon" style="background: #4B5563;"></div>
+                        <span class="mock-app-name">设置</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <p style="color: #9CA3AF; font-size: 14px;">告诉我您选中的方案（例如：“选方案 1” 或 “选方案 2”），我将立即更新代码并安装至您的手机！</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 方案定义（加大圆环，羊脂白玉底）
+    const proposals = [
+        {
+            id: 1,
+            title: "方案 1 · 羊脂白玉 · 翡翠浓墨 (Suet Jade & Deep Emerald)",
+            tagline: "【推荐】温润如羊脂白玉，内嵌浓郁翡翠墨绿圆环与波光水澜，东方高级美学典范。",
+            bgGradient: "linear-gradient(135deg, #FCFBF7 0%, #F5F2EB 60%, #EDE8DC 100%)",
+            bgColors: ["#FCFBF7", "#F5F2EB", "#EDE8DC"],
+            ringColor: "#1B5E20",
+            wave1: "rgba(16, 185, 129, 0.35)",
+            wave2: "#16A34A"
+        },
+        {
+            id: 2,
+            title: "方案 2 · 羊脂白玉 · 青瓷碧水 (Suet Jade & Celadon Cyan)",
+            tagline: "如宋代汝窑青瓷，羊脂玉底衬托清透碧绿水纹，淡雅、宁静、治愈。",
+            bgGradient: "linear-gradient(135deg, #FAF8F5 0%, #F3EFE6 60%, #E9E3D5 100%)",
+            bgColors: ["#FAF8F5", "#F3EFE6", "#E9E3D5"],
+            ringColor: "#059669",
+            wave1: "rgba(52, 211, 153, 0.40)",
+            wave2: "#10B981"
+        },
+        {
+            id: 3,
+            title: "方案 3 · 羊脂白玉 · 水墨黑曜 (Suet Jade & Obsidian Ink)",
+            tagline: "极致黑白禅意水墨风，羊脂白玉与深黑墨韵相融，纯粹素雅、极高格调。",
+            bgGradient: "linear-gradient(135deg, #FFFFFF 0%, #F6F4EE 60%, #EBE7DD 100%)",
+            bgColors: ["#FFFFFF", "#F6F4EE", "#EBE7DD"],
+            ringColor: "#18181B",
+            wave1: "rgba(39, 39, 42, 0.25)",
+            wave2: "#27272A"
+        },
+        {
+            id: 4,
+            title: "方案 4 · 羊脂白玉 · 鎏金琥珀 (Suet Jade & Gilded Gold)",
+            tagline: "白玉镶金，象征日进斗金、金玉满堂，散发温润丰盈的暖金色泽。",
+            bgGradient: "linear-gradient(135deg, #FDFCF7 0%, #F7F3E8 60%, #EFE7D3 100%)",
+            bgColors: ["#FDFCF7", "#F7F3E8", "#EFE7D3"],
+            ringColor: "#D97706",
+            wave1: "rgba(251, 191, 36, 0.45)",
+            wave2: "#F59E0B"
+        },
+        {
+            id: 5,
+            title: "方案 5 · 羊脂白玉 · 霁蓝深海 (Suet Jade & Sapphire Blue)",
+            tagline: "白玉衬深邃霁蓝，如水纳百川，理性智慧，国际顶级理财质感。",
+            bgGradient: "linear-gradient(135deg, #FBFBF9 0%, #F3F1EB 60%, #E7E5DC 100%)",
+            bgColors: ["#FBFBF9", "#F3F1EB", "#E7E5DC"],
+            ringColor: "#1E3A8A",
+            wave1: "rgba(56, 189, 248, 0.35)",
+            wave2: "#2563EB"
+        },
+        {
+            id: 6,
+            title: "方案 6 · 羊脂白玉 · 森林暮松 (Suet Jade & Pine Green)",
+            tagline: "深松灰绿配羊脂白玉，低饱和度莫兰迪治愈风，不浮夸、极度舒适耐看。",
+            bgGradient: "linear-gradient(135deg, #F8F7F3 0%, #EFECE3 60%, #E2DDD0 100%)",
+            bgColors: ["#F8F7F3", "#EFECE3", "#E2DDD0"],
+            ringColor: "#284A3E",
+            wave1: "rgba(79, 119, 103, 0.35)",
+            wave2: "#3D6657"
+        }
+    ];
+
+    let currentShape = 'squircle';
+    let selectedId = 1;
+
+    // 绘制放大版正圆 Logo（半径由 0.24 放大至 0.30，视觉面积增加 50%）
+    function renderSvg(scheme, size = 108) {
+        const r = size * 0.30; // 放大圆环
+        const cx = size / 2;
+        const cy = size / 2;
+        const strokeW = size * 0.042;
+
+        return `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="background: ${scheme.bgGradient}; width: 100%; height: 100%;">
+            <defs>
+                <clipPath id="circleClip_${scheme.id}_${size}">
+                    <circle cx="${cx}" cy="${cy}" r="${r}" />
+                </clipPath>
+            </defs>
+            <g clip-path="url(#circleClip_${scheme.id}_${size})">
+                <!-- 深层微澜波浪 -->
+                <path d="M ${cx - r - 2} ${cy + 1} C ${cx - r * 0.4} ${cy - r * 0.28} ${cx - r * 0.1} ${cy - r * 0.28} ${cx} ${cy + 1} C ${cx + r * 0.4} ${cy + r * 0.28} ${cx + r * 0.7} ${cy + r * 0.28} ${cx + r + 2} ${cy + 1} L ${cx + r + 8} ${cy + r + 8} L ${cx - r - 8} ${cy + r + 8} Z" fill="${scheme.wave1}" />
+                <!-- 浅层饱满波浪 -->
+                <path d="M ${cx - r - 2} ${cy + 1} C ${cx - r * 0.4} ${cy + r * 0.28} ${cx - r * 0.1} ${cy + r * 0.28} ${cx} ${cy + 1} C ${cx + r * 0.4} ${cy - r * 0.28} ${cx + r * 0.7} ${cy - r * 0.28} ${cx + r + 2} ${cy + 1} L ${cx + r + 8} ${cy + r + 8} L ${cx - r - 8} ${cy + r + 8} Z" fill="${scheme.wave2}" />
+            </g>
+            <!-- 饱满主圆环 -->
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${scheme.ringColor}" stroke-width="${strokeW}" stroke-linecap="round" />
+        </svg>
+        `;
+    }
+
+    function initGrid() {
+        const grid = document.getElementById('schemesGrid');
+        grid.innerHTML = proposals.map(p => `
+            <div class="scheme-card ${p.id === selectedId ? 'selected' : ''}" onclick="selectScheme(${p.id})">
+                <span class="card-badge">${p.id === selectedId ? '✓ 已选中' : '方案 ' + p.id}</span>
+                <div class="icon-preview-area">
+                    <div class="app-icon shape-${currentShape}" id="icon_${p.id}">
+                        ${renderSvg(p, 108)}
+                    </div>
+                </div>
+                <div class="scheme-meta">
+                    <div class="scheme-title">${p.title}</div>
+                    <div class="scheme-tagline">${p.tagline}</div>
+                    <div class="color-swatches">
+                        <div class="swatch" style="background: ${p.bgColors[0]};" title="白玉浅色"></div>
+                        <div class="swatch" style="background: ${p.bgColors[2]};" title="白玉深色"></div>
+                        <div class="swatch" style="background: ${p.ringColor};" title="圆环主色"></div>
+                        <div class="swatch" style="background: ${p.wave2};" title="水纹主色"></div>
+                        <span class="swatch-hex">${p.ringColor}</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        updateMockups();
+    }
+
+    function selectScheme(id) {
+        selectedId = id;
+        const target = proposals.find(p => p.id === id);
+        document.getElementById('selectedTitleText').innerText = target.title;
+        document.querySelectorAll('.scheme-card').forEach((card, idx) => {
+            if (proposals[idx].id === id) {
+                card.classList.add('selected');
+                card.querySelector('.card-badge').innerText = '✓ 已选中';
+            } else {
+                card.classList.remove('selected');
+                card.querySelector('.card-badge').innerText = '方案 ' + proposals[idx].id;
+            }
+        });
+        updateMockups();
+    }
+
+    function updateMockups() {
+        const scheme = proposals.find(p => p.id === selectedId);
+        const darkMock = document.getElementById('previewIconDark');
+        const lightMock = document.getElementById('previewIconLight');
+        if (darkMock && lightMock) {
+            darkMock.innerHTML = renderSvg(scheme, 48);
+            lightMock.innerHTML = renderSvg(scheme, 48);
+        }
+    }
+
+    function setShape(shape) {
+        currentShape = shape;
+        document.querySelectorAll('.shape-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        document.querySelectorAll('.app-icon').forEach(icon => {
+            icon.className = `app-icon shape-${shape}`;
+        });
+    }
+
+    initGrid();
+</script>
+
+</body>
+</html>

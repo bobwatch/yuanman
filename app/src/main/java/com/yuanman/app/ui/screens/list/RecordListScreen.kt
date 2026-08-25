@@ -25,7 +25,7 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.MonthPickerModal
-import com.yuanman.app.ui.screens.home.RecordCardItem
+import com.yuanman.app.ui.screens.home.BitgetTransactionItem
 import com.yuanman.app.utils.MoneyUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -333,7 +333,7 @@ fun RecordListScreen(
                             items = records,
                             key = { "record_${it.record.id}" }
                         ) { item ->
-                            RecordCardItem(
+                            BitgetTransactionItem(
                                 item = item,
                                 onClick = { onNavigateToDetail(item.record.id) },
                                 onLongClick = { activeMenuRecord = item }

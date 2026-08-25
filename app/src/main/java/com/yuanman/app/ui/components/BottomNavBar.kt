@@ -35,22 +35,22 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.yuanman.app.ui.navigation.BottomNavTab
 
 /**
- * 沅满·旗舰级灵动悬浮导航 Dock (Flagship Elastic Navigation Dock)
+ * 沅满·Bitget Wallet 极简灵动悬浮导航 Dock
  */
 @Composable
 fun BottomNavBar(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    val navBackStackEntry = navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry.value?.destination?.route
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val haptic = LocalHapticFeedback.current
 
     val tabs = BottomNavTab.ALL
     val selectedIndex = tabs.indexOfFirst { it.screen.route == currentRoute }.coerceAtLeast(0)
 
-    val activeColor = if (isDark) Color(0xFF4ADE80) else Color(0xFF2E7D32)
+    val activeColor = if (isDark) Color(0xFF34D399) else Color(0xFF059669)
     val inactiveColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
 
     Box(
@@ -62,21 +62,21 @@ fun BottomNavBar(
     ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
-            color = if (isDark) Color(0xF2161A18) else Color(0xF8FFFFFF),
-            tonalElevation = 6.dp,
-            shadowElevation = 12.dp,
+            color = if (isDark) Color(0xF5141922) else Color(0xF8FFFFFF),
+            tonalElevation = 8.dp,
+            shadowElevation = 14.dp,
             border = BorderStroke(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     colors = if (isDark) {
                         listOf(
-                            Color.White.copy(alpha = 0.18f),
-                            Color(0xFF2E7D32).copy(alpha = 0.25f)
+                            Color.White.copy(alpha = 0.16f),
+                            Color(0xFF34D399).copy(alpha = 0.20f)
                         )
                     } else {
                         listOf(
-                            Color.White.copy(alpha = 0.90f),
-                            Color.Black.copy(alpha = 0.06f)
+                            Color.White.copy(alpha = 0.95f),
+                            Color.Black.copy(alpha = 0.08f)
                         )
                     }
                 )
@@ -88,13 +88,13 @@ fun BottomNavBar(
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 val tabCount = tabs.size
                 val itemWidth = maxWidth / tabCount
 
-                // 🌟 1. 弹性滑动高斯流光胶囊 (Elastic Gliding Highlight Pill)
+                // 🌟 弹性滑动微光胶囊
                 val animatedIndicatorOffset by animateDpAsState(
                     targetValue = itemWidth * selectedIndex + (itemWidth - (itemWidth * 0.88f)) / 2,
                     animationSpec = spring(
@@ -113,14 +113,14 @@ fun BottomNavBar(
                         .clip(RoundedCornerShape(20.dp))
                         .background(
                             if (isDark) {
-                                Color(0xFF4ADE80).copy(alpha = 0.16f)
+                                Color(0xFF34D399).copy(alpha = 0.15f)
                             } else {
-                                Color(0xFF2E7D32).copy(alpha = 0.10f)
+                                Color(0xFF059669).copy(alpha = 0.10f)
                             }
                         )
                 )
 
-                // 🌟 2. Tab 项内容层
+                // 🌟 Tab 项层
                 Row(
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -128,9 +128,10 @@ fun BottomNavBar(
                 ) {
                     tabs.forEachIndexed { index, tab ->
                         val isSelected = index == selectedIndex
+                        val targetRoute = tab.screen.route
 
                         val iconScale by animateFloatAsState(
-                            targetValue = if (isSelected) 1.14f else 1.0f,
+                            targetValue = if (isSelected) 1.12f else 1.0f,
                             animationSpec = spring(
                                 dampingRatio = 0.58f,
                                 stiffness = Spring.StiffnessMediumLow
@@ -149,13 +150,13 @@ fun BottomNavBar(
 
                         val iconTint by animateColorAsState(
                             targetValue = if (isSelected) activeColor else inactiveColor,
-                            animationSpec = tween(220),
+                            animationSpec = tween(200),
                             label = "tabIconColor"
                         )
 
                         val textColor by animateColorAsState(
                             targetValue = if (isSelected) activeColor else inactiveColor,
-                            animationSpec = tween(220),
+                            animationSpec = tween(200),
                             label = "tabTextColor"
                         )
 
@@ -171,8 +172,8 @@ fun BottomNavBar(
                                     indication = null
                                 ) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    if (currentRoute != tab.screen.route) {
-                                        navController.navigate(tab.screen.route) {
+                                    if (currentRoute != targetRoute) {
+                                        navController.navigate(targetRoute) {
                                             popUpTo(navController.graph.findStartDestination().id) {
                                                 saveState = true
                                             }

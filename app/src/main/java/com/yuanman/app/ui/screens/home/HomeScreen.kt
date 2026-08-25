@@ -5,20 +5,24 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -26,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
@@ -40,6 +43,8 @@ fun HomeScreen(
     onNavigateToAddRecord: (RecordType) -> Unit,
     onNavigateToDetail: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
+    onNavigateToList: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -47,33 +52,34 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     var showMonthPicker by remember { mutableStateOf(false) }
 
+    // 筛选标签：全部 / 支出 / 收入 (Bitget Wallet 风格)
+    var filterType by remember { mutableStateOf<RecordType?>(null) }
+
     // 长按快捷菜单状态
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onNavigateToAddRecord(defaultType)
-                },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("记一笔", fontWeight = FontWeight.Bold) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.padding(bottom = 76.dp)
-            )
+    // 过滤后的分组数据
+    val filteredGroupedRecords = remember(uiState.groupedRecords, filterType) {
+        if (filterType == null) {
+            uiState.groupedRecords
+        } else {
+            uiState.groupedRecords.mapValues { (_, records) ->
+                records.filter { it.record.type == filterType?.name }
+            }.filterValues { it.isNotEmpty() }
         }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 顶部月度收支概览卡片 (玉润微光质感)
-            MonthSummaryHeaderCard(
+            // 🌟 1. 顶部 Bitget Wallet 风格总资产看板
+            BitgetAssetDashboard(
                 year = uiState.selectedYear,
                 month = uiState.selectedMonth,
                 totalExpense = uiState.summary.totalExpense,
@@ -86,17 +92,45 @@ fun HomeScreen(
                 onPrevMonth = { viewModel.previousMonth() },
                 onNextMonth = { viewModel.nextMonth() },
                 onMonthClick = { showMonthPicker = true },
-                onCardClick = onNavigateToStatistics,
+                onAddRecord = { onNavigateToAddRecord(defaultType) },
+                onViewList = onNavigateToList,
+                onViewStats = onNavigateToStatistics,
+                onViewBudget = onNavigateToSettings,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // 账单明细列表
-            if (uiState.groupedRecords.isEmpty()) {
+            // 🌟 2. Bitget Wallet 分段切换 Tabs (全部 / 支出 / 收入)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BitgetFilterPill(
+                    title = "全部",
+                    isSelected = filterType == null,
+                    onClick = { filterType = null }
+                )
+                BitgetFilterPill(
+                    title = "仅支出",
+                    isSelected = filterType == RecordType.EXPENSE,
+                    onClick = { filterType = RecordType.EXPENSE }
+                )
+                BitgetFilterPill(
+                    title = "仅收入",
+                    isSelected = filterType == RecordType.INCOME,
+                    onClick = { filterType = RecordType.INCOME }
+                )
+            }
+
+            // 🌟 3. 账单列表 (Bitget 交易明细流)
+            if (filteredGroupedRecords.isEmpty()) {
                 EmptyStateView(
                     title = "${uiState.selectedYear}年${uiState.selectedMonth}月暂无账单",
-                    description = "点击下方「记一笔」按钮，记录生活中的每一笔美好",
+                    description = "点击上方「记一笔」按钮，记录生活中的每一笔收支",
                     actionButtonText = "立即记一笔",
                     onActionClick = { onNavigateToAddRecord(defaultType) },
                     modifier = Modifier.weight(1f)
@@ -106,9 +140,9 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp)
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 88.dp)
                 ) {
-                    uiState.groupedRecords.forEach { (dayTimestamp, records) ->
+                    filteredGroupedRecords.forEach { (dayTimestamp, records) ->
                         val daySum = uiState.daySummaries[dayTimestamp] ?: Pair(0L, 0L)
 
                         item(key = "header_$dayTimestamp") {
@@ -123,7 +157,7 @@ fun HomeScreen(
                             items = records,
                             key = { "record_${it.record.id}" }
                         ) { item ->
-                            RecordCardItem(
+                            BitgetTransactionItem(
                                 item = item,
                                 onClick = { onNavigateToDetail(item.record.id) },
                                 onLongClick = { activeMenuRecord = item }
@@ -168,7 +202,6 @@ fun HomeScreen(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                // 1. 再记一笔相同
                 ListItem(
                     headlineContent = { Text("复制再记一笔") },
                     supportingContent = { Text("以此分类与金额为模板快速新增一条今日账单") },
@@ -183,7 +216,6 @@ fun HomeScreen(
                         }
                 )
 
-                // 2. 查看详情
                 ListItem(
                     headlineContent = { Text("查看详情") },
                     leadingContent = {
@@ -198,7 +230,6 @@ fun HomeScreen(
                         }
                 )
 
-                // 3. 删除账单
                 ListItem(
                     headlineContent = { Text("删除该账单", color = MaterialTheme.colorScheme.error) },
                     leadingContent = {
@@ -230,8 +261,11 @@ fun HomeScreen(
     )
 }
 
+/**
+ * 🌟 Bitget Wallet 风格总资产看板 (Header Dashboard)
+ */
 @Composable
-fun MonthSummaryHeaderCard(
+private fun BitgetAssetDashboard(
     year: Int,
     month: Int,
     totalExpense: Long,
@@ -244,224 +278,335 @@ fun MonthSummaryHeaderCard(
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onMonthClick: () -> Unit,
-    onCardClick: () -> Unit,
+    onAddRecord: () -> Unit,
+    onViewList: () -> Unit,
+    onViewStats: () -> Unit,
+    onViewBudget: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
 
     Card(
-        modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .clickable(onClick = onCardClick),
+        modifier = modifier.clip(RoundedCornerShape(24.dp)),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(
             width = 1.dp,
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.65f),
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)
-                )
-            )
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         )
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            primaryContainer.copy(alpha = 0.40f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
-                        )
-                    )
-                )
                 .padding(18.dp)
         ) {
-            Column {
-                // 顶部：应用标题 + 月份选择器
+            // 顶栏：账本标识 + 月份选择胶囊
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = "沅满记账",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = primaryColor
-                        )
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor)
                     )
+                    Text(
+                        text = "沅满账本",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
-                    // 月份快捷切换控件 ( < 2026年8月 > )
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.4f))
+                // 月份胶囊
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        IconButton(
+                            onClick = onPrevMonth,
+                            modifier = Modifier.size(22.dp)
                         ) {
-                            IconButton(
-                                onClick = onPrevMonth,
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ChevronLeft,
-                                    contentDescription = "上个月",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            Text(
-                                text = "${year}年${month}月",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onMonthClick() }
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            Icon(
+                                imageVector = Icons.Default.ChevronLeft,
+                                contentDescription = "上月",
+                                modifier = Modifier.size(15.dp)
                             )
+                        }
 
-                            IconButton(
-                                onClick = onNextMonth,
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ChevronRight,
-                                    contentDescription = "下个月",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                        Text(
+                            text = "${year}年${month}月",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onMonthClick() }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+
+                        IconButton(
+                            onClick = onNextMonth,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "下月",
+                                modifier = Modifier.size(15.dp)
+                            )
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-                // 中部：本月总支出
+            // 核心金额展示 (大字号)
+            Text(
+                text = "本月总支出",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
-                    text = "本月总支出 (元)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline
+                    text = "¥",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
                 Text(
                     text = MoneyUtils.centsToYuanString(totalExpense, withGrouping = true),
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
+            }
 
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // 收入与结余胶囊标签行
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = "收入 ¥${MoneyUtils.centsToYuanString(totalIncome)}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = primaryColor
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (balance >= 0) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = if (balance >= 0) "结余 +¥${MoneyUtils.centsToYuanString(balance)}" else "结余 -¥${MoneyUtils.centsToYuanString(-balance)}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (balance >= 0) primaryColor else MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            // 预算进度
+            if (monthlyBudget > 0L) {
                 Spacer(modifier = Modifier.height(12.dp))
+                val budgetColor = when {
+                    budgetUsedPercent <= 0.7f -> primaryColor
+                    budgetUsedPercent <= 0.95f -> Color(0xFFFF9800)
+                    else -> MaterialTheme.colorScheme.error
+                }
 
-                // 月度预算进度温度计
-                if (monthlyBudget > 0L) {
-                    val budgetColor = when {
-                        budgetUsedPercent <= 0.7f -> primaryColor
-                        budgetUsedPercent <= 0.95f -> Color(0xFFFF9800)
-                        else -> MaterialTheme.colorScheme.error
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "预算 ¥${MoneyUtils.centsToYuanString(monthlyBudget)}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = if (remainingBudgetCents >= 0) "剩余 ¥${MoneyUtils.centsToYuanString(remainingBudgetCents)}" else "超支 ¥${MoneyUtils.centsToYuanString(-remainingBudgetCents)}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = budgetColor
+                            )
+                        )
                     }
 
-                    Column(
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    LinearProgressIndicator(
+                        progress = { budgetUsedPercent.coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "月度预算 ¥${MoneyUtils.centsToYuanString(monthlyBudget)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Text(
-                                text = if (remainingBudgetCents >= 0) "剩余 ¥${MoneyUtils.centsToYuanString(remainingBudgetCents)}" else "超支 ¥${MoneyUtils.centsToYuanString(-remainingBudgetCents)}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = budgetColor
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        LinearProgressIndicator(
-                            progress = { budgetUsedPercent.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = budgetColor,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-
-                        if (remainingBudgetCents > 0L && dailyAvailableCents > 0L) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "日均可用 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = budgetColor,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 }
+            }
 
-                // 底部：收入与结余
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text(
-                            text = "本月收入",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "¥${MoneyUtils.centsToYuanString(totalIncome, withGrouping = true)}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = primaryColor
-                        )
-                    }
+            Spacer(modifier = Modifier.height(16.dp))
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "本月结余",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "¥${MoneyUtils.centsToYuanString(balance, withGrouping = true)}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (balance >= 0) primaryColor else MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
+            // 🌟 4个核心快捷按钮 (Bitget Wallet Signature 4-Button Grid)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BitgetActionButton(
+                    icon = Icons.Default.Add,
+                    label = "记一笔",
+                    isHighlighted = true,
+                    onClick = onAddRecord
+                )
+                BitgetActionButton(
+                    icon = Icons.AutoMirrored.Filled.ReceiptLong,
+                    label = "查明细",
+                    isHighlighted = false,
+                    onClick = onViewList
+                )
+                BitgetActionButton(
+                    icon = Icons.Default.PieChart,
+                    label = "看统计",
+                    isHighlighted = false,
+                    onClick = onViewStats
+                )
+                BitgetActionButton(
+                    icon = Icons.Default.Tune,
+                    label = "设预算",
+                    isHighlighted = false,
+                    onClick = onViewBudget
+                )
             }
         }
     }
 }
 
 @Composable
-fun RecordCardItem(
+private fun BitgetActionButton(
+    icon: ImageVector,
+    label: String,
+    isHighlighted: Boolean,
+    onClick: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(vertical = 4.dp, horizontal = 6.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = if (isHighlighted) primaryColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(46.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (isHighlighted) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun BitgetFilterPill(
+    title: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val haptic = LocalHapticFeedback.current
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+        )
+    }
+}
+
+/**
+ * 🌟 Bitget Wallet 风格单条交易记录卡片
+ */
+@Composable
+fun BitgetTransactionItem(
     item: RecordWithCategory,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
@@ -470,6 +615,7 @@ fun RecordCardItem(
     val record = item.record
     val category = item.category
     val isExpense = record.type == RecordType.EXPENSE.name
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -477,6 +623,7 @@ fun RecordCardItem(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -505,38 +652,45 @@ fun RecordCardItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = category?.name ?: "未分类",
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (record.remark.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = record.remark,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Spacer(modifier = Modifier.height(2.dp))
+
+                val subtitle = when {
+                    record.remark.isNotBlank() && record.paymentMethod.isNotBlank() -> "${record.remark} · ${record.paymentMethod}"
+                    record.remark.isNotBlank() -> record.remark
+                    record.paymentMethod.isNotBlank() -> record.paymentMethod
+                    else -> "常规收支"
                 }
+
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
             Column(horizontalAlignment = Alignment.End) {
-                AmountDisplay(
-                    amountInCents = record.amount,
-                    type = if (isExpense) RecordType.EXPENSE else RecordType.INCOME,
-                    showSign = true,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
+                Text(
+                    text = if (isExpense) "-¥${MoneyUtils.centsToYuanString(record.amount)}" else "+¥${MoneyUtils.centsToYuanString(record.amount)}",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    ),
+                    color = if (isExpense) MaterialTheme.colorScheme.onSurface else primaryColor
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
                     text = DateTimeUtils.formatTime(record.recordTime),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
             }

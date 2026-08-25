@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 沅满·高级翠玉微光渐变底色 (Luxury Jade Gradient) -->
+<!-- 沅满·羊脂白玉温润渐变底色 (Suet White Jade) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -14,9 +14,9 @@
                 android:endX="96"
                 android:endY="96"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#10B981" />
-                <item android:offset="0.45" android:color="#059669" />
-                <item android:offset="1.0" android:color="#064E3B" />
+                <item android:offset="0.0" android:color="#FAF9F5" />
+                <item android:offset="0.5" android:color="#EFECE3" />
+                <item android:offset="1.0" android:color="#E2DDD0" />
             </gradient>
         </aapt:attr>
     </path>

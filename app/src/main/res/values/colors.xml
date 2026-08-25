@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary_color">#2E7D32</color>
-    <color name="primary_dark">#1B5E20</color>
-    <color name="splash_green">#2E7D32</color>
-    <color name="splash_wave_green">#A7F3D0</color>
+    <color name="primary_color">#284A3E</color>
+    <color name="primary_dark">#1A332B</color>
+    <color name="splash_suet_jade">#F5F2EB</color>
     <color name="accent_color">#E65100</color>
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>

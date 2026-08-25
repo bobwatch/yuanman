@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 品牌启动背景：沅满绿底 + 居中 logo -->
+<!-- 品牌启动背景：羊脂白玉底 + 居中 logo -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/splash_green" />
+    <item android:drawable="@color/splash_suet_jade" />
     <item
         android:width="120dp"
         android:height="120dp"
