@@ -36,6 +36,13 @@ class YuanmanApplication : Application() {
         )
     }
 
+    val updateManager: com.yuanman.app.utils.UpdateManager by lazy {
+        com.yuanman.app.utils.UpdateManager(
+            context = this,
+            scope = appScope
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this

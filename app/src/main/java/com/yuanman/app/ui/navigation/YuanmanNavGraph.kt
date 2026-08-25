@@ -208,7 +208,8 @@ fun YuanmanNavGraph(
                         preferencesRepository = app.preferencesRepository,
                         recordRepository = app.recordRepository,
                         categoryRepository = app.categoryRepository,
-                        syncManager = app.syncManager
+                        syncManager = app.syncManager,
+                        updateManager = app.updateManager
                     )
                 )
                 SettingsScreen(

@@ -15,6 +15,9 @@ import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.sync.FamilySyncManager
 import com.yuanman.app.utils.CsvExportUtils
 import com.yuanman.app.utils.JsonBackupUtils
+import com.yuanman.app.utils.UpdateInfo
+import com.yuanman.app.utils.UpdateManager
+import com.yuanman.app.utils.UpdateState
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -48,10 +51,13 @@ class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
-    val syncManager: FamilySyncManager
+    val syncManager: FamilySyncManager,
+    val updateManager: UpdateManager
 ) : ViewModel() {
 
     private val _isClearedSuccess = MutableStateFlow(false)
+
+    val updateState: StateFlow<UpdateState> = updateManager.updateState
 
     private val generalPrefsFlow = combine(
         preferencesRepository.themeMode,
@@ -96,6 +102,25 @@ class SettingsViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SettingsUiState(isLoading = true)
     )
+
+    init {
+        // 进入设置时自动在后台静默检查是否有最新版本 (以便如果已经有更新就直接亮起小红点)
+        viewModelScope.launch {
+            updateManager.checkForUpdates(isManual = false)
+        }
+    }
+
+    fun checkForUpdates() {
+        updateManager.checkForUpdates(isManual = true)
+    }
+
+    fun startDownload(info: UpdateInfo) {
+        updateManager.startDownload(info)
+    }
+
+    fun installApk(file: java.io.File) {
+        updateManager.installApk(file)
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
@@ -180,7 +205,8 @@ class SettingsViewModel(
         private val preferencesRepository: PreferencesRepository,
         private val recordRepository: RecordRepository,
         private val categoryRepository: CategoryRepository,
-        private val syncManager: FamilySyncManager
+        private val syncManager: FamilySyncManager,
+        private val updateManager: UpdateManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -188,7 +214,8 @@ class SettingsViewModel(
                 preferencesRepository,
                 recordRepository,
                 categoryRepository,
-                syncManager
+                syncManager,
+                updateManager
             ) as T
         }
     }
