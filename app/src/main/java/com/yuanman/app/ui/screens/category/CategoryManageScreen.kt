@@ -153,10 +153,81 @@ fun CategoryManageScreen(
             } else {
                 LazyColumn(
                     state = listState,
-                    userScrollEnabled = (draggingCategoryId == null),
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 16.dp)
+                        .pointerInput(uiState.currentType) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { startOffset ->
+                                    val matchedItem = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                        startOffset.y >= it.offset && startOffset.y <= it.offset + it.size
+                                    }
+                                    if (matchedItem != null) {
+                                        openSwipeItemId = null
+                                        draggingCategoryId = matchedItem.key as? Long
+                                        dragOffsetY = 0f
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val draggedId = draggingCategoryId ?: return@detectDragGesturesAfterLongPress
+                                    dragOffsetY += dragAmount.y
+
+                                    val currentSnapshot = orderedItems
+                                    val currentIndex = currentSnapshot.indexOfFirst { it.category.id == draggedId }
+                                    if (currentIndex < 0) return@detectDragGesturesAfterLongPress
+
+                                    val currentItemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggedId }
+                                    val itemHeight = (currentItemInfo?.size ?: 200).toFloat()
+                                    val threshold = itemHeight * 0.40f
+
+                                    // 🌟 确定性半卡片阈值换位：即时原子响应
+                                    if (dragOffsetY > threshold && currentIndex < currentSnapshot.size - 1) {
+                                        val reordered = currentSnapshot.toMutableList()
+                                        val movedItem = reordered.removeAt(currentIndex)
+                                        reordered.add(currentIndex + 1, movedItem)
+                                        orderedItems = reordered
+                                        dragOffsetY -= itemHeight
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    } else if (dragOffsetY < -threshold && currentIndex > 0) {
+                                        val reordered = currentSnapshot.toMutableList()
+                                        val movedItem = reordered.removeAt(currentIndex)
+                                        reordered.add(currentIndex - 1, movedItem)
+                                        orderedItems = reordered
+                                        dragOffsetY += itemHeight
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+
+                                    // 边缘自动滚屏
+                                    if (currentItemInfo != null) {
+                                        val viewportHeight = listState.layoutInfo.viewportSize.height.toFloat()
+                                        val currentTop = currentItemInfo.offset + dragOffsetY
+                                        if (currentTop < 60f) {
+                                            coroutineScope.launch { listState.scrollBy(-14f) }
+                                        } else if (currentTop + itemHeight > viewportHeight - 80f) {
+                                            coroutineScope.launch { listState.scrollBy(14f) }
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    val draggedId = draggingCategoryId
+                                    if (draggedId != null) {
+                                        viewModel.updateCategoryOrder(orderedItems.map { it.category.id })
+                                    }
+                                    draggingCategoryId = null
+                                    dragOffsetY = 0f
+                                },
+                                onDragCancel = {
+                                    val draggedId = draggingCategoryId
+                                    if (draggedId != null) {
+                                        viewModel.updateCategoryOrder(orderedItems.map { it.category.id })
+                                    }
+                                    draggingCategoryId = null
+                                    dragOffsetY = 0f
+                                }
+                            )
+                        },
                     contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -260,72 +331,10 @@ fun CategoryManageScreen(
                                             }
                                         }
 
-                                        // 🌟 国际通用 6 点悬浮拖动抓手 (全局 PointerLock 拖动手势)
+                                        // 🌟 国际通用 6 点悬浮拖动抓手
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
-                                                .pointerInput(category.id) {
-                                                    detectDragGesturesAfterLongPress(
-                                                        onDragStart = {
-                                                            openSwipeItemId = null
-                                                            draggingCategoryId = category.id
-                                                            dragOffsetY = 0f
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        },
-                                                        onDrag = { change, dragAmount ->
-                                                            // Consume the drag after the long press so LazyColumn and
-                                                            // the swipe detector cannot swallow the movement first.
-                                                            change.consume()
-                                                            dragOffsetY += dragAmount.y
-
-                                                            val itemsSnapshot = orderedItems
-                                                            val currentIndex = itemsSnapshot.indexOfFirst { it.category.id == category.id }
-                                                            if (currentIndex >= 0) {
-                                                                val currentItemInfo = listState.layoutInfo.visibleItemsInfo
-                                                                    .firstOrNull { it.key == category.id }
-                                                                val itemHeight = (currentItemInfo?.size ?: 200).toFloat()
-                                                                val threshold = itemHeight * 0.42f
-
-                                                                if (dragOffsetY > threshold && currentIndex < itemsSnapshot.size - 1) {
-                                                                    val reordered = itemsSnapshot.toMutableList()
-                                                                    val movedItem = reordered.removeAt(currentIndex)
-                                                                    reordered.add(currentIndex + 1, movedItem)
-                                                                    orderedItems = reordered
-                                                                    dragOffsetY -= itemHeight
-                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                                } else if (dragOffsetY < -threshold && currentIndex > 0) {
-                                                                    val reordered = itemsSnapshot.toMutableList()
-                                                                    val movedItem = reordered.removeAt(currentIndex)
-                                                                    reordered.add(currentIndex - 1, movedItem)
-                                                                    orderedItems = reordered
-                                                                    dragOffsetY += itemHeight
-                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                                }
-
-                                                                // 边缘自动滚屏
-                                                                if (currentItemInfo != null) {
-                                                                    val viewportHeight = listState.layoutInfo.viewportSize.height.toFloat()
-                                                                    val currentTop = currentItemInfo.offset + dragOffsetY
-                                                                    if (currentTop < 70f) {
-                                                                        coroutineScope.launch { listState.scrollBy(-14f) }
-                                                                    } else if (currentTop + itemHeight > viewportHeight - 90f) {
-                                                                        coroutineScope.launch { listState.scrollBy(14f) }
-                                                                    }
-                                                                }
-                                                            }
-                                                        },
-                                                        onDragEnd = {
-                                                            // 手指抬起结束拖动
-                                                            viewModel.updateCategoryOrder(orderedItems.map { it.category.id })
-                                                            draggingCategoryId = null
-                                                            dragOffsetY = 0f
-                                                        },
-                                                        onDragCancel = {
-                                                            draggingCategoryId = null
-                                                            dragOffsetY = 0f
-                                                        }
-                                                    )
-                                                },
+                                                .size(36.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
