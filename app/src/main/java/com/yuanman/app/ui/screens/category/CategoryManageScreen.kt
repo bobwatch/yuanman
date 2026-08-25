@@ -10,7 +10,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,7 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.LocalToastHostState
 import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,9 +58,15 @@ fun CategoryManageScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var orderedItems by remember { mutableStateOf(emptyList<CategoryWithUsage>()) }
+
+    // 🌟 120 FPS 物理无闪烁拖拽状态系统
     var draggingCategoryId by remember { mutableStateOf<Long?>(null) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var dragInitialIndex by remember { mutableIntStateOf(-1) }
+    var totalDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var currentTargetIndex by remember { mutableIntStateOf(-1) }
+
     val primaryColor = MaterialTheme.colorScheme.primary
+    val density = LocalDensity.current
 
     LaunchedEffect(uiState.currentType, uiState.categoriesWithUsage) {
         if (draggingCategoryId == null) {
@@ -164,84 +172,115 @@ fun CategoryManageScreen(
                                     }
                                     if (matchedItem != null) {
                                         openSwipeItemId = null
-                                        draggingCategoryId = matchedItem.key as? Long
-                                        dragOffsetY = 0f
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val categoryId = matchedItem.key as? Long
+                                        val index = orderedItems.indexOfFirst { it.category.id == categoryId }
+                                        if (index >= 0) {
+                                            draggingCategoryId = categoryId
+                                            dragInitialIndex = index
+                                            currentTargetIndex = index
+                                            totalDragOffsetY = 0f
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
                                     }
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val draggedId = draggingCategoryId ?: return@detectDragGesturesAfterLongPress
-                                    dragOffsetY += dragAmount.y
+                                    if (draggingCategoryId == null || dragInitialIndex < 0) return@detectDragGesturesAfterLongPress
+                                    totalDragOffsetY += dragAmount.y
 
-                                    val currentSnapshot = orderedItems
-                                    val currentIndex = currentSnapshot.indexOfFirst { it.category.id == draggedId }
-                                    if (currentIndex < 0) return@detectDragGesturesAfterLongPress
+                                    val currentItemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggingCategoryId }
+                                    val itemHeight = (currentItemInfo?.size ?: 180).toFloat()
+                                    val itemSpacing = with(density) { 8.dp.toPx() }
+                                    val slotHeight = itemHeight + itemSpacing
 
-                                    val currentItemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggedId }
-                                    val itemHeight = (currentItemInfo?.size ?: 200).toFloat()
-                                    val threshold = itemHeight * 0.40f
+                                    // 计算当前悬浮的目标插槽位置
+                                    val newTarget = (dragInitialIndex + (totalDragOffsetY / slotHeight).roundToInt())
+                                        .coerceIn(0, orderedItems.size - 1)
 
-                                    // 🌟 确定性半卡片阈值换位：即时原子响应
-                                    if (dragOffsetY > threshold && currentIndex < currentSnapshot.size - 1) {
-                                        val reordered = currentSnapshot.toMutableList()
-                                        val movedItem = reordered.removeAt(currentIndex)
-                                        reordered.add(currentIndex + 1, movedItem)
-                                        orderedItems = reordered
-                                        dragOffsetY -= itemHeight
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    } else if (dragOffsetY < -threshold && currentIndex > 0) {
-                                        val reordered = currentSnapshot.toMutableList()
-                                        val movedItem = reordered.removeAt(currentIndex)
-                                        reordered.add(currentIndex - 1, movedItem)
-                                        orderedItems = reordered
-                                        dragOffsetY += itemHeight
+                                    if (newTarget != currentTargetIndex) {
+                                        currentTargetIndex = newTarget
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     }
 
-                                    // 边缘自动滚屏
+                                    // 边缘自动平滑滚屏
                                     if (currentItemInfo != null) {
                                         val viewportHeight = listState.layoutInfo.viewportSize.height.toFloat()
-                                        val currentTop = currentItemInfo.offset + dragOffsetY
+                                        val currentTop = currentItemInfo.offset + totalDragOffsetY
                                         if (currentTop < 60f) {
-                                            coroutineScope.launch { listState.scrollBy(-14f) }
+                                            coroutineScope.launch { listState.scrollBy(-12f) }
                                         } else if (currentTop + itemHeight > viewportHeight - 80f) {
-                                            coroutineScope.launch { listState.scrollBy(14f) }
+                                            coroutineScope.launch { listState.scrollBy(12f) }
                                         }
                                     }
                                 },
                                 onDragEnd = {
-                                    val draggedId = draggingCategoryId
-                                    if (draggedId != null) {
-                                        viewModel.updateCategoryOrder(orderedItems.map { it.category.id })
+                                    if (dragInitialIndex >= 0 && currentTargetIndex >= 0 && dragInitialIndex != currentTargetIndex) {
+                                        val newList = orderedItems.toMutableList()
+                                        val movedItem = newList.removeAt(dragInitialIndex)
+                                        newList.add(currentTargetIndex, movedItem)
+                                        orderedItems = newList
+                                        viewModel.updateCategoryOrder(newList.map { it.category.id })
                                     }
                                     draggingCategoryId = null
-                                    dragOffsetY = 0f
+                                    dragInitialIndex = -1
+                                    currentTargetIndex = -1
+                                    totalDragOffsetY = 0f
                                 },
                                 onDragCancel = {
-                                    val draggedId = draggingCategoryId
-                                    if (draggedId != null) {
-                                        viewModel.updateCategoryOrder(orderedItems.map { it.category.id })
+                                    if (dragInitialIndex >= 0 && currentTargetIndex >= 0 && dragInitialIndex != currentTargetIndex) {
+                                        val newList = orderedItems.toMutableList()
+                                        val movedItem = newList.removeAt(dragInitialIndex)
+                                        newList.add(currentTargetIndex, movedItem)
+                                        orderedItems = newList
+                                        viewModel.updateCategoryOrder(newList.map { it.category.id })
                                     }
                                     draggingCategoryId = null
-                                    dragOffsetY = 0f
+                                    dragInitialIndex = -1
+                                    currentTargetIndex = -1
+                                    totalDragOffsetY = 0f
                                 }
                             )
                         },
                     contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(
+                    itemsIndexed(
                         items = orderedItems,
-                        key = { it.category.id }
-                    ) { item ->
+                        key = { _, item -> item.category.id }
+                    ) { index, item ->
                         val category = item.category
                         val usageCount = item.usageCount
                         val childTags = category.getTagList()
-                        val isDragging = draggingCategoryId == category.id
+                        val isCurrentDragging = draggingCategoryId == category.id
+
+                        // 🌟 物理弹簧计算位移与插槽让位（完全避免布局跳变与屏闪）
+                        val itemHeight = (listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == category.id }?.size ?: 180).toFloat()
+                        val itemSpacing = with(density) { 8.dp.toPx() }
+                        val slotHeight = itemHeight + itemSpacing
+
+                        val targetShiftY = if (draggingCategoryId != null && !isCurrentDragging) {
+                            if (dragInitialIndex < currentTargetIndex) {
+                                if (index > dragInitialIndex && index <= currentTargetIndex) -slotHeight else 0f
+                            } else if (dragInitialIndex > currentTargetIndex) {
+                                if (index >= currentTargetIndex && index < dragInitialIndex) slotHeight else 0f
+                            } else {
+                                0f
+                            }
+                        } else {
+                            0f
+                        }
+
+                        val animatedShiftY by animateFloatAsState(
+                            targetValue = targetShiftY,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "itemShiftY"
+                        )
 
                         val dragScale by animateFloatAsState(
-                            targetValue = if (isDragging) 1.035f else 1.0f,
+                            targetValue = if (isCurrentDragging) 1.035f else 1.0f,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioMediumBouncy,
                                 stiffness = Spring.StiffnessLow
@@ -249,7 +288,7 @@ fun CategoryManageScreen(
                             label = "dragScale"
                         )
                         val dragElevation by animateDpAsState(
-                            targetValue = if (isDragging) 10.dp else 0.5.dp,
+                            targetValue = if (isCurrentDragging) 12.dp else 0.5.dp,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioNoBouncy,
                                 stiffness = Spring.StiffnessMedium
@@ -257,7 +296,9 @@ fun CategoryManageScreen(
                             label = "dragElevation"
                         )
 
-                        // 🌟 拖动期间彻底禁用并隐藏侧滑删除按钮
+                        val effectiveTranslationY = if (isCurrentDragging) totalDragOffsetY else animatedShiftY
+
+                        // 🌟 拖动期间禁用侧滑删除
                         SwipeRevealDeleteItem(
                             itemKey = category.id,
                             openKey = openSwipeItemId,
@@ -268,21 +309,21 @@ fun CategoryManageScreen(
                             Card(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isDragging) MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp)
+                                    containerColor = if (isCurrentDragging) MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp)
                                     else MaterialTheme.colorScheme.surface
                                 ),
                                 elevation = CardDefaults.cardElevation(defaultElevation = dragElevation),
                                 border = BorderStroke(
-                                    if (isDragging) 1.5.dp else 0.5.dp,
-                                    if (isDragging) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    if (isCurrentDragging) 1.5.dp else 0.5.dp,
+                                    if (isCurrentDragging) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .zIndex(if (isDragging) 10f else 0f)
+                                    .zIndex(if (isCurrentDragging) 20f else 0f)
                                     .graphicsLayer {
                                         scaleX = dragScale
                                         scaleY = dragScale
-                                        translationY = if (isDragging) dragOffsetY else 0f
+                                        translationY = effectiveTranslationY
                                     }
                                     .clickable(enabled = draggingCategoryId == null) {
                                         onNavigateToEditCategory(category.id)
@@ -333,14 +374,13 @@ fun CategoryManageScreen(
 
                                         // 🌟 国际通用 6 点悬浮拖动抓手
                                         Box(
-                                            modifier = Modifier
-                                                .size(36.dp),
+                                            modifier = Modifier.size(36.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.DragIndicator,
                                                 contentDescription = "按住拖动排序",
-                                                tint = if (isDragging) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                                                tint = if (isCurrentDragging) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
                                                 modifier = Modifier.size(24.dp)
                                             )
                                         }
