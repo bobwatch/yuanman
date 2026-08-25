@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -39,7 +41,6 @@ import com.yuanman.app.utils.MoneyUtils
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onNavigateToDetail: (Long) -> Unit,
     onNavigateToEdit: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToList: () -> Unit = {},
@@ -259,7 +260,7 @@ fun HomeScreen(
         }
     }
 
-    // 长按快捷操作底部弹层（查看明细与复制功能）
+    // 长按快捷操作底部弹层（直接展示明细）
     if (activeMenuRecord != null) {
         val target = activeMenuRecord!!
         ModalBottomSheet(
@@ -270,33 +271,20 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "${target.category?.name ?: "未分类"} · ¥${MoneyUtils.centsToYuanString(target.record.amount)}",
+                    text = "账单详情",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                ListItem(
-                    headlineContent = { Text("查看明细") },
-                    supportingContent = { Text("查看该笔账单的完整创建与修改详情") },
-                    leadingContent = {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            val id = target.record.id
-                            activeMenuRecord = null
-                            onNavigateToDetail(id)
-                        }
-                )
+                RecordDetailCard(item = target)
 
                 ListItem(
                     headlineContent = { Text("复制一笔") },
-                    supportingContent = { Text("以此分类与金额为模板快速复制一条今日账单") },
                     leadingContent = {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     },

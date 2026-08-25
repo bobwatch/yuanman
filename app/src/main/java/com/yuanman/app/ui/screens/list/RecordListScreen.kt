@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
@@ -35,6 +37,7 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.MonthPickerModal
+import com.yuanman.app.ui.components.RecordDetailCard
 import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 import com.yuanman.app.ui.screens.home.BitgetTransactionItem
 import com.yuanman.app.utils.DateTimeUtils
@@ -45,7 +48,6 @@ import java.util.Calendar
 @Composable
 fun RecordListScreen(
     viewModel: RecordListViewModel,
-    onNavigateToDetail: (Long) -> Unit,
     onNavigateToEdit: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -239,17 +241,20 @@ fun RecordListScreen(
                     // 排序按钮
                     Box {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .clickable { showSortMenu = true }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
                                 Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序", modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(uiState.sortOrder.title, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(uiState.sortOrder.title, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
                         }
 
@@ -315,19 +320,20 @@ fun RecordListScreen(
 
                     // 自定义日期选择器 📅
                     item {
+                        val isCustomDaySelected = uiState.selectedDay != null && uiState.selectedDay != currentDay && uiState.selectedDay != (currentDay - 1)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (uiState.selectedDay != null && uiState.selectedDay != currentDay && uiState.selectedDay != (currentDay - 1)) {
-                                primaryColor.copy(alpha = 0.15f)
+                            color = if (isCustomDaySelected) {
+                                primaryColor.copy(alpha = 0.14f)
                             } else {
                                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                             },
                             border = BorderStroke(
-                                0.5.dp,
-                                if (uiState.selectedDay != null && uiState.selectedDay != currentDay && uiState.selectedDay != (currentDay - 1)) {
-                                    primaryColor
+                                1.dp,
+                                if (isCustomDaySelected) {
+                                    primaryColor.copy(alpha = 0.8f)
                                 } else {
-                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                                 }
                             ),
                             modifier = Modifier
@@ -348,9 +354,11 @@ fun RecordListScreen(
                                         pickerCal.get(Calendar.DAY_OF_MONTH)
                                     ).show()
                                 }
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = "选择日期",
@@ -360,12 +368,12 @@ fun RecordListScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = if (uiState.selectedDay != null) "${uiState.selectedMonth}月${uiState.selectedDay}日" else "选特定日期",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = if (uiState.selectedDay != null) FontWeight.Bold else FontWeight.Normal,
                                     color = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.onSurface
                                 )
                                 if (uiState.selectedDay != null) {
-                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Icon(
                                         imageVector = Icons.Default.Close,
                                         contentDescription = "清除天筛选",
@@ -490,7 +498,7 @@ fun RecordListScreen(
                             ) {
                                 BitgetTransactionItem(
                                     item = item,
-                                    onClick = { onNavigateToDetail(item.record.id) },
+                                    onClick = { onNavigateToEdit(item.record.id) },
                                     onLongClick = { activeMenuRecord = item }
                                 )
                             }
@@ -514,7 +522,7 @@ fun RecordListScreen(
         onDismiss = { showMonthPicker = false }
     )
 
-    // 长按操作 BottomSheet
+    // 长按操作 BottomSheet：直接展示账单明细
     if (activeMenuRecord != null) {
         val target = activeMenuRecord!!
         ModalBottomSheet(
@@ -524,58 +532,25 @@ fun RecordListScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "账单操作",
+                    text = "账单详情",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                ListItem(
-                    headlineContent = { Text("编辑账单") },
-                    leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            val id = target.record.id
-                            activeMenuRecord = null
-                            onNavigateToEdit(id)
-                        }
-                )
+                RecordDetailCard(item = target)
 
                 ListItem(
-                    headlineContent = { Text("复制这笔账单") },
+                    headlineContent = { Text("复制一笔") },
                     leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
                             viewModel.copyRecord(target.record)
-                            activeMenuRecord = null
-                        }
-                )
-
-                ListItem(
-                    headlineContent = { Text("查看详情") },
-                    leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null) },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            val id = target.record.id
-                            activeMenuRecord = null
-                            onNavigateToDetail(id)
-                        }
-                )
-
-                ListItem(
-                    headlineContent = { Text("删除该账单", color = MaterialTheme.colorScheme.error) },
-                    leadingContent = {
-                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                    },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            recordToDelete = target
                             activeMenuRecord = null
                         }
                 )
@@ -612,21 +587,25 @@ private fun ModernFilterPill(
 
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = if (selected) primaryColor.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        color = if (selected) primaryColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
         border = BorderStroke(
-            0.5.dp,
-            if (selected) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            1.dp,
+            if (selected) primaryColor.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         ),
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
-        Text(
-            text = text,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) primaryColor else MaterialTheme.colorScheme.onSurface
-        )
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) primaryColor else MaterialTheme.colorScheme.onSurface
+            )
+        }
     }
 }

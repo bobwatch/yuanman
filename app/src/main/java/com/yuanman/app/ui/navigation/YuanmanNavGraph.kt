@@ -31,8 +31,6 @@ import com.yuanman.app.ui.screens.category.AddEditCategoryScreen
 import com.yuanman.app.ui.screens.category.AddEditCategoryViewModel
 import com.yuanman.app.ui.screens.category.CategoryManageScreen
 import com.yuanman.app.ui.screens.category.CategoryManageViewModel
-import com.yuanman.app.ui.screens.detail.RecordDetailScreen
-import com.yuanman.app.ui.screens.detail.RecordDetailViewModel
 import com.yuanman.app.ui.screens.home.HomeScreen
 import com.yuanman.app.ui.screens.home.HomeViewModel
 import com.yuanman.app.ui.screens.list.RecordListScreen
@@ -139,9 +137,6 @@ fun YuanmanNavGraph(
                 )
                 HomeScreen(
                     viewModel = homeViewModel,
-                    onNavigateToDetail = { recordId ->
-                        navController.navigate(Screen.RecordDetail.createRoute(recordId))
-                    },
                     onNavigateToEdit = { recordId ->
                         navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
                     },
@@ -166,9 +161,6 @@ fun YuanmanNavGraph(
                 )
                 RecordListScreen(
                     viewModel = listViewModel,
-                    onNavigateToDetail = { recordId ->
-                        navController.navigate(Screen.RecordDetail.createRoute(recordId))
-                    },
                     onNavigateToEdit = { recordId ->
                         navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
                     }
@@ -264,35 +256,7 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 7. 账单详情
-            composable(
-                route = Screen.RecordDetail.route,
-                arguments = listOf(
-                    navArgument("recordId") {
-                        type = NavType.LongType
-                    }
-                )
-            ) { backStackEntry ->
-                val recordId = backStackEntry.arguments?.getLong("recordId") ?: 0L
-
-                val detailViewModel: RecordDetailViewModel = viewModel(
-                    key = "detail_$recordId",
-                    factory = RecordDetailViewModel.Factory(
-                        recordId = recordId,
-                        recordRepository = app.recordRepository
-                    )
-                )
-
-                RecordDetailScreen(
-                    viewModel = detailViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToEdit = { editRecordId ->
-                        navController.navigate(Screen.AddEditRecord.createRoute(recordId = editRecordId))
-                    }
-                )
-            }
-
-            // 8. 新增 / 编辑分类及其子标签 (全屏二级页面)
+            // 7. 新增 / 编辑分类及其子标签 (全屏二级页面)
             composable(
                 route = Screen.AddEditCategory.route,
                 arguments = listOf(
