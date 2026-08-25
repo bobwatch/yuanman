@@ -1,6 +1,8 @@
 package com.yuanman.app.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,8 +45,8 @@ sealed class BottomNavTab(
     object List : BottomNavTab(
         screen = Screen.RecordList,
         title = "明细",
-        selectedIcon = Icons.Filled.ReceiptLong,
-        unselectedIcon = Icons.Outlined.ReceiptLong
+        selectedIcon = Icons.AutoMirrored.Filled.ReceiptLong,
+        unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong
     )
 
     object Statistics : BottomNavTab(
@@ -69,6 +71,6 @@ sealed class BottomNavTab(
     )
 
     companion object {
-        val ALL = listOf(Home, List, Category, Settings)
+        val ALL = listOf(Home, List, Statistics, Settings)
     }
 }

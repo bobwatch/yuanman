@@ -9,6 +9,7 @@ import com.yuanman.app.data.model.*
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
+import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 
@@ -18,7 +19,9 @@ data class StatisticsUiState(
     val selectedType: RecordType = RecordType.EXPENSE,
     val summary: MonthSummaryData = MonthSummaryData(),
     val categoryStats: List<CategoryStatItem> = emptyList(),
+    val selectedCategory: CategoryStatItem? = null,
     val dailyTrends: List<DailyTrendItem> = emptyList(),
+    val smartInsight: String = "",
     val isLoading: Boolean = false
 )
 
@@ -31,6 +34,7 @@ class StatisticsViewModel(
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
     private val _selectedType = MutableStateFlow(RecordType.EXPENSE)
+    private val _selectedCategory = MutableStateFlow<CategoryStatItem?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val monthRecordsFlow = combine(_selectedYear, _selectedMonth) { year, month ->
@@ -43,8 +47,9 @@ class StatisticsViewModel(
         _selectedYear,
         _selectedMonth,
         _selectedType,
+        _selectedCategory,
         monthRecordsFlow
-    ) { year, month, type, rawRecords ->
+    ) { year, month, type, activeCategory, rawRecords ->
 
         var totalExp = 0L
         var totalInc = 0L
@@ -111,6 +116,34 @@ class StatisticsViewModel(
         val maxExp = dailyTrends.maxOfOrNull { it.expenseAmount } ?: 0L
         val avgExp = if (daysInMonth > 0) totalExp / daysInMonth else 0L
 
+        // 生成智能消费洞察生活画像
+        val topCategory = categoryStats.firstOrNull()
+        val insightText = if (type == RecordType.EXPENSE) {
+            if (totalExp == 0L) {
+                "本月暂无支出记录，继续保持理性的生活节奏～ ✨"
+            } else if (topCategory != null) {
+                val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
+                when {
+                    topCategory.category.name.contains("餐") ->
+                        "本月最大开销是「${topCategory.category.name}」(占 $pctStr)，好好吃饭是最好的投资，但也别忘了荤素搭配、适度下厨哦～ 🍲"
+                    topCategory.category.name.contains("购") || topCategory.category.name.contains("买") ->
+                        "本月「${topCategory.category.name}」支出占了 $pctStr，理性拔草，给生活添置真正能带来幸福感的好物 🛍️"
+                    topCategory.category.name.contains("住") || topCategory.category.name.contains("房") ->
+                        "固定居住成本占了 $pctStr，守护属于自己的一方温馨天地，辛苦啦 🏡"
+                    else ->
+                        "本月消费主要集中在「${topCategory.category.name}」(占 $pctStr)，日均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，财务结构清晰有序 📈"
+                }
+            } else {
+                "用心对待每一笔收支，让生活更有底气与从容 🌿"
+            }
+        } else {
+            if (totalInc == 0L) {
+                "本月暂未记录收入，期待每一份努力换来丰硕回报 🌱"
+            } else {
+                "本月累计收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一笔进账都是辛勤付出的见证，继续加油！ 🎉"
+            }
+        }
+
         StatisticsUiState(
             selectedYear = year,
             selectedMonth = month,
@@ -125,7 +158,9 @@ class StatisticsViewModel(
                 avgDailyExpense = avgExp
             ),
             categoryStats = categoryStats,
+            selectedCategory = activeCategory,
             dailyTrends = dailyTrends,
+            smartInsight = insightText,
             isLoading = false
         )
     }.stateIn(
@@ -141,10 +176,36 @@ class StatisticsViewModel(
     fun selectMonth(year: Int, month: Int) {
         _selectedYear.value = year
         _selectedMonth.value = month
+        _selectedCategory.value = null
+    }
+
+    fun previousMonth() {
+        var y = _selectedYear.value
+        var m = _selectedMonth.value - 1
+        if (m < 1) {
+            m = 12
+            y -= 1
+        }
+        selectMonth(y, m)
+    }
+
+    fun nextMonth() {
+        var y = _selectedYear.value
+        var m = _selectedMonth.value + 1
+        if (m > 12) {
+            m = 1
+            y += 1
+        }
+        selectMonth(y, m)
     }
 
     fun selectType(type: RecordType) {
         _selectedType.value = type
+        _selectedCategory.value = null
+    }
+
+    fun selectCategory(item: CategoryStatItem?) {
+        _selectedCategory.value = item
     }
 
     class Factory(

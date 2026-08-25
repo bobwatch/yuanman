@@ -1,5 +1,10 @@
 package com.yuanman.app.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -33,6 +38,13 @@ import com.yuanman.app.ui.screens.stats.StatisticsViewModel
 import com.yuanman.app.ui.screens.settings.SettingsScreen
 import com.yuanman.app.ui.screens.settings.SettingsViewModel
 
+private val TAB_ROUTES = listOf(
+    Screen.Home.route,
+    Screen.RecordList.route,
+    Screen.Statistics.route,
+    Screen.Settings.route
+)
+
 @Composable
 fun YuanmanNavGraph(
     navController: NavHostController,
@@ -48,7 +60,69 @@ fun YuanmanNavGraph(
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                val fromIndex = TAB_ROUTES.indexOf(fromRoute)
+                val toIndex = TAB_ROUTES.indexOf(toRoute)
+
+                if (fromIndex != -1 && toIndex != -1) {
+                    if (toIndex > fromIndex) {
+                        slideInHorizontally(
+                            initialOffsetX = { fullWidth -> fullWidth },
+                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        slideInHorizontally(
+                            initialOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                        )
+                    }
+                } else {
+                    slideInHorizontally(
+                        initialOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                    )
+                }
+            },
+            exitTransition = {
+                val fromRoute = initialState.destination.route
+                val toRoute = targetState.destination.route
+                val fromIndex = TAB_ROUTES.indexOf(fromRoute)
+                val toIndex = TAB_ROUTES.indexOf(toRoute)
+
+                if (fromIndex != -1 && toIndex != -1) {
+                    if (toIndex > fromIndex) {
+                        slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> fullWidth },
+                            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                        )
+                    }
+                } else {
+                    slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                    )
+                }
+            },
+            popEnterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { fullWidth -> -fullWidth },
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                )
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                )
+            }
         ) {
             // 1. 首页
             composable(Screen.Home.route) {
@@ -77,7 +151,8 @@ fun YuanmanNavGraph(
                 val listViewModel: RecordListViewModel = viewModel(
                     factory = RecordListViewModel.Factory(
                         recordRepository = app.recordRepository,
-                        categoryRepository = app.categoryRepository
+                        categoryRepository = app.categoryRepository,
+                        preferencesRepository = app.preferencesRepository
                     )
                 )
                 RecordListScreen(
@@ -88,7 +163,7 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 3. 数据统计 (由首页点击卡片进入)
+            // 3. 数据统计
             composable(Screen.Statistics.route) {
                 val statsViewModel: StatisticsViewModel = viewModel(
                     factory = StatisticsViewModel.Factory(
@@ -97,22 +172,24 @@ fun YuanmanNavGraph(
                     )
                 )
                 StatisticsScreen(
-                    viewModel = statsViewModel,
-                    onNavigateBack = { navController.popBackStack() }
+                    viewModel = statsViewModel
                 )
             }
 
-            // 4. 分类管理
+            // 4. 分类管理 (二级页面)
             composable(Screen.CategoryManage.route) {
                 val categoryViewModel: CategoryManageViewModel = viewModel(
                     factory = CategoryManageViewModel.Factory(
                         categoryRepository = app.categoryRepository
                     )
                 )
-                CategoryManageScreen(viewModel = categoryViewModel)
+                CategoryManageScreen(
+                    viewModel = categoryViewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
 
-            // 5. 设置
+            // 5. 设置 / 我的
             composable(Screen.Settings.route) {
                 val settingsViewModel: SettingsViewModel = viewModel(
                     factory = SettingsViewModel.Factory(
@@ -121,7 +198,12 @@ fun YuanmanNavGraph(
                         categoryRepository = app.categoryRepository
                     )
                 )
-                SettingsScreen(viewModel = settingsViewModel)
+                SettingsScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateToCategoryManage = {
+                        navController.navigate(Screen.CategoryManage.route)
+                    }
+                )
             }
 
             // 6. 新增 / 编辑账单
@@ -155,7 +237,10 @@ fun YuanmanNavGraph(
 
                 AddEditRecordScreen(
                     viewModel = addEditViewModel,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToCategoryManage = {
+                        navController.navigate(Screen.CategoryManage.route)
+                    }
                 )
             }
 

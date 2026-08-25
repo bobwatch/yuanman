@@ -23,10 +23,13 @@ import com.yuanman.app.ui.components.AlertInfoDialog
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryManageScreen(
     viewModel: CategoryManageViewModel,
+    onNavigateBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -39,7 +42,14 @@ fun CategoryManageScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("分类管理", fontWeight = FontWeight.Bold) }
+                title = { Text("分类管理", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    }
+                }
             )
         },
         floatingActionButton = {

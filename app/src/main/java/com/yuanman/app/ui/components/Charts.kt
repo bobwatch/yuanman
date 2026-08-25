@@ -1,11 +1,14 @@
 package com.yuanman.app.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,31 +23,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryStatItem
 import com.yuanman.app.data.model.DailyTrendItem
-import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.utils.MoneyUtils
+import kotlin.math.atan2
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
- * 支出/收入分类占比环形图
+ * 支出/收入分类占比高阶交互环形图
  */
 @Composable
 fun DonutChart(
     items: List<CategoryStatItem>,
     totalAmount: Long,
     centerTitle: String = "总支出",
+    selectedCategory: CategoryStatItem? = null,
+    onSelectCategory: (CategoryStatItem?) -> Unit = {},
     modifier: Modifier = Modifier,
     strokeWidth: Dp = 26.dp,
-    chartSize: Dp = 200.dp
+    chartSize: Dp = 210.dp
 ) {
     val animatedProgress = remember { Animatable(0f) }
 
@@ -62,7 +71,54 @@ fun DonutChart(
     ) {
         val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(items, totalAmount) {
+                    detectTapGestures { offset ->
+                        if (items.isEmpty() || totalAmount <= 0L) return@detectTapGestures
+
+                        val centerX = size.width / 2f
+                        val centerY = size.height / 2f
+                        val dx = offset.x - centerX
+                        val dy = offset.y - centerY
+                        val dist = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+
+                        val innerR = (size.width - strokeWidth.toPx() * 2) / 2f
+                        val outerR = size.width / 2f
+
+                        if (dist < innerR) {
+                            // 点击中心重置选择
+                            onSelectCategory(null)
+                            return@detectTapGestures
+                        }
+
+                        if (dist <= outerR + 10f) {
+                            // 计算点击角度（从 12 点钟方向即 -90 度开始算）
+                            var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            if (angle < -90f) {
+                                angle += 450f
+                            } else {
+                                angle += 90f
+                            }
+
+                            var currentAngle = 0f
+                            for (item in items) {
+                                val sweep = item.percentage * 360f
+                                if (angle >= currentAngle && angle <= currentAngle + sweep) {
+                                    if (selectedCategory?.category?.id == item.category.id) {
+                                        onSelectCategory(null)
+                                    } else {
+                                        onSelectCategory(item)
+                                    }
+                                    return@detectTapGestures
+                                }
+                                currentAngle += sweep
+                            }
+                        }
+                    }
+                }
+        ) {
             val strokeWidthPx = strokeWidth.toPx()
             val arcSize = Size(size.width - strokeWidthPx, size.height - strokeWidthPx)
             val topLeft = Offset(strokeWidthPx / 2, strokeWidthPx / 2)
@@ -79,19 +135,29 @@ fun DonutChart(
                 )
             } else {
                 var startAngle = -90f
-                val gapAngle = if (items.size > 1) 2f else 0f
+                val gapAngle = if (items.size > 1) 2.5f else 0f
 
                 items.forEach { item ->
+                    val isSelected = selectedCategory?.category?.id == item.category.id
+                    val currentStroke = if (isSelected) strokeWidthPx + 6f else strokeWidthPx
                     val sweepAngle = (item.percentage * 360f * animatedProgress.value) - gapAngle
+
                     if (sweepAngle > 0f) {
+                        val baseColor = Color(item.category.colorHex)
+                        val drawColor = if (selectedCategory != null && !isSelected) {
+                            baseColor.copy(alpha = 0.35f)
+                        } else {
+                            baseColor
+                        }
+
                         drawArc(
-                            color = Color(item.category.colorHex),
+                            color = drawColor,
                             startAngle = startAngle + (gapAngle / 2),
                             sweepAngle = sweepAngle,
                             useCenter = false,
                             topLeft = topLeft,
                             size = arcSize,
-                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+                            style = Stroke(width = currentStroke, cap = StrokeCap.Round)
                         )
                     }
                     startAngle += item.percentage * 360f * animatedProgress.value
@@ -99,32 +165,64 @@ fun DonutChart(
             }
         }
 
-        // 中心文字
+        // 中心文字区（点击可重置）
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier
+                .padding(20.dp)
+                .clip(CircleShape)
+                .clickable { onSelectCategory(null) }
         ) {
-            Text(
-                text = centerTitle,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.outline
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "¥${MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)}",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            if (selectedCategory != null) {
+                Text(
+                    text = selectedCategory.category.name,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(selectedCategory.category.colorHex)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "¥${MoneyUtils.centsToYuanString(selectedCategory.totalAmount, withGrouping = true)}",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${String.format(java.util.Locale.CHINA, "%.1f", selectedCategory.percentage * 100)}% · ${selectedCategory.count}笔",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                Text(
+                    text = centerTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "¥${MoneyUtils.centsToYuanString(totalAmount, withGrouping = true)}",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "轻触扇区看明细",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }
 
 /**
- * 每日支出趋势柱状图
+ * 每日支出趋势柱状图 (带有平滑过渡与高亮指示器)
  */
 @Composable
 fun BarTrendChart(
@@ -169,8 +267,8 @@ fun BarTrendChart(
         if (selectedIndex != null && selectedIndex!! in items.indices) {
             val selected = items[selectedIndex!!]
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(bottom = 8.dp)
@@ -195,12 +293,12 @@ fun BarTrendChart(
                 }
             }
         } else {
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(30.dp))
         }
 
         // Canvas 绘制每日柱子
         val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        val defaultBarColor = barColor.copy(alpha = 0.8f)
+        val defaultBarColor = barColor.copy(alpha = 0.85f)
 
         Canvas(
             modifier = Modifier
@@ -218,7 +316,7 @@ fun BarTrendChart(
             val barGap = 4f
             val totalGap = barGap * (count - 1)
             val barWidth = max((size.width - totalGap) / count, 4f)
-            val maxHeight = size.height - 30.dp.toPx()
+            val maxHeight = size.height - 24.dp.toPx()
 
             // 绘制底线
             drawLine(
@@ -271,12 +369,14 @@ fun BarTrendChart(
 }
 
 /**
- * 分类支出排行榜列表项
+ * 分类支出排行榜列表项（支持点击联动高亮）
  */
 @Composable
 fun CategoryRankItem(
     item: CategoryStatItem,
     rank: Int,
+    isSelected: Boolean = false,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val categoryColor = Color(item.category.colorHex)
@@ -291,10 +391,18 @@ fun CategoryRankItem(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
+    val itemBgColor by animateColorAsState(
+        targetValue = if (isSelected) categoryColor.copy(alpha = 0.12f) else Color.Transparent,
+        label = "rankItemBg"
+    )
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(itemBgColor)
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 排名序号
@@ -335,7 +443,10 @@ fun CategoryRankItem(
             ) {
                 Text(
                     text = item.category.name,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
+                    )
                 )
 
                 Text(
@@ -348,7 +459,7 @@ fun CategoryRankItem(
 
             // 进度条
             LinearProgressIndicator(
-                progress = item.percentage,
+                progress = { item.percentage },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)

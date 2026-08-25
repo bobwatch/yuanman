@@ -1,14 +1,17 @@
 package com.yuanman.app.ui.screens.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
+import com.yuanman.app.utils.CsvExportUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -16,9 +19,25 @@ data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val defaultRecordType: RecordType = RecordType.EXPENSE,
     val defaultPaymentMethod: String = PaymentMethod.defaultMethod(),
+    val monthlyBudget: Long = 0L,
+    val privacyMode: Boolean = false,
+    val hapticEnabled: Boolean = true,
     val totalRecordCount: Int = 0,
+    val allRecords: List<RecordWithCategory> = emptyList(),
     val isClearedSuccess: Boolean = false,
     val isLoading: Boolean = false
+)
+
+private data class GeneralPrefs(
+    val theme: ThemeMode,
+    val defaultType: RecordType,
+    val defaultMethod: String
+)
+
+private data class FeaturePrefs(
+    val budget: Long,
+    val privacy: Boolean,
+    val haptic: Boolean
 )
 
 class SettingsViewModel(
@@ -29,18 +48,33 @@ class SettingsViewModel(
 
     private val _isClearedSuccess = MutableStateFlow(false)
 
-    val uiState: StateFlow<SettingsUiState> = combine(
+    private val generalPrefsFlow = combine(
         preferencesRepository.themeMode,
         preferencesRepository.defaultRecordType,
-        preferencesRepository.defaultPaymentMethod,
+        preferencesRepository.defaultPaymentMethod
+    ) { theme, type, method -> GeneralPrefs(theme, type, method) }
+
+    private val featurePrefsFlow = combine(
+        preferencesRepository.monthlyBudget,
+        preferencesRepository.privacyMode,
+        preferencesRepository.hapticFeedbackEnabled
+    ) { budget, privacy, haptic -> FeaturePrefs(budget, privacy, haptic) }
+
+    val uiState: StateFlow<SettingsUiState> = combine(
+        generalPrefsFlow,
+        featurePrefsFlow,
         recordRepository.getAllRecords(),
         _isClearedSuccess
-    ) { theme, defaultType, defaultMethod, records, isCleared ->
+    ) { general, feature, records, isCleared ->
         SettingsUiState(
-            themeMode = theme,
-            defaultRecordType = defaultType,
-            defaultPaymentMethod = defaultMethod,
+            themeMode = general.theme,
+            defaultRecordType = general.defaultType,
+            defaultPaymentMethod = general.defaultMethod,
+            monthlyBudget = feature.budget,
+            privacyMode = feature.privacy,
+            hapticEnabled = feature.haptic,
             totalRecordCount = records.size,
+            allRecords = records,
             isClearedSuccess = isCleared,
             isLoading = false
         )
@@ -66,6 +100,29 @@ class SettingsViewModel(
         viewModelScope.launch {
             preferencesRepository.setDefaultPaymentMethod(method)
         }
+    }
+
+    fun setMonthlyBudget(budgetCents: Long) {
+        viewModelScope.launch {
+            preferencesRepository.setMonthlyBudget(budgetCents)
+        }
+    }
+
+    fun setPrivacyMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPrivacyMode(enabled)
+        }
+    }
+
+    fun setHapticFeedbackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setHapticFeedbackEnabled(enabled)
+        }
+    }
+
+    fun exportRecordsCsv(context: Context) {
+        val records = uiState.value.allRecords
+        CsvExportUtils.shareCsvContent(context, records)
     }
 
     /**

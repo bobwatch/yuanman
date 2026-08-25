@@ -17,7 +17,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.MonthPickerModal
@@ -34,6 +36,9 @@ fun RecordListScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showMonthPicker by remember { mutableStateOf(false) }
 
+    var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
+    var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -43,12 +48,12 @@ fun RecordListScreen(
                     OutlinedTextField(
                         value = uiState.searchQuery,
                         onValueChange = { viewModel.updateSearchQuery(it) },
-                        placeholder = { Text("搜索备注、分类或支付方式...", fontSize = 14.sp) },
+                        placeholder = { Text("搜索备注、分类或支付方式...", fontSize = 13.sp) },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.Search,
                                 contentDescription = "搜索",
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         },
                         trailingIcon = {
@@ -57,7 +62,7 @@ fun RecordListScreen(
                                     Icon(
                                         Icons.Default.Clear,
                                         contentDescription = "清除",
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -72,36 +77,55 @@ fun RecordListScreen(
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(46.dp)
                     )
                 },
                 actions = {
-                    // 月份选择按钮
+                    // 月份快捷切换按钮 (< 2026年8月 >)
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                        modifier = Modifier
-                            .padding(end = 12.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { showMonthPicker = true }
+                        modifier = Modifier.padding(end = 12.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
+                            IconButton(
+                                onClick = { viewModel.previousMonth() },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronLeft,
+                                    contentDescription = "上月",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
                             Text(
                                 text = "${uiState.selectedYear}年${uiState.selectedMonth}月",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showMonthPicker = true }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+
+                            IconButton(
+                                onClick = { viewModel.nextMonth() },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = "下月",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                            )
-                            Icon(
-                                Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            }
                         }
                     }
                 }
@@ -118,7 +142,7 @@ fun RecordListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(vertical = 6.dp)
+                    .padding(vertical = 4.dp)
             ) {
                 // 类型筛选：全部、支出、收入
                 LazyRow(
@@ -130,26 +154,26 @@ fun RecordListScreen(
                         FilterChip(
                             selected = uiState.selectedType == null,
                             onClick = { viewModel.selectType(null) },
-                            label = { Text("全部类型") }
+                            label = { Text("全部类型", fontSize = 12.sp) }
                         )
                     }
                     item {
                         FilterChip(
                             selected = uiState.selectedType == RecordType.EXPENSE,
                             onClick = { viewModel.selectType(RecordType.EXPENSE) },
-                            label = { Text("仅看支出") }
+                            label = { Text("仅看支出", fontSize = 12.sp) }
                         )
                     }
                     item {
                         FilterChip(
                             selected = uiState.selectedType == RecordType.INCOME,
                             onClick = { viewModel.selectType(RecordType.INCOME) },
-                            label = { Text("仅看收入") }
+                            label = { Text("仅看收入", fontSize = 12.sp) }
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 // 分类筛选
                 val relevantCategories = uiState.availableCategories.filter {
@@ -168,6 +192,7 @@ fun RecordListScreen(
                                 label = {
                                     Text(
                                         "全部分类",
+                                        fontSize = 11.sp,
                                         fontWeight = if (uiState.selectedCategoryId == null) FontWeight.Bold else FontWeight.Normal,
                                         color = if (uiState.selectedCategoryId == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
@@ -182,6 +207,7 @@ fun RecordListScreen(
                                 label = {
                                     Text(
                                         cat.name,
+                                        fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
@@ -194,13 +220,13 @@ fun RecordListScreen(
 
             // 统计条
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -212,14 +238,14 @@ fun RecordListScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            text = "支出 ${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
+                            text = if (uiState.isPrivacyMode) "支出 ****" else "支出 ${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.error
                             )
                         )
                         Text(
-                            text = "收入 ${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
+                            text = if (uiState.isPrivacyMode) "收入 ****" else "收入 ${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary
@@ -260,7 +286,9 @@ fun RecordListScreen(
                         ) { item ->
                             RecordCardItem(
                                 item = item,
-                                onClick = { onNavigateToDetail(item.record.id) }
+                                isPrivacyMode = uiState.isPrivacyMode,
+                                onClick = { onNavigateToDetail(item.record.id) },
+                                onLongClick = { activeMenuRecord = item }
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
@@ -279,5 +307,82 @@ fun RecordListScreen(
             showMonthPicker = false
         },
         onDismiss = { showMonthPicker = false }
+    )
+
+    // 长按快捷操作底部弹层
+    if (activeMenuRecord != null) {
+        val target = activeMenuRecord!!
+        ModalBottomSheet(
+            onDismissRequest = { activeMenuRecord = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "账单操作 · ${target.category?.name ?: "未分类"} ¥${MoneyUtils.centsToYuanString(target.record.amount)}",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                ListItem(
+                    headlineContent = { Text("复制再记一笔") },
+                    supportingContent = { Text("以此分类与金额为模板快速新增一条今日账单") },
+                    leadingContent = {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            viewModel.copyRecord(target.record)
+                            activeMenuRecord = null
+                        }
+                )
+
+                ListItem(
+                    headlineContent = { Text("查看详情") },
+                    leadingContent = {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            val id = target.record.id
+                            activeMenuRecord = null
+                            onNavigateToDetail(id)
+                        }
+                )
+
+                ListItem(
+                    headlineContent = { Text("删除该账单", color = MaterialTheme.colorScheme.error) },
+                    leadingContent = {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            recordToDelete = target
+                            activeMenuRecord = null
+                        }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
+    ConfirmDeleteDialog(
+        visible = recordToDelete != null,
+        title = "删除账单",
+        message = "确定要删除分类为「${recordToDelete?.category?.name}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
+        onConfirm = {
+            recordToDelete?.let { viewModel.deleteRecord(it) }
+            recordToDelete = null
+        },
+        onDismiss = { recordToDelete = null }
     )
 }

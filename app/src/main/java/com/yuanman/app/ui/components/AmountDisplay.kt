@@ -25,7 +25,8 @@ fun AmountDisplay(
     fontSize: TextUnit = 18.sp,
     modifier: Modifier = Modifier,
     customColor: Color? = null,
-    fontWeight: FontWeight = FontWeight.SemiBold
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    isPrivacyMode: Boolean = false
 ) {
     val isDark = MaterialTheme.colorScheme.background.red < 0.5f
 
@@ -35,12 +36,20 @@ fun AmountDisplay(
         null -> MaterialTheme.colorScheme.onSurface
     }
 
-    val displayStr = MoneyUtils.formatCurrency(
-        cents = amountInCents,
-        showSign = showSign && type != null,
-        isExpense = type == RecordType.EXPENSE,
-        withGrouping = true
-    )
+    val displayStr = if (isPrivacyMode) {
+        when {
+            showSign && type == RecordType.EXPENSE -> "-¥ ****"
+            showSign && type == RecordType.INCOME -> "+¥ ****"
+            else -> "¥ ****"
+        }
+    } else {
+        MoneyUtils.formatCurrency(
+            cents = amountInCents,
+            showSign = showSign && type != null,
+            isExpense = type == RecordType.EXPENSE,
+            withGrouping = true
+        )
+    }
 
     Row(
         modifier = modifier,

@@ -5,27 +5,32 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
+import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
+import com.yuanman.app.ui.components.KeypadEngine
 import com.yuanman.app.utils.MoneyUtils
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
 
 data class AddEditUiState(
     val isEditMode: Boolean = false,
     val recordId: Long = 0L,
     val type: RecordType = RecordType.EXPENSE,
-    val amountInput: String = "",
+    val expression: String = "",
     val selectedCategory: CategoryEntity? = null,
     val recordTime: Long = System.currentTimeMillis(),
     val remark: String = "",
     val paymentMethod: String = PaymentMethod.defaultMethod(),
     val availableCategories: List<CategoryEntity> = emptyList(),
+    val quickRemarks: List<String> = emptyList(),
+    val hapticEnabled: Boolean = true,
     val errorMessage: String? = null,
+    val savedFeedbackMessage: String? = null,
     val isSavedSuccess: Boolean = false,
     val isLoading: Boolean = false
 )
@@ -48,7 +53,13 @@ class AddEditRecordViewModel(
     val uiState: StateFlow<AddEditUiState> = _uiState.asStateFlow()
 
     init {
-        // 加载偏好设置默认支付方式
+        // 加载偏好设置
+        viewModelScope.launch {
+            preferencesRepository.hapticFeedbackEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(hapticEnabled = enabled) }
+            }
+        }
+
         viewModelScope.launch {
             if (recordId <= 0L) {
                 preferencesRepository.defaultPaymentMethod.firstOrNull()?.let { method ->
@@ -62,7 +73,7 @@ class AddEditRecordViewModel(
             }
         }
 
-        // 加载分类列表
+        // 加载分类列表与快捷备注
         viewModelScope.launch {
             _uiState.map { it.type }.distinctUntilChanged().collectLatest { currentType ->
                 categoryRepository.getCategoriesByType(currentType).collectLatest { list ->
@@ -73,28 +84,36 @@ class AddEditRecordViewModel(
                         } else {
                             list.firstOrNull()
                         }
+                        val remarks = if (newSelected != null) {
+                            CategoryIconHelper.getPresetRemarks(newSelected.name)
+                        } else {
+                            emptyList()
+                        }
                         state.copy(
                             availableCategories = list,
-                            selectedCategory = newSelected
+                            selectedCategory = newSelected,
+                            quickRemarks = remarks
                         )
                     }
                 }
             }
         }
 
-        // 如果是编辑模式，加载已有数据
+        // 编辑模式加载
         if (recordId > 0L) {
             viewModelScope.launch {
                 val recordWithCategory = recordRepository.getRecordByIdDirect(recordId)
                 if (recordWithCategory != null) {
                     val record = recordWithCategory.record
                     val recType = RecordType.fromString(record.type)
+                    val cat = recordWithCategory.category
                     _uiState.update {
                         it.copy(
                             isEditMode = true,
                             type = recType,
-                            amountInput = MoneyUtils.centsToYuanString(record.amount, withGrouping = false),
-                            selectedCategory = recordWithCategory.category,
+                            expression = MoneyUtils.centsToYuanString(record.amount, withGrouping = false),
+                            selectedCategory = cat,
+                            quickRemarks = if (cat != null) CategoryIconHelper.getPresetRemarks(cat.name) else emptyList(),
                             recordTime = record.recordTime,
                             remark = record.remark,
                             paymentMethod = record.paymentMethod
@@ -111,15 +130,19 @@ class AddEditRecordViewModel(
         }
     }
 
-    fun setAmountInput(amount: String) {
-        // 允许空、数字和小数点，最多两位小数
-        if (amount.isEmpty() || amount.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
-            _uiState.update { it.copy(amountInput = amount, errorMessage = null) }
-        }
+    fun setExpression(expr: String) {
+        _uiState.update { it.copy(expression = expr, errorMessage = null) }
     }
 
     fun selectCategory(category: CategoryEntity) {
-        _uiState.update { it.copy(selectedCategory = category, errorMessage = null) }
+        val remarks = CategoryIconHelper.getPresetRemarks(category.name)
+        _uiState.update {
+            it.copy(
+                selectedCategory = category,
+                quickRemarks = remarks,
+                errorMessage = null
+            )
+        }
     }
 
     fun setRecordTime(timestamp: Long) {
@@ -130,6 +153,18 @@ class AddEditRecordViewModel(
         _uiState.update { it.copy(remark = remark) }
     }
 
+    fun selectQuickRemark(tag: String) {
+        val current = _uiState.value.remark.trim()
+        val updated = if (current.isEmpty()) {
+            tag
+        } else if (current.contains(tag)) {
+            current
+        } else {
+            "$current $tag"
+        }
+        _uiState.update { it.copy(remark = updated) }
+    }
+
     fun setPaymentMethod(method: String) {
         _uiState.update { it.copy(paymentMethod = method) }
     }
@@ -138,25 +173,36 @@ class AddEditRecordViewModel(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    fun saveRecord() {
-        val state = _uiState.value
+    fun clearFeedbackMessage() {
+        _uiState.update { it.copy(savedFeedbackMessage = null) }
+    }
 
-        // 校验金额
-        if (!MoneyUtils.isValidAmountInput(state.amountInput)) {
-            _uiState.update { it.copy(errorMessage = "请输入大于 0 的有效金额（最多保留两位小数）") }
+    fun saveRecord(continueNext: Boolean = false) {
+        val state = _uiState.value
+        val expr = state.expression.trim()
+
+        if (expr.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "请输入记账金额") }
             return
         }
 
-        // 校验分类
+        // 解析并计算金额
+        val computedBd: BigDecimal? = if (expr.contains("+") || expr.contains("-")) {
+            KeypadEngine.evaluateExpression(expr)
+        } else {
+            try { BigDecimal(expr) } catch (e: Exception) { null }
+        }
+
+        if (computedBd == null || computedBd <= BigDecimal.ZERO) {
+            _uiState.update { it.copy(errorMessage = "请输入大于 0 的有效金额") }
+            return
+        }
+
+        val amountInCents = computedBd.multiply(BigDecimal(100)).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact()
+
         val category = state.selectedCategory
         if (category == null) {
             _uiState.update { it.copy(errorMessage = "请选择一个分类") }
-            return
-        }
-
-        val amountInCents = MoneyUtils.parseYuanToCents(state.amountInput)
-        if (amountInCents <= 0L) {
-            _uiState.update { it.copy(errorMessage = "金额必须大于 0") }
             return
         }
 
@@ -178,7 +224,19 @@ class AddEditRecordViewModel(
                 recordRepository.insertRecord(recordEntity)
             }
 
-            _uiState.update { it.copy(isSavedSuccess = true) }
+            if (continueNext) {
+                // 连记模式：清空金额与备注，重置时间为当前，弹出成功气泡
+                _uiState.update {
+                    it.copy(
+                        expression = "",
+                        remark = "",
+                        recordTime = System.currentTimeMillis(),
+                        savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」✨ 可继续记下一笔"
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(isSavedSuccess = true) }
+            }
         }
     }
 
