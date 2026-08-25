@@ -408,6 +408,15 @@ fun MonthSummaryHeaderCard(
                             color = budgetColor,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
+
+                        if (remainingBudgetCents > 0L && dailyAvailableCents > 0L) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "日均可用 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))

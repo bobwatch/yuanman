@@ -1,25 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 启动屏与桌面 logo：居中对称圆满环与双层翡翠水韵 -->
+<!-- 启动屏 Logo：纯白居中正圆 + 透光双层水韵 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="100dp"
     android:height="100dp"
     android:viewportWidth="100"
     android:viewportHeight="100">
 
-    <!-- 剪裁为完美居中正圆 (中心 50, 50，半径 30) -->
+    <!-- 居中正圆剪裁 (中心 50, 50，半径 30) -->
     <group>
         <clip-path android:pathData="M20,50 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
 
-        <!-- 底层微澜水波 -->
+        <!-- 深层水波 -->
         <path
-            android:fillColor="#5EEAD4"
-            android:fillAlpha="0.45"
-            android:pathData="M18,50 C27,55 39,55 50,50 C61,45 73,45 82,50 L85,85 L15,85 Z" />
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.22"
+            android:pathData="M18,51 C27,47 39,47 50,51 C61,55 73,55 82,51 L85,85 L15,85 Z" />
 
-        <!-- 表层明快翡翠水面 -->
+        <!-- 浅层水波 -->
         <path
-            android:fillColor="#A7F3D0"
-            android:pathData="M18,50 C27,45 39,45 50,50 C61,55 73,55 82,50 L85,85 L15,85 Z" />
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.60"
+            android:pathData="M18,51 C27,55 39,55 50,51 C61,47 73,47 82,51 L85,85 L15,85 Z" />
     </group>
 
     <!-- 纯白圆环 -->
@@ -27,7 +28,7 @@
         android:pathData="M20,50 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="4.5"
+        android:strokeWidth="4.2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 </vector>
