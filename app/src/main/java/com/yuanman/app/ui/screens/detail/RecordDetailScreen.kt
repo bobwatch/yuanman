@@ -26,7 +26,6 @@ import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,26 +36,21 @@ fun RecordDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val toast = com.yuanman.app.ui.components.LocalToastHostState.current
+    val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCopyDialog by remember { mutableStateOf(false) }
-    var deleteUndone by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) {
-            deleteUndone = false
-            toast.show(
+            val result = snackbarHostState.showSnackbar(
                 message = "账单已删除",
-                type = com.yuanman.app.ui.components.ToastType.INFO,
                 actionLabel = "撤销",
-                onAction = {
-                    deleteUndone = true
-                    viewModel.undoDelete()
-                },
-                durationMillis = 4500L
+                withDismissAction = true,
+                duration = SnackbarDuration.Long
             )
-            delay(4500L)
-            if (!deleteUndone) {
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete()
+            } else {
                 onNavigateBack()
             }
         }
@@ -64,14 +58,14 @@ fun RecordDetailScreen(
 
     LaunchedEffect(uiState.isCopiedSuccess) {
         if (uiState.isCopiedSuccess) {
-            toast.success("已成功复制一笔账单")
+            snackbarHostState.showSnackbar("已成功复制一笔账单")
             viewModel.resetCopiedFlag()
         }
     }
 
     LaunchedEffect(Unit) {
         viewModel.operationErrors.collect { message ->
-            toast.error(message)
+            snackbarHostState.showSnackbar(message)
         }
     }
 
@@ -82,6 +76,7 @@ fun RecordDetailScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("账单详情", fontWeight = FontWeight.Bold) },
