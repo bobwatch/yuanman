@@ -12,14 +12,16 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,6 +59,7 @@ fun AddEditRecordScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showPaymentSheet by remember { mutableStateOf(false) }
 
     // 聚焦与软键盘状态（避免逐帧重组，保证极致丝滑）
     var isRemarkFocused by remember { mutableStateOf(false) }
@@ -93,15 +96,67 @@ fun AddEditRecordScreen(
         }
     }
 
+    val isExpense = uiState.type == RecordType.EXPENSE
+    val themeActiveColor = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        text = if (uiState.isEditMode) "编辑账单" else "记一笔",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
+                    if (uiState.isEditMode) {
+                        Text(
+                            text = "编辑账单",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    } else {
+                        // 🌟 顶部极简分段胶囊（支出 / 收入）
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 支出
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isExpense) MaterialTheme.colorScheme.error else Color.Transparent,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { viewModel.setRecordType(RecordType.EXPENSE) }
+                                ) {
+                                    Text(
+                                        text = "支出",
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isExpense) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isExpense) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                // 收入
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (!isExpense) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { viewModel.setRecordType(RecordType.INCOME) }
+                                ) {
+                                    Text(
+                                        text = "收入",
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                                        fontSize = 13.sp,
+                                        fontWeight = if (!isExpense) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (!isExpense) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -117,6 +172,14 @@ fun AddEditRecordScreen(
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
+                    } else if (onNavigateToCategoryManage != null) {
+                        IconButton(onClick = { onNavigateToCategoryManage() }) {
+                            Icon(
+                                Icons.Default.Tune,
+                                contentDescription = "管理分类",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             )
@@ -128,113 +191,79 @@ fun AddEditRecordScreen(
                 .padding(innerPadding)
                 .imePadding()
         ) {
-            // 支出 / 收入 切换 Tab
-            TabRow(
-                selectedTabIndex = if (uiState.type == RecordType.EXPENSE) 0 else 1,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary
-            ) {
-                Tab(
-                    selected = uiState.type == RecordType.EXPENSE,
-                    onClick = { viewModel.setRecordType(RecordType.EXPENSE) },
-                    text = {
-                        Text(
-                            text = "支出",
-                            fontSize = 15.sp,
-                            fontWeight = if (uiState.type == RecordType.EXPENSE) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                )
-                Tab(
-                    selected = uiState.type == RecordType.INCOME,
-                    onClick = { viewModel.setRecordType(RecordType.INCOME) },
-                    text = {
-                        Text(
-                            text = "收入",
-                            fontSize = 15.sp,
-                            fontWeight = if (uiState.type == RecordType.INCOME) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                )
-            }
-
-            // 可滚动的内容区
-            val scrollState = rememberScrollState()
-
-            Column(
+            // 🌟 1. 金额与当前分类主展示区 (精致主题色轻卡片)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = themeActiveColor.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, themeActiveColor.copy(alpha = 0.2f)),
                 modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // 金额展示卡片
-                val amountColor = if (uiState.type == RecordType.EXPENSE) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.primary
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
+                    // 当前选中的分类胶囊
+                    if (uiState.selectedCategory != null) {
+                        val category = uiState.selectedCategory!!
+                        val catColor = Color(category.colorHex)
+                        Surface(
+                            shape = CircleShape,
+                            color = catColor.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, catColor.copy(alpha = 0.4f))
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "¥",
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = amountColor,
-                                    modifier = Modifier.padding(bottom = 2.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                CategoryIconView(
+                                    iconName = category.iconName,
+                                    colorHex = category.colorHex,
+                                    size = 22.dp,
+                                    iconSize = 13.dp
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = uiState.expression.ifEmpty { "0.00" },
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = amountColor,
-                                    letterSpacing = (-0.5).sp
+                                    text = category.name,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = catColor,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
                                 )
                             }
+                        }
+                    } else {
+                        Text(
+                            text = "请选择分类",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        )
+                    }
 
-                            if (uiState.selectedCategory != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = Color(uiState.selectedCategory!!.colorHex).copy(alpha = 0.15f)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        CategoryIconView(
-                                            iconName = uiState.selectedCategory!!.iconName,
-                                            colorHex = uiState.selectedCategory!!.colorHex,
-                                            size = 20.dp,
-                                            iconSize = 12.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = uiState.selectedCategory!!.name,
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                color = Color(uiState.selectedCategory!!.colorHex),
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        )
-                                    }
-                                }
-                            }
+                    // 大字号金额与算式预览
+                    Column(horizontalAlignment = Alignment.End) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "¥",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = themeActiveColor,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = uiState.expression.ifEmpty { "0.00" },
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = themeActiveColor,
+                                letterSpacing = (-0.5).sp
+                            )
                         }
 
                         // 算式计算结果预览
@@ -242,156 +271,183 @@ fun AddEditRecordScreen(
                         if (resultPreview != null && KeypadEngine.hasOperator(uiState.expression)) {
                             Text(
                                 text = "= ¥${resultPreview.setScale(2, RoundingMode.HALF_UP)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.padding(top = 2.dp)
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = themeActiveColor.copy(alpha = 0.8f)
                             )
                         }
                     }
                 }
+            }
 
-                if (uiState.isEditMode) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+            // 🌟 2. 主分类选择矩阵 (占主要空间，4列排布，滑动顺畅)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                items(uiState.availableCategories, key = { it.id }) { category ->
+                    val isSelected = uiState.selectedCategory?.id == category.id
+                    val categoryColor = Color(category.colorHex)
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { viewModel.selectCategory(category) }
+                            .padding(vertical = 4.dp)
                     ) {
-                        TextButton(
-                            onClick = { viewModel.setExpression("") },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.RestartAlt,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("清空重输")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // 分类选择区标头
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "选择分类",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    if (onNavigateToCategoryManage != null) {
-                        Row(
+                        Box(
+                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { onNavigateToCategoryManage() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "管理分类",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "管理分类",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) categoryColor.copy(alpha = 0.18f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                                 )
+                                .then(
+                                    if (isSelected) {
+                                        Modifier.border(2.dp, categoryColor, CircleShape)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            CategoryIconView(
+                                iconName = category.iconName,
+                                colorHex = category.colorHex,
+                                size = 48.dp,
+                                iconSize = 24.dp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = category.name,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // 末尾便捷「+ 自定义」管理入口
+                if (onNavigateToCategoryManage != null) {
+                    item(key = "manage_category_item") {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onNavigateToCategoryManage() }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                        CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "管理分类",
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "自定义",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                ),
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 分类网格
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 150.dp)
-                ) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
+            // 🌟 3. 紧贴键盘上方的一体化属性栏与快捷备注
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                // 快捷推荐备注标签行（加大字号与点击区域）
+                if (uiState.quickRemarks.isNotEmpty()) {
+                    LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(uiState.availableCategories) { category ->
-                            val isSelected = uiState.selectedCategory?.id == category.id
-                            val categoryColor = Color(category.colorHex)
+                        items(uiState.quickRemarks) { tag ->
+                            val isSelected = uiState.remark.contains(tag)
 
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) themeActiveColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = if (isSelected) BorderStroke(1.dp, themeActiveColor.copy(alpha = 0.6f)) else null,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        if (isSelected) categoryColor.copy(alpha = 0.15f) else Color.Transparent
-                                    )
-                                    .border(
-                                        width = if (isSelected) 1.5.dp else 0.dp,
-                                        color = if (isSelected) categoryColor else Color.Transparent,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                    .clickable { viewModel.selectCategory(category) }
-                                    .padding(vertical = 6.dp, horizontal = 2.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.selectQuickRemark(tag) }
                             ) {
-                                CategoryIconView(
-                                    iconName = category.iconName,
-                                    colorHex = category.colorHex,
-                                    size = 36.dp,
-                                    iconSize = 18.dp
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = category.name,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
-                                    ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center
+                                    text = tag,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) themeActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
 
-                // 极简记账时间与支付方式行 (日历 Icon + 日期选择胶囊)
+                // 一体化属性条：[日期时分] + [支付方式(选填)] + [备注输入框]（字号与图标全面增大）
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 日期时间选择胶囊
+                    // 日期与时分选择胶囊
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 val cal = Calendar.getInstance().apply { timeInMillis = uiState.recordTime }
-                                DatePickerDialog(
+                                val datePicker = DatePickerDialog(
                                     context,
                                     { _, year, month, dayOfMonth ->
                                         cal.set(Calendar.YEAR, year)
                                         cal.set(Calendar.MONTH, month)
                                         cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
-                                        TimePickerDialog(
+                                        val timePicker = TimePickerDialog(
                                             context,
                                             { _, hourOfDay, minute ->
                                                 cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
@@ -401,12 +457,16 @@ fun AddEditRecordScreen(
                                             cal.get(Calendar.HOUR_OF_DAY),
                                             cal.get(Calendar.MINUTE),
                                             true
-                                        ).show()
+                                        )
+                                        timePicker.setTitle("选择时间 (时:分)")
+                                        timePicker.show()
                                     },
                                     cal.get(Calendar.YEAR),
                                     cal.get(Calendar.MONTH),
                                     cal.get(Calendar.DAY_OF_MONTH)
-                                ).show()
+                                )
+                                datePicker.setTitle("选择日期")
+                                datePicker.show()
                             }
                     ) {
                         Row(
@@ -415,92 +475,130 @@ fun AddEditRecordScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.CalendarToday,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
+                                contentDescription = "选择日期时间",
+                                modifier = Modifier.size(16.dp),
                                 tint = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = DateTimeUtils.formatDateTime(uiState.recordTime),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                text = DateTimeUtils.formatRecordDateShort(uiState.recordTime),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // 支付方式胶囊 (非必填，默认为空，点击调起弹窗)
+                    val hasPaymentMethod = uiState.paymentMethod.isNotBlank()
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (hasPaymentMethod) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        },
+                        border = if (hasPaymentMethod) {
+                            BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                        } else null,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showPaymentSheet = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (hasPaymentMethod) Icons.Default.CreditCard else Icons.Outlined.CreditCard,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (hasPaymentMethod) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (hasPaymentMethod) uiState.paymentMethod else "支付方式",
+                                fontSize = 13.sp,
+                                fontWeight = if (hasPaymentMethod) FontWeight.Bold else FontWeight.Medium,
+                                color = if (hasPaymentMethod) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                            if (hasPaymentMethod) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "清除支付方式",
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable { viewModel.setPaymentMethod("") },
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                                 )
-                            )
-                        }
-                    }
-
-                    // 支付方式滑动行
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(PaymentMethod.ALL) { method ->
-                            FilterChip(
-                                selected = uiState.paymentMethod == method,
-                                onClick = { viewModel.setPaymentMethod(method) },
-                                label = { Text(method, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 快捷推荐备注
-                if (uiState.quickRemarks.isNotEmpty()) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(uiState.quickRemarks) { tag ->
-                            val isSelected = uiState.remark.contains(tag)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { viewModel.selectQuickRemark(tag) },
-                                label = {
-                                    Text(
-                                        text = tag,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-
-                // 🌟 备注输入框 (原生硬件级顺滑响应，带完成按钮与清空按钮)
-                OutlinedTextField(
-                    value = uiState.remark,
-                    onValueChange = { viewModel.setRemark(it) },
-                    label = { Text("备注说明") },
-                    placeholder = { Text("如：朋友聚餐、买咖啡等") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        focusManager.clearFocus(force = true)
-                        isRemarkFocused = false
-                    }),
-                    trailingIcon = {
-                        if (uiState.remark.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setRemark("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "清空", modifier = Modifier.size(16.dp))
                             }
                         }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { isRemarkFocused = it.isFocused },
-                    shape = RoundedCornerShape(12.dp)
-                )
+                    }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    // 备注输入框
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.EditNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            BasicTextField(
+                                value = uiState.remark,
+                                onValueChange = { viewModel.setRemark(it) },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.sp
+                                ),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    focusManager.clearFocus(force = true)
+                                    isRemarkFocused = false
+                                }),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .onFocusChanged { isRemarkFocused = it.isFocused },
+                                decorationBox = { innerTextField ->
+                                    if (uiState.remark.isEmpty()) {
+                                        Text(
+                                            text = "备注说明...",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                fontSize = 13.sp
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                            if (uiState.remark.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "清空备注",
+                                    modifier = Modifier
+                                        .size(15.dp)
+                                        .clickable { viewModel.setRemark("") },
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 🌟 底部沉浸式计算器键盘 (键盘弹起时隐藏，平滑稳定无逐帧重组)
+            // 🌟 4. 底部沉浸式计算器键盘 (键盘弹起时隐藏，平滑稳定)
             if (!isKeyboardOpen) {
                 CustomKeypad(
                     expression = uiState.expression,
@@ -510,6 +608,82 @@ fun AddEditRecordScreen(
                     isEditMode = uiState.isEditMode,
                     hapticEnabled = uiState.hapticEnabled
                 )
+            }
+        }
+    }
+
+    // 🌟 支付方式选择 ModalBottomSheet
+    if (showPaymentSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPaymentSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "选择支付方式",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    if (uiState.paymentMethod.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                viewModel.setPaymentMethod("")
+                                showPaymentSheet = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text("清空/不设", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(PaymentMethod.ALL) { method ->
+                        val isSelected = uiState.paymentMethod == method
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.setPaymentMethod(method)
+                                    showPaymentSheet = false
+                                }
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp)
+                            ) {
+                                Text(
+                                    text = method,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,33 +1,136 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 启动屏 Logo：羊脂白玉·森林暮松 (精致半径 27) -->
+<!-- 启动屏官方规范：288x288 视口，安全区域大尺寸直出：大水波Logo + 加大加粗「沅满记账」+ 放大清晰 Slogan -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="100dp"
-    android:height="100dp"
-    android:viewportWidth="100"
-    android:viewportHeight="100">
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
 
-    <!-- 居中正圆剪裁 -->
+    <!-- 🌟 1. 顶部水波圆环 Logo (中心 144, 98, 半径 33 大尺寸) -->
     <group>
-        <clip-path android:pathData="M23,50 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0" />
+        <clip-path android:pathData="M 111, 98 a 33,33 0 1,0 66,0 a 33,33 0 1,0 -66,0" />
 
         <!-- 深层水波 -->
         <path
             android:fillColor="#4F7767"
             android:fillAlpha="0.35"
-            android:pathData="M21,51 C30,45 40,45 50,51 C60,57 70,57 79,51 L83,83 L17,83 Z" />
+            android:pathData="M 105, 99 C 120, 92 132, 92 144, 99 C 156, 106 168, 106 183, 99 L 183, 136 L 105, 136 Z" />
 
         <!-- 浅层水波 -->
         <path
             android:fillColor="#3D6657"
-            android:pathData="M21,51 C30,57 40,57 50,51 C60,45 70,45 79,51 L83,83 L17,83 Z" />
+            android:pathData="M 105, 99 C 120, 106 132, 106 144, 99 C 156, 92 168, 92 183, 99 L 183, 136 L 105, 136 Z" />
     </group>
 
-    <!-- 主圆环 -->
+    <!-- 主圆环边框 -->
     <path
-        android:pathData="M23,50 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0"
+        android:pathData="M 111, 98 a 33,33 0 1,0 66,0 a 33,33 0 1,0 -66,0"
         android:fillColor="#00000000"
         android:strokeColor="#284A3E"
-        android:strokeWidth="4.0"
+        android:strokeWidth="4.2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
+
+    <!-- 🌟 2. 中间品牌名称：「沅 满 记 账」(加大字体 & 加粗清晰笔画) -->
+    <!-- 沅 -->
+    <path
+        android:strokeColor="#284A3E"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 86, 149 C 85, 150.5 84, 152 84, 152.5 M 86, 157 C 85, 158.5 84, 160 84, 160.5 M 83, 167 L 88, 162 M 92, 149 L 104, 149 M 90, 154 L 106, 154 M 96, 155 Q 94, 162 90, 166 M 100, 155 L 100, 163 Q 100, 167 104, 167 L 106, 167" />
+
+    <!-- 满 -->
+    <path
+        android:strokeColor="#284A3E"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 115, 149 C 114, 150.5 113, 152 113, 152.5 M 115, 157 C 114, 158.5 113, 160 113, 160.5 M 112, 167 L 117, 162 M 120, 149 L 135, 149 M 124, 147 L 124, 151 M 131, 147 L 131, 151 M 121, 154 L 121, 167 M 121, 154 L 134, 154 L 134, 167 M 127.5, 154 L 127.5, 164.5 M 124, 159 L 126, 161.5 M 131, 159 L 129, 161.5" />
+
+    <!-- 记 -->
+    <path
+        android:strokeColor="#284A3E"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 152, 149 L 153, 151 M 149, 153.5 L 154.5, 153.5 L 154.5, 161.5 L 149.5, 167 M 149.5, 167 L 155.5, 161.5 M 158, 149 L 169, 149 L 169, 154.5 L 159.5, 154.5 L 159.5, 163.5 Q 159.5, 167 163.5, 167 L 169, 167" />
+
+    <!-- 账 -->
+    <path
+        android:strokeColor="#284A3E"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 181, 148.5 L 181, 163 L 188, 163 L 188, 148.5 Z M 181, 153.5 L 188, 153.5 M 181, 158.5 L 188, 158.5 M 182, 164 L 180, 167.5 M 187, 164 L 189, 167.5 M 197, 147.5 L 192, 152 M 191, 154.5 L 202, 154.5 M 194, 152 L 194, 166.5 L 197.5, 164 M 194, 159 L 201.5, 167" />
+
+    <!-- 🌟 3. 底部 Slogan：「简单记账 · 井井有条」(放大清晰) -->
+    <!-- 简 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 77, 180 L 86, 180 M 79.5, 178.5 L 79.5, 181.5 M 83.5, 178.5 L 83.5, 181.5 M 78, 183.5 L 85, 183.5 M 78, 186.5 L 85, 186.5 M 77, 189.5 L 86, 189.5 M 81.5, 182 L 81.5, 192.5" />
+
+    <!-- 单 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 93, 180 L 100, 180 M 92, 182.5 L 101, 182.5 L 101, 187 L 92, 187 Z M 91.5, 189.5 L 101.5, 189.5 M 96.5, 178.5 L 96.5, 193" />
+
+    <!-- 记 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 108, 180 L 109, 181.5 M 106.5, 183 L 109.5, 183 L 109.5, 188 L 106.5, 191.5 M 111, 180 L 116, 180 L 116, 183.5 L 111.5, 183.5 L 111.5, 189.5 Q 111.5, 192 114, 192 L 116.5, 192" />
+
+    <!-- 账 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 122, 179.5 L 122, 189.5 L 126.5, 189.5 L 126.5, 179.5 Z M 122, 183 L 126.5, 183 M 122, 186.5 L 126.5, 186.5 M 128.5, 181.5 L 132, 181.5 M 129.5, 179 L 129.5, 192 L 132, 189.5" />
+
+    <!-- · -->
+    <path
+        android:fillColor="#5A7A6E"
+        android:pathData="M 143.5, 186 A 1.2,1.2 0 1,0 145.5,186 A 1.2,1.2 0 1,0 143.5,186" />
+
+    <!-- 井 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 157.5, 183 L 165.5, 183 M 156.5, 189 L 166.5, 189 M 160, 179.5 L 160, 192.5 M 163.5, 179.5 L 163.5, 192.5" />
+
+    <!-- 井 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 172.5, 183 L 180.5, 183 M 171.5, 189 L 181.5, 189 M 175, 179.5 L 175, 192.5 M 178.5, 179.5 L 178.5, 192.5" />
+
+    <!-- 有 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 187.5, 182 L 195.5, 182 M 191, 179.5 Q 189, 186 186.5, 190.5 M 189.5, 184 L 195, 184 L 195, 192.5 M 189.5, 187 L 195, 187 M 189.5, 190 L 195, 190" />
+
+    <!-- 条 -->
+    <path
+        android:strokeColor="#5A7A6E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 202.5, 181 L 210.5, 181 M 205.5, 179 L 205.5, 182 M 203, 184.5 L 210, 184.5 M 206.5, 184.5 L 203, 192.5 M 206.5, 186.5 Q 209, 189.5 211.5, 192.5" />
 </vector>

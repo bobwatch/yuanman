@@ -167,7 +167,10 @@ class AddEditRecordViewModel(
     }
 
     fun setPaymentMethod(method: String) {
-        _uiState.update { it.copy(paymentMethod = method) }
+        _uiState.update {
+            val newMethod = if (it.paymentMethod == method) "" else method
+            it.copy(paymentMethod = newMethod)
+        }
     }
 
     fun clearErrorMessage() {

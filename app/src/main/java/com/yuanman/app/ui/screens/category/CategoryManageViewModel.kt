@@ -94,6 +94,14 @@ class CategoryManageViewModel(
         }
     }
 
+    fun updateCategoryOrder(categoryIds: List<Long>) {
+        if (categoryIds.isEmpty()) return
+
+        viewModelScope.launch {
+            categoryRepository.updateCategoryOrder(categoryIds)
+        }
+    }
+
     fun deleteCategory(category: CategoryEntity) {
         viewModelScope.launch {
             val result = categoryRepository.deleteCategory(category)

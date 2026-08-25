@@ -163,7 +163,7 @@ fun RecordListScreen(
                     ) {
                         if (uiState.searchQuery.isEmpty()) {
                             Text(
-                                text = "搜索备注、分类或支付方式...",
+                                text = "搜索备注、金额、分类或支付方式...",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.outline
@@ -339,10 +339,14 @@ fun RecordListScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
-                                    val pickerCal = Calendar.getInstance().apply {
-                                        set(Calendar.YEAR, uiState.selectedYear)
-                                        set(Calendar.MONTH, uiState.selectedMonth - 1)
-                                        set(Calendar.DAY_OF_MONTH, uiState.selectedDay ?: 1)
+                                    val pickerCal = if (uiState.selectedDay != null) {
+                                        Calendar.getInstance().apply {
+                                            set(Calendar.YEAR, uiState.selectedYear)
+                                            set(Calendar.MONTH, uiState.selectedMonth - 1)
+                                            set(Calendar.DAY_OF_MONTH, uiState.selectedDay!!)
+                                        }
+                                    } else {
+                                        Calendar.getInstance()
                                     }
                                     DatePickerDialog(
                                         context,
@@ -367,7 +371,7 @@ fun RecordListScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (uiState.selectedDay != null) "${uiState.selectedMonth}月${uiState.selectedDay}日" else "选特定日期",
+                                    text = if (uiState.selectedDay != null) "${uiState.selectedMonth}月${uiState.selectedDay}日" else "选择日期",
                                     fontSize = 12.sp,
                                     fontWeight = if (uiState.selectedDay != null) FontWeight.Bold else FontWeight.Normal,
                                     color = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.onSurface

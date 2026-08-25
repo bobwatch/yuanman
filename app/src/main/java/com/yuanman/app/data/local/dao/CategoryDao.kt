@@ -9,6 +9,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")
     fun getAllCategories(): Flow<List<CategoryEntity>>
 
+    @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")
+    suspend fun getAllCategoriesList(): List<CategoryEntity>
+
     @Query("SELECT * FROM categories WHERE type = :type ORDER BY sortOrder ASC, id ASC")
     fun getCategoriesByType(type: String): Flow<List<CategoryEntity>>
 
@@ -26,6 +29,9 @@ interface CategoryDao {
 
     @Update
     suspend fun updateCategory(category: CategoryEntity)
+
+    @Query("UPDATE categories SET sortOrder = :sortOrder WHERE id = :categoryId")
+    suspend fun updateSortOrder(categoryId: Long, sortOrder: Int)
 
     @Delete
     suspend fun deleteCategory(category: CategoryEntity)

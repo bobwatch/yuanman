@@ -66,6 +66,29 @@ object DateTimeUtils {
         }
     }
 
+    fun formatRecordDateShort(timestamp: Long): String {
+        val date = Date(timestamp)
+        val cal = Calendar.getInstance().apply { time = date }
+        val now = Calendar.getInstance()
+
+        val isToday = cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+
+        now.add(Calendar.DAY_OF_YEAR, -1)
+        val isYesterday = cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+
+        val timeStr = timeFormatter.format(date)
+        return when {
+            isToday -> "今天 $timeStr"
+            isYesterday -> "昨天 $timeStr"
+            cal.get(Calendar.YEAR) == Calendar.getInstance().get(Calendar.YEAR) -> {
+                "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日 $timeStr"
+            }
+            else -> dateTimeFormatter.format(date)
+        }
+    }
+
     fun getMonthStartTimestamp(year: Int, month: Int): Long {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, year)

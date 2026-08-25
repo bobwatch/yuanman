@@ -447,7 +447,7 @@ private fun FinancialOverviewCard(
                         Text(
                             text = "¥",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
                         Spacer(modifier = Modifier.width(2.dp))
@@ -458,7 +458,7 @@ private fun FinancialOverviewCard(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }
@@ -716,7 +716,7 @@ fun BitgetTransactionItem(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     ),
-                    color = if (isExpense) MaterialTheme.colorScheme.onSurface else primaryColor
+                    color = if (isExpense) MaterialTheme.colorScheme.error else primaryColor
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))

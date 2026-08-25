@@ -8,6 +8,7 @@ import com.yuanman.app.data.repository.RecordRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class YuanmanApplication : Application() {
 
@@ -46,6 +47,9 @@ class YuanmanApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        appScope.launch {
+            categoryRepository.ensureDefaultCategories()
+        }
     }
 
     companion object {

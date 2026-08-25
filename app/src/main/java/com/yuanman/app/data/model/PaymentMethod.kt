@@ -11,6 +11,6 @@ enum class PaymentMethod(val displayName: String) {
     companion object {
         val ALL = values().map { it.displayName }
 
-        fun defaultMethod(): String = WECHAT.displayName
+        fun defaultMethod(): String = ""
     }
 }

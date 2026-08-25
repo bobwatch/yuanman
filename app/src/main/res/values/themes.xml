@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_suet_jade</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/splash_suet_jade</item>
+        <item name="postSplashScreenTheme">@style/Theme.Yuanman</item>
+    </style>
+
     <style name="Theme.Yuanman" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowBackground">@color/splash_suet_jade</item>
     </style>
 </resources>

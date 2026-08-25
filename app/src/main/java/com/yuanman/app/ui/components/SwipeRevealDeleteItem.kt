@@ -37,6 +37,7 @@ fun SwipeRevealDeleteItem(
     onOpen: (Long?) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -44,81 +45,91 @@ fun SwipeRevealDeleteItem(
     val actionWidth = 96.dp
     val actionWidthPx = with(LocalDensity.current) { actionWidth.toPx() }
 
-    LaunchedEffect(openKey) {
-        if (openKey != itemKey && offset.value != 0f) {
+    LaunchedEffect(openKey, enabled) {
+        if (!enabled && offset.value != 0f) {
+            offset.snapTo(0f)
+        } else if (openKey != itemKey && offset.value != 0f) {
             offset.animateTo(0f, animationSpec = tween(180))
         }
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier.matchParentSize(),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            Row(
-                modifier = Modifier
-                    .width(actionWidth)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.errorContainer)
-                    .clickable {
-                        onOpen(null)
-                        scope.launch {
-                            offset.animateTo(0f, animationSpec = tween(180))
-                        }
-                        onDelete()
-                    }
-                    .padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+        if (enabled && offset.value != 0f) {
+            Box(
+                modifier = Modifier.matchParentSize(),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.size(19.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "删除",
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.labelMedium
-                )
+                Row(
+                    modifier = Modifier
+                        .width(actionWidth)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .clickable {
+                            onOpen(null)
+                            scope.launch {
+                                offset.animateTo(0f, animationSpec = tween(180))
+                            }
+                            onDelete()
+                        }
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "删除",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(19.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "删除",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
         }
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .pointerInput(actionWidthPx) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            scope.launch {
-                                offset.snapTo(
-                                    (offset.value + dragAmount).coerceIn(-actionWidthPx, 0f)
-                                )
-                            }
-                        },
-                        onDragEnd = {
-                            scope.launch {
-                                val target = if (offset.value <= -actionWidthPx * 0.35f) {
-                                    -actionWidthPx
-                                } else {
-                                    0f
+                .offset { IntOffset(if (enabled) offset.value.roundToInt() else 0, 0) }
+                .then(
+                    if (enabled) {
+                        Modifier.pointerInput(actionWidthPx) {
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    scope.launch {
+                                        offset.snapTo(
+                                            (offset.value + dragAmount).coerceIn(-actionWidthPx, 0f)
+                                        )
+                                    }
+                                },
+                                onDragEnd = {
+                                    scope.launch {
+                                        val target = if (offset.value <= -actionWidthPx * 0.35f) {
+                                            -actionWidthPx
+                                        } else {
+                                            0f
+                                        }
+                                        onOpen(if (target == 0f) null else itemKey)
+                                        offset.animateTo(target, animationSpec = tween(180))
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch {
+                                        offset.animateTo(0f, animationSpec = tween(180))
+                                    }
                                 }
-                                onOpen(if (target == 0f) null else itemKey)
-                                offset.animateTo(target, animationSpec = tween(180))
-                            }
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                offset.animateTo(0f, animationSpec = tween(180))
-                            }
+                            )
                         }
-                    )
-                }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             content()
         }

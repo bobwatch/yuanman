@@ -45,6 +45,9 @@ interface RecordDao {
     @Query("SELECT COUNT(*) FROM records WHERE categoryId = :categoryId")
     suspend fun countRecordsByCategoryId(categoryId: Long): Int
 
+    @Query("UPDATE records SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
+    suspend fun updateCategoryId(oldCategoryId: Long, newCategoryId: Long)
+
     @Query("SELECT SUM(amount) FROM records WHERE type = :type AND recordTime >= :startTime AND recordTime <= :endTime")
     fun getTotalAmountByTypeAndDateRange(type: String, startTime: Long, endTime: Long): Flow<Long?>
 

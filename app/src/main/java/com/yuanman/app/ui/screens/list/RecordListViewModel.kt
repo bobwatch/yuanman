@@ -11,6 +11,7 @@ import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
+import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -123,10 +124,20 @@ class RecordListViewModel(
             val matchType = filters.type == null || item.record.type == filters.type.name
             val matchCategory = filters.categoryId == null || item.record.categoryId == filters.categoryId
             val matchPayment = filters.paymentMethod == null || item.record.paymentMethod == filters.paymentMethod
-            val matchQuery = filters.query.isBlank() ||
-                    item.record.remark.contains(filters.query, ignoreCase = true) ||
-                    (item.category?.name?.contains(filters.query, ignoreCase = true) == true) ||
-                    item.record.paymentMethod.contains(filters.query, ignoreCase = true)
+            val query = filters.query.trim()
+            val amountPlain = MoneyUtils.centsToYuanString(item.record.amount, withGrouping = false)
+            val amountGrouped = MoneyUtils.centsToYuanString(item.record.amount, withGrouping = true)
+            val amountInteger = amountPlain.substringBefore('.')
+            val matchAmount = amountPlain.contains(query) ||
+                    amountGrouped.contains(query) ||
+                    amountInteger == query ||
+                    (item.record.amount.toString() == query)
+
+            val matchQuery = query.isBlank() ||
+                    item.record.remark.contains(query, ignoreCase = true) ||
+                    (item.category?.name?.contains(query, ignoreCase = true) == true) ||
+                    item.record.paymentMethod.contains(query, ignoreCase = true) ||
+                    matchAmount
 
             matchDay && matchType && matchCategory && matchPayment && matchQuery
         }

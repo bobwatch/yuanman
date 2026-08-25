@@ -148,30 +148,50 @@ object CategoryIconHelper {
      */
     fun getPresetRemarks(categoryName: String): List<String> {
         return when {
-            categoryName.contains("餐") || categoryName.contains("吃") || categoryName.contains("饭") ->
-                listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "买菜做饭", "朋友聚餐", "夜宵")
-            categoryName.contains("交") || categoryName.contains("车") || categoryName.contains("行") ->
-                listOf("地铁", "打车", "公交", "加油", "停车费", "高铁火车", "飞机机票", "共享单车")
-            categoryName.contains("购") || categoryName.contains("买") || categoryName.contains("物") ->
-                listOf("日用品", "服饰鞋包", "零食水果", "网购快递", "电子数码", "家居好物", "美妆护肤")
-            categoryName.contains("住") || categoryName.contains("房") ->
-                listOf("房租", "物业费", "水电费", "燃气费", "宽带网络", "维修换新", "保洁")
-            categoryName.contains("娱") || categoryName.contains("玩") ->
-                listOf("电影", "游戏充值", "KTV聚会", "桌游密室", "门票演出", "剧本杀", "盲盒")
-            categoryName.contains("医") || categoryName.contains("药") ->
-                listOf("买药", "门诊挂号", "体检检查", "保健养生", "牙科", "眼科")
-            categoryName.contains("宠") ->
-                listOf("猫粮狗粮", "宠物零食", "驱虫疫苗", "宠物洗护", "宠物玩具", "看病就诊")
-            categoryName.contains("学") || categoryName.contains("教") ->
-                listOf("课程培训", "书籍教材", "考试报名", "文具用具", "会员订阅", "自习室")
-            categoryName.contains("工") || categoryName.contains("薪") ->
-                listOf("基本工资", "绩效奖金", "年终奖", "公积金", "餐补车补", "津贴福利")
-            categoryName.contains("理财") || categoryName.contains("财") ->
-                listOf("基金收益", "股票分红", "银行利息", "理财赎回", "加密货币")
-            categoryName.contains("兼") || categoryName.contains("副") ->
-                listOf("稿费兼职", "设计外包", "咨询收入", "二手闲置出清", "劳务报酬")
-            categoryName.contains("人情") || categoryName.contains("礼") ->
-                listOf("结婚随礼", "生日红包", "节日过节", "孝敬长辈", "请客送礼", "探病问候")
+            categoryName.contains("餐饮") || categoryName.contains("美食") || categoryName.contains("吃") || categoryName.contains("饭") ->
+                listOf("早餐", "午餐", "晚餐", "外卖", "奶茶咖啡", "水果零食", "聚餐夜宵", "买菜食材")
+            categoryName.contains("爱车") || categoryName.contains("养车") || categoryName.contains("加油") ->
+                listOf("加油充电", "停车费", "洗车美容", "保养维修", "车辆保险", "车品配饰")
+            categoryName.contains("交通") || categoryName.contains("出行") ->
+                listOf("地铁", "公交", "打车网约车", "高铁火车", "机票飞机", "共享单车", "过路费")
+            categoryName.contains("充值") || categoryName.contains("缴费") ->
+                listOf("手机话费", "宽带网费", "水费", "电费", "燃气费", "会员充值")
+            categoryName.contains("服饰") || categoryName.contains("装扮") ->
+                listOf("衣服裤装", "鞋靴箱包", "内衣配饰", "帽子手套", "手表珠宝")
+            categoryName.contains("家居") || categoryName.contains("家装") ->
+                listOf("家具家纺", "五金建材", "家装软装", "日用百货", "厨具餐具", "收纳整理")
+            categoryName.contains("数码") || categoryName.contains("电器") ->
+                listOf("手机数码", "电脑办公", "智能家电", "数码配件", "摄影器材", "影音娱乐")
+            categoryName.contains("运动") || categoryName.contains("户外") ->
+                listOf("健身打卡", "球类运动", "户外露营", "徒步骑行", "运动装备", "场馆门票")
+            categoryName.contains("美容") || categoryName.contains("美发") ->
+                listOf("美发理发", "护肤美妆", "美甲美睫", "美容SPA", "个护清洁")
+            categoryName.contains("母婴") || categoryName.contains("亲子") ->
+                listOf("奶粉辅食", "纸尿裤", "童装童鞋", "玩具绘本", "早教亲子", "产检育儿")
+            categoryName.contains("住房") || categoryName.contains("物业") ->
+                listOf("房屋租金", "房贷月供", "物业管理费", "房屋修缮", "车位租金")
+            categoryName.contains("酒店") || categoryName.contains("旅游") ->
+                listOf("酒店住宿", "景点门票", "跟团旅游", "自由行", "度假旅行", "旅行装备")
+            categoryName.contains("文化") || categoryName.contains("休闲") ->
+                listOf("电影院线", "剧场演出", "展览看展", "书店阅读", "桌游密室", "游戏充值")
+            categoryName.contains("教育") || categoryName.contains("培训") ->
+                listOf("学费教材", "职业考证", "技能培训", "语言学习", "在线课程", "兴趣辅导")
+            categoryName.contains("医疗") || categoryName.contains("健康") ->
+                listOf("门诊挂号", "西药中药", "体检筛查", "疫苗接种", "牙科齿科", "保健补剂")
+            categoryName.contains("生活") || categoryName.contains("服务") ->
+                listOf("家政保洁", "快递跑腿", "干洗修鞋", "搬家拉货", "宠物服务", "废品回收")
+            categoryName.contains("人情") || categoryName.contains("往来") || categoryName.contains("礼") ->
+                listOf("礼金随礼", "节日红包", "长辈孝敬", "晚辈压岁", "请客送礼", "聚会买单")
+            categoryName.contains("投资") || categoryName.contains("理财收益") || categoryName.contains("理财") ->
+                listOf("基金买入", "股票证券", "黄金理财", "定投定存", "商业保险", "外汇理财")
+            categoryName.contains("工资") || categoryName.contains("薪") ->
+                listOf("基本月薪", "绩效奖金", "岗位津贴", "年终奖", "全勤奖", "餐补房补")
+            categoryName.contains("红包") || categoryName.contains("转账") ->
+                listOf("微信红包", "支付宝转账", "节日长辈红包", "生日礼物红包", "亲友转账")
+            categoryName.contains("兼职") || categoryName.contains("外快") ->
+                listOf("副业兼职", "设计外包", "投稿稿酬", "劳务咨询", "私域带货", "闲置出清")
+            categoryName.contains("退款") ->
+                listOf("网购退款", "差价返还", "押金退还", "活动返现", "退税入账")
             else ->
                 listOf("日常支出", "生活消费", "微信支付", "支付宝支付", "固定开销")
         }

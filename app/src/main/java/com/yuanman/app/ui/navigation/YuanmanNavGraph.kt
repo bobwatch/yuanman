@@ -1,8 +1,9 @@
 package com.yuanman.app.ui.navigation
 
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
@@ -73,20 +74,20 @@ fun YuanmanNavGraph(
                 if (fromIndex != -1 && toIndex != -1) {
                     if (toIndex > fromIndex) {
                         slideInHorizontally(
-                            initialOffsetX = { fullWidth -> fullWidth },
+                            initialOffsetX = { fullWidth -> (fullWidth * 0.45f).toInt() },
                             animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                        )
+                        ) + fadeIn(animationSpec = tween(durationMillis = 180))
                     } else {
                         slideInHorizontally(
-                            initialOffsetX = { fullWidth -> -fullWidth },
+                            initialOffsetX = { fullWidth -> (-fullWidth * 0.45f).toInt() },
                             animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                        )
+                        ) + fadeIn(animationSpec = tween(durationMillis = 180))
                     }
                 } else {
                     slideInHorizontally(
                         initialOffsetX = { fullWidth -> fullWidth },
-                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                    )
+                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(durationMillis = 180))
                 }
             },
             exitTransition = {
@@ -98,33 +99,33 @@ fun YuanmanNavGraph(
                 if (fromIndex != -1 && toIndex != -1) {
                     if (toIndex > fromIndex) {
                         slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> -fullWidth },
+                            targetOffsetX = { fullWidth -> (-fullWidth * 0.45f).toInt() },
                             animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                        )
+                        ) + fadeOut(animationSpec = tween(durationMillis = 160))
                     } else {
                         slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> fullWidth },
+                            targetOffsetX = { fullWidth -> (fullWidth * 0.45f).toInt() },
                             animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                        )
+                        ) + fadeOut(animationSpec = tween(durationMillis = 160))
                     }
                 } else {
                     slideOutHorizontally(
-                        targetOffsetX = { fullWidth -> -fullWidth },
-                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                    )
+                        targetOffsetX = { fullWidth -> -fullWidth / 3 },
+                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 160))
                 }
             },
             popEnterTransition = {
                 slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -fullWidth },
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                )
+                    initialOffsetX = { fullWidth -> -fullWidth / 3 },
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 180))
             },
             popExitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-                )
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(durationMillis = 160))
             }
         ) {
             // 1. 首页

@@ -103,12 +103,7 @@ class SettingsViewModel(
         initialValue = SettingsUiState(isLoading = true)
     )
 
-    init {
-        // 进入设置时自动在后台静默检查是否有最新版本 (以便如果已经有更新就直接亮起小红点)
-        viewModelScope.launch {
-            updateManager.checkForUpdates(isManual = false)
-        }
-    }
+
 
     fun checkForUpdates() {
         updateManager.checkForUpdates(isManual = true)

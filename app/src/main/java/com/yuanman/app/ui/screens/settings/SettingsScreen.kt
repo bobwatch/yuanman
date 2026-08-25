@@ -91,7 +91,7 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 🌟 卡片 1: 基础记账配置（去标题化）
+            // 🌟 卡片 1: 记账偏好设置（最高频常用）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -104,20 +104,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 分类管理入口
-                    SettingsRowItem(
-                        icon = Icons.Outlined.Category,
-                        title = "分类管理",
-                        subtitle = "管理支出与收入分类",
-                        onClick = { onNavigateToCategoryManage?.invoke() }
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    // 月度预算配置
+                    // 月度预算配置 (核心开销管理目标)
                     SettingsRowItem(
                         icon = Icons.Outlined.AccountBalanceWallet,
                         title = "月度预算",
@@ -125,10 +112,23 @@ fun SettingsScreen(
                         subtitleHighlight = uiState.monthlyBudget > 0L,
                         onClick = { showBudgetDialog = true }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    // 分类管理入口 (分类与子标签定制)
+                    SettingsRowItem(
+                        icon = Icons.Outlined.Category,
+                        title = "分类管理",
+                        subtitle = "管理支出与收入分类及专属子标签",
+                        onClick = { onNavigateToCategoryManage?.invoke() }
+                    )
                 }
             }
 
-            // 🌟 卡片 2: 数据与同步（去标题化）
+            // 🌟 卡片 2: 个性化外观（常用视觉偏好）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -141,20 +141,31 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 设备同步 (基于 NSD 自动发现 + 配对码)
+                    // 主题外观（浅色 / 深色 / 跟随系统）
                     SettingsRowItem(
-                        icon = Icons.Outlined.Wifi,
-                        title = "设备同步",
-                        subtitle = "同一 WiFi 自动发现与同步",
-                        onClick = { showWifiSyncModal = true }
+                        icon = Icons.Outlined.DarkMode,
+                        title = "主题外观",
+                        subtitle = uiState.themeMode.title,
+                        subtitleHighlight = true,
+                        onClick = { showThemeBottomSheet = true }
                     )
+                }
+            }
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    // 导出表格
+            // 🌟 卡片 3: 数据与资产管理（导出与多端互联）
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    // 导出账单表格 (高频实用)
                     SettingsRowItem(
                         icon = Icons.Outlined.FileDownload,
                         title = "导出账单表格",
@@ -167,18 +178,17 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                     )
 
-                    // 清空全部数据
+                    // 设备同步 (同一 WiFi 局域网跨设备安全同步)
                     SettingsRowItem(
-                        icon = Icons.Outlined.DeleteForever,
-                        title = "清空全部数据",
-                        subtitle = "清除所有账单记录并重置分类",
-                        isDestructive = true,
-                        onClick = { showFirstConfirmDialog = true }
+                        icon = Icons.Outlined.Wifi,
+                        title = "设备同步",
+                        subtitle = "同一 WiFi 自动发现与同步",
+                        onClick = { showWifiSyncModal = true }
                     )
                 }
             }
 
-            // 🌟 卡片 3: 外观与更新维护
+            // 🌟 卡片 4: 系统与更新（低频维护）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -191,21 +201,6 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 主题外观（底部 Sheet 弹起选择）
-                    SettingsRowItem(
-                        icon = Icons.Outlined.DarkMode,
-                        title = "主题外观",
-                        subtitle = uiState.themeMode.title,
-                        subtitleHighlight = true,
-                        onClick = { showThemeBottomSheet = true }
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    // 🌟 GitHub Release 版本更新
                     val currentVer = viewModel.updateManager.currentVersionName
                     val hasNewVersion = updateState is UpdateState.Available || updateState is UpdateState.ReadyToInstall
                     val (updateSubtitle, subtitleHighlight, downloadProgress) = when (val state = updateState) {
@@ -245,6 +240,30 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    )
+                }
+            }
+
+            // 🌟 卡片 5: 数据清理危险区（置底防误触）
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    // 清空全部数据
+                    SettingsRowItem(
+                        icon = Icons.Outlined.DeleteForever,
+                        title = "清空全部数据",
+                        subtitle = "清除所有账单记录并重置分类",
+                        isDestructive = true,
+                        onClick = { showFirstConfirmDialog = true }
                     )
                 }
             }
