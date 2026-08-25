@@ -13,5 +13,18 @@ data class CategoryEntity(
     val colorHex: Long,
     val isDefault: Boolean = false,
     val sortOrder: Int = 0,
+    val tags: String = "", // Comma-separated child tags
     val createdAt: Long = System.currentTimeMillis()
-)
+) {
+    /**
+     * 获取该分类专属的子标签列表
+     */
+    fun getTagList(): List<String> {
+        val trimmed = tags.trim()
+        return if (trimmed.isNotEmpty()) {
+            trimmed.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+            com.yuanman.app.data.model.CategoryIconHelper.getPresetRemarks(name)
+        }
+    }
+}

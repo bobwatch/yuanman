@@ -13,9 +13,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+import androidx.room.migration.Migration
+
 @Database(
     entities = [CategoryEntity::class, RecordEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +29,12 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE categories ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -34,6 +42,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yuanman_database.db"
                 )
+                    .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback())
                     .build()
                 INSTANCE = instance

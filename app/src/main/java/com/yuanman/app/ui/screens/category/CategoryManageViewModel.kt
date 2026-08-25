@@ -6,16 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
-import com.yuanman.app.data.repository.PreferencesRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-
-enum class ManageTab(val title: String) {
-    EXPENSE("支出分类"),
-    INCOME("收入分类"),
-    TAGS("快捷标签")
-}
 
 data class CategoryWithUsage(
     val category: CategoryEntity,
@@ -23,45 +16,36 @@ data class CategoryWithUsage(
 )
 
 data class CategoryUiState(
-    val currentTab: ManageTab = ManageTab.EXPENSE,
+    val currentType: RecordType = RecordType.EXPENSE,
     val categoriesWithUsage: List<CategoryWithUsage> = emptyList(),
-    val customTags: List<String> = emptyList(),
     val errorDialogMessage: String? = null,
     val isLoading: Boolean = false
 )
 
 class CategoryManageViewModel(
-    private val categoryRepository: CategoryRepository,
-    private val preferencesRepository: PreferencesRepository
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
-    private val _currentTab = MutableStateFlow(ManageTab.EXPENSE)
+    private val _currentType = MutableStateFlow(RecordType.EXPENSE)
     private val _errorDialogMessage = MutableStateFlow<String?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val categoriesFlow = _currentTab.flatMapLatest { tab ->
-        val recordType = when (tab) {
-            ManageTab.EXPENSE -> RecordType.EXPENSE
-            ManageTab.INCOME -> RecordType.INCOME
-            ManageTab.TAGS -> RecordType.EXPENSE
-        }
-        categoryRepository.getCategoriesByType(recordType)
+    private val categoriesFlow = _currentType.flatMapLatest { type ->
+        categoryRepository.getCategoriesByType(type)
     }
 
     val uiState: StateFlow<CategoryUiState> = combine(
-        _currentTab,
+        _currentType,
         categoriesFlow,
-        preferencesRepository.customTags,
         _errorDialogMessage
-    ) { tab, categories, tags, errorMsg ->
+    ) { type, categories, errorMsg ->
         val listWithUsage = categories.map { cat ->
             val count = categoryRepository.getCategoryUsageCount(cat.id)
             CategoryWithUsage(cat, count)
         }
         CategoryUiState(
-            currentTab = tab,
+            currentType = type,
             categoriesWithUsage = listWithUsage,
-            customTags = tags,
             errorDialogMessage = errorMsg,
             isLoading = false
         )
@@ -71,21 +55,22 @@ class CategoryManageViewModel(
         initialValue = CategoryUiState(isLoading = true)
     )
 
-    fun switchTab(tab: ManageTab) {
-        _currentTab.value = tab
+    fun switchType(type: RecordType) {
+        _currentType.value = type
     }
 
-    fun addCategory(name: String, iconName: String, colorHex: Long) {
+    fun addCategory(name: String, iconName: String, colorHex: Long, tags: List<String>) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
 
-        val type = if (_currentTab.value == ManageTab.INCOME) RecordType.INCOME else RecordType.EXPENSE
+        val tagsJoined = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(",")
         viewModelScope.launch {
             val newCategory = CategoryEntity(
                 name = trimmed,
-                type = type.name,
+                type = _currentType.value.name,
                 iconName = iconName,
                 colorHex = colorHex,
+                tags = tagsJoined,
                 isDefault = false,
                 sortOrder = 99
             )
@@ -93,15 +78,17 @@ class CategoryManageViewModel(
         }
     }
 
-    fun updateCategory(category: CategoryEntity, newName: String, newIconName: String, newColorHex: Long) {
+    fun updateCategory(category: CategoryEntity, newName: String, newIconName: String, newColorHex: Long, tags: List<String>) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return
 
+        val tagsJoined = tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(",")
         viewModelScope.launch {
             val updated = category.copy(
                 name = trimmed,
                 iconName = newIconName,
-                colorHex = newColorHex
+                colorHex = newColorHex,
+                tags = tagsJoined
             )
             categoryRepository.updateCategory(updated)
         }
@@ -116,35 +103,16 @@ class CategoryManageViewModel(
         }
     }
 
-    fun addTag(tag: String) {
-        viewModelScope.launch {
-            preferencesRepository.addCustomTag(tag)
-        }
-    }
-
-    fun updateTag(oldTag: String, newTag: String) {
-        viewModelScope.launch {
-            preferencesRepository.updateCustomTag(oldTag, newTag)
-        }
-    }
-
-    fun deleteTag(tag: String) {
-        viewModelScope.launch {
-            preferencesRepository.deleteCustomTag(tag)
-        }
-    }
-
     fun clearErrorDialog() {
         _errorDialogMessage.value = null
     }
 
     class Factory(
-        private val categoryRepository: CategoryRepository,
-        private val preferencesRepository: PreferencesRepository
+        private val categoryRepository: CategoryRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CategoryManageViewModel(categoryRepository, preferencesRepository) as T
+            return CategoryManageViewModel(categoryRepository) as T
         }
     }
 }

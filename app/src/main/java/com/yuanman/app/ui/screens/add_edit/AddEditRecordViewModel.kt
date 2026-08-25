@@ -84,12 +84,7 @@ class AddEditRecordViewModel(
                         } else {
                             list.firstOrNull()
                         }
-                        val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
-                        val remarks = if (newSelected != null) {
-                            (CategoryIconHelper.getPresetRemarks(newSelected.name) + custom).distinct()
-                        } else {
-                            custom
-                        }
+                        val remarks = newSelected?.getTagList() ?: emptyList()
                         state.copy(
                             availableCategories = list,
                             selectedCategory = newSelected,
@@ -108,9 +103,7 @@ class AddEditRecordViewModel(
                     val record = recordWithCategory.record
                     val recType = RecordType.fromString(record.type)
                     val cat = recordWithCategory.category
-                    val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
-                    val preset = if (cat != null) CategoryIconHelper.getPresetRemarks(cat.name) else emptyList()
-                    val remarks = (preset + custom).distinct()
+                    val remarks = cat?.getTagList() ?: emptyList()
                     _uiState.update {
                         it.copy(
                             isEditMode = true,
@@ -139,17 +132,13 @@ class AddEditRecordViewModel(
     }
 
     fun selectCategory(category: CategoryEntity) {
-        viewModelScope.launch {
-            val preset = CategoryIconHelper.getPresetRemarks(category.name)
-            val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
-            val combined = (preset + custom).distinct()
-            _uiState.update {
-                it.copy(
-                    selectedCategory = category,
-                    quickRemarks = combined,
-                    errorMessage = null
-                )
-            }
+        val remarks = category.getTagList()
+        _uiState.update {
+            it.copy(
+                selectedCategory = category,
+                quickRemarks = remarks,
+                errorMessage = null
+            )
         }
     }
 

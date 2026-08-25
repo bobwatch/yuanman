@@ -191,8 +191,7 @@ fun YuanmanNavGraph(
             composable(Screen.CategoryManage.route) {
                 val categoryViewModel: CategoryManageViewModel = viewModel(
                     factory = CategoryManageViewModel.Factory(
-                        categoryRepository = app.categoryRepository,
-                        preferencesRepository = app.preferencesRepository
+                        categoryRepository = app.categoryRepository
                     )
                 )
                 CategoryManageScreen(
