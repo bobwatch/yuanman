@@ -155,10 +155,14 @@ class AddEditRecordViewModel(
 
     fun selectQuickRemark(tag: String) {
         val current = _uiState.value.remark.trim()
-        val updated = if (current.isEmpty()) {
-            tag
+        val updated = if (current == tag) {
+            // 已选中该标签，再次点击取消选中
+            ""
         } else if (current.contains(tag)) {
-            current
+            // 包含该标签，剔除并整理空格
+            current.replace(tag, "").replace(Regex("\\s+"), " ").trim()
+        } else if (current.isEmpty()) {
+            tag
         } else {
             "$current $tag"
         }

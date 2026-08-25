@@ -208,11 +208,11 @@ class RecordListViewModel(
     }
 
     fun selectCategory(categoryId: Long?) {
-        _selectedCategoryId.value = categoryId
+        _selectedCategoryId.value = if (_selectedCategoryId.value == categoryId) null else categoryId
     }
 
     fun selectPaymentMethod(method: String?) {
-        _selectedPaymentMethod.value = method
+        _selectedPaymentMethod.value = if (_selectedPaymentMethod.value == method) null else method
     }
 
     fun setSortOrder(order: RecordSortOrder) {

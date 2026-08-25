@@ -2,7 +2,6 @@ package com.yuanman.app.ui.screens.add_edit
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,8 +13,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -28,7 +28,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ import com.yuanman.app.ui.components.CustomKeypad
 import com.yuanman.app.ui.components.KeypadEngine
 import com.yuanman.app.utils.DateTimeUtils
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,9 +57,10 @@ fun AddEditRecordScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
+    val focusManager = LocalFocusManager.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    // 监听软键盘状态：当系统键盘弹出输入备注时，自动隐藏自定义计算器键盘以防止遮挡输入框
+    // 监听系统软键盘高度（大于0即软键盘弹出）
     val imeBottom = WindowInsets.ime.getBottom(density)
     val isImeOpen = imeBottom > 0
 
@@ -233,7 +237,7 @@ fun AddEditRecordScreen(
                         val resultPreview = KeypadEngine.calculate(uiState.expression)
                         if (resultPreview != null && KeypadEngine.hasOperator(uiState.expression)) {
                             Text(
-                                text = "= ¥${resultPreview.setScale(2, BigDecimal.ROUND_HALF_UP)}",
+                                text = "= ¥${resultPreview.setScale(2, RoundingMode.HALF_UP)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(top = 2.dp)
@@ -341,7 +345,7 @@ fun AddEditRecordScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 🌟 极简记账时间与支付方式行 (日历 Icon + 日期选择胶囊)
+                // 极简记账时间与支付方式行 (日历 Icon + 日期选择胶囊)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -420,7 +424,7 @@ fun AddEditRecordScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 快捷推荐备注
+                // 快捷推荐备注 (支持点击选中与再次点击取消选中)
                 if (uiState.quickRemarks.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -428,29 +432,31 @@ fun AddEditRecordScreen(
                     ) {
                         items(uiState.quickRemarks) { tag ->
                             val isSelected = uiState.remark.contains(tag)
-                            SuggestionChip(
+                            FilterChip(
+                                selected = isSelected,
                                 onClick = { viewModel.selectQuickRemark(tag) },
                                 label = {
                                     Text(
                                         text = tag,
                                         fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                 }
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                // 🌟 备注输入框 (带一键清空，配合软键盘自动适配，不遮挡)
+                // 🌟 备注输入框 (原生丝滑响应，带完成按钮与清空按钮)
                 OutlinedTextField(
                     value = uiState.remark,
                     onValueChange = { viewModel.setRemark(it) },
                     label = { Text("备注说明") },
                     placeholder = { Text("如：朋友聚餐、买咖啡等") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     trailingIcon = {
                         if (uiState.remark.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setRemark("") }) {
@@ -465,12 +471,8 @@ fun AddEditRecordScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 🌟 底部沉浸式计算器键盘 (当系统键盘弹出输入备注时自动收起，关闭后自动恢复)
-            AnimatedVisibility(
-                visible = !isImeOpen,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-            ) {
+            // 🌟 底部沉浸式计算器键盘 (无额外重叠动效，与输入法升降原生硬件同步)
+            if (!isImeOpen) {
                 CustomKeypad(
                     expression = uiState.expression,
                     onExpressionChange = { viewModel.setExpression(it) },
