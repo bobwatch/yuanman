@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 data class RecordDetailUiState(
     val recordWithCategory: RecordWithCategory? = null,
     val isDeleted: Boolean = false,
+    val isCopiedSuccess: Boolean = false,
     val isLoading: Boolean = true
 )
 
@@ -20,14 +21,17 @@ class RecordDetailViewModel(
 ) : ViewModel() {
 
     private val _isDeleted = MutableStateFlow(false)
+    private val _isCopiedSuccess = MutableStateFlow(false)
 
     val uiState: StateFlow<RecordDetailUiState> = combine(
         recordRepository.getRecordById(recordId),
-        _isDeleted
-    ) { recordWithCategory, isDeleted ->
+        _isDeleted,
+        _isCopiedSuccess
+    ) { recordWithCategory, isDeleted, isCopied ->
         RecordDetailUiState(
             recordWithCategory = recordWithCategory,
             isDeleted = isDeleted,
+            isCopiedSuccess = isCopied,
             isLoading = false
         )
     }.stateIn(
@@ -41,6 +45,24 @@ class RecordDetailViewModel(
             recordRepository.deleteRecordById(recordId)
             _isDeleted.value = true
         }
+    }
+
+    fun copyRecord() {
+        val current = uiState.value.recordWithCategory?.record ?: return
+        viewModelScope.launch {
+            val duplicate = current.copy(
+                id = 0L,
+                recordTime = System.currentTimeMillis(),
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            recordRepository.insertRecord(duplicate)
+            _isCopiedSuccess.value = true
+        }
+    }
+
+    fun resetCopiedFlag() {
+        _isCopiedSuccess.value = false
     }
 
     class Factory(

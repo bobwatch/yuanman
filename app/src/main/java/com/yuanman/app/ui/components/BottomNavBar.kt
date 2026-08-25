@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -34,12 +36,6 @@ import com.yuanman.app.ui.navigation.BottomNavTab
 
 /**
  * 沅满·极简典雅悬浮 Dock (Sleek Minimalist Floating Dock)
- *
- * 核心审美升级：
- * 1. 【黄金紧凑比例】：彻底去除臃肿层叠与大色块，采用紧凑胶囊宽度 (264dp × 56dp)，告别空旷稀疏感。
- * 2. 【纯粹通透毛玻璃】：超细 0.8dp 细腻光感发丝描边 + 柔和弥散环境光影。
- * 3. 【极简灵动小绿点】：正下方点缀晶莹小绿点，伴随物理阻尼弹簧自如滑动。
- * 4. 【生机色彩与浮动动效】：选中图标上浮 (-2dp) + 弹性缩放 (1.14x) + 翠绿/森林绿品牌色。
  */
 @Composable
 fun BottomNavBar(
@@ -49,6 +45,7 @@ fun BottomNavBar(
     val navBackStackEntry = navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry.value?.destination?.route
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val haptic = LocalHapticFeedback.current
 
     val tabs = BottomNavTab.ALL
     val selectedIndex = tabs.indexOfFirst { it.screen.route == currentRoute }.coerceAtLeast(0)
@@ -149,6 +146,7 @@ fun BottomNavBar(
                             activeColor = activeColor,
                             inactiveColor = inactiveColor,
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 if (currentRoute != tab.screen.route) {
                                     navController.navigate(tab.screen.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {

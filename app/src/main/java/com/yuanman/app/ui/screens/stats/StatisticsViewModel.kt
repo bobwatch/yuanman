@@ -22,6 +22,10 @@ data class StatisticsUiState(
     val selectedCategory: CategoryStatItem? = null,
     val dailyTrends: List<DailyTrendItem> = emptyList(),
     val smartInsight: String = "",
+    val prevMonthExpense: Long = 0L,
+    val prevMonthIncome: Long = 0L,
+    val expenseDiffPercent: Float? = null,
+    val incomeDiffPercent: Float? = null,
     val isLoading: Boolean = false
 )
 
@@ -43,6 +47,14 @@ class StatisticsViewModel(
         recordRepository.getRecordsByMonth(year, month)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val prevMonthRecordsFlow = combine(_selectedYear, _selectedMonth) { year, month ->
+        val (pYear, pMonth) = if (month == 1) Pair(year - 1, 12) else Pair(year, month - 1)
+        Pair(pYear, pMonth)
+    }.flatMapLatest { (pYear, pMonth) ->
+        recordRepository.getRecordsByMonth(pYear, pMonth)
+    }
+
     val uiState: StateFlow<StatisticsUiState> = combine(
         _selectedYear,
         _selectedMonth,
@@ -50,6 +62,11 @@ class StatisticsViewModel(
         _selectedCategory,
         monthRecordsFlow
     ) { year, month, type, activeCategory, rawRecords ->
+        Triple(Pair(year, month), Pair(type, activeCategory), rawRecords)
+    }.combine(prevMonthRecordsFlow) { currentData, prevRecords ->
+        val (year, month) = currentData.first
+        val (type, activeCategory) = currentData.second
+        val rawRecords = currentData.third
 
         var totalExp = 0L
         var totalInc = 0L
@@ -79,11 +96,25 @@ class StatisticsViewModel(
             }
         }
 
+        // 计算上月收支以支持环比分析
+        var prevExp = 0L
+        var prevInc = 0L
+        prevRecords.forEach { item ->
+            if (item.record.type == RecordType.EXPENSE.name) {
+                prevExp += item.record.amount
+            } else {
+                prevInc += item.record.amount
+            }
+        }
+
+        val expenseDiff = if (prevExp > 0L) ((totalExp - prevExp).toFloat() / prevExp.toFloat()) else null
+        val incomeDiff = if (prevInc > 0L) ((totalInc - prevInc).toFloat() / prevInc.toFloat()) else null
+
         // 分类聚合统计
         val totalForTargetType = if (type == RecordType.EXPENSE) totalExp else totalInc
         val categoryGroupMap = targetTypeRecords.groupBy { it.category?.id ?: -1L }
 
-        val categoryStats = categoryGroupMap.mapNotNull { (catId, records) ->
+        val categoryStats = categoryGroupMap.mapNotNull { (_, records) ->
             val firstCategory = records.firstOrNull()?.category ?: CategoryEntity(
                 id = -1L,
                 name = "其他",
@@ -116,7 +147,7 @@ class StatisticsViewModel(
         val maxExp = dailyTrends.maxOfOrNull { it.expenseAmount } ?: 0L
         val avgExp = if (daysInMonth > 0) totalExp / daysInMonth else 0L
 
-        // 生成智能消费洞察生活画像
+        // 生成智能消费洞察生活画像与温暖心语
         val topCategory = categoryStats.firstOrNull()
         val insightText = if (type == RecordType.EXPENSE) {
             if (totalExp == 0L) {
@@ -161,6 +192,10 @@ class StatisticsViewModel(
             selectedCategory = activeCategory,
             dailyTrends = dailyTrends,
             smartInsight = insightText,
+            prevMonthExpense = prevExp,
+            prevMonthIncome = prevInc,
+            expenseDiffPercent = expenseDiff,
+            incomeDiffPercent = incomeDiff,
             isLoading = false
         )
     }.stateIn(

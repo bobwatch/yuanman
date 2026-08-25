@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +46,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val defaultType by viewModel.defaultRecordType.collectAsState()
+    val haptic = LocalHapticFeedback.current
     var showMonthPicker by remember { mutableStateOf(false) }
 
     // 长按快捷菜单状态
@@ -54,7 +57,10 @@ fun HomeScreen(
         modifier = modifier.fillMaxSize(),
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { onNavigateToAddRecord(defaultType) },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onNavigateToAddRecord(defaultType)
+                },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("记一笔", fontWeight = FontWeight.Bold) },
                 containerColor = MaterialTheme.colorScheme.primary,

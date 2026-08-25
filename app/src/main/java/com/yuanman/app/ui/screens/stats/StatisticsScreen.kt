@@ -125,7 +125,9 @@ fun StatisticsScreen(
                         StatSummaryColumn(
                             title = "本月收入",
                             amount = uiState.summary.totalIncome,
-                            amountColor = MaterialTheme.colorScheme.primary
+                            amountColor = MaterialTheme.colorScheme.primary,
+                            diffPercent = uiState.incomeDiffPercent,
+                            isExpense = false
                         )
                         VerticalDivider(
                             modifier = Modifier.height(36.dp),
@@ -134,7 +136,9 @@ fun StatisticsScreen(
                         StatSummaryColumn(
                             title = "本月支出",
                             amount = uiState.summary.totalExpense,
-                            amountColor = MaterialTheme.colorScheme.error
+                            amountColor = MaterialTheme.colorScheme.error,
+                            diffPercent = uiState.expenseDiffPercent,
+                            isExpense = true
                         )
                         VerticalDivider(
                             modifier = Modifier.height(36.dp),
@@ -357,7 +361,9 @@ fun StatisticsScreen(
 private fun StatSummaryColumn(
     title: String,
     amount: Long,
-    amountColor: Color
+    amountColor: Color,
+    diffPercent: Float? = null,
+    isExpense: Boolean = false
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -365,11 +371,34 @@ private fun StatSummaryColumn(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = MoneyUtils.formatCurrency(amount),
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = amountColor
         )
+
+        if (diffPercent != null) {
+            val isPositive = diffPercent > 0f
+            val pctVal = (kotlin.math.abs(diffPercent) * 100).toInt()
+            val badgeColor = if (isExpense) {
+                if (isPositive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            } else {
+                if (isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            }
+            val arrow = if (isPositive) "↑" else "↓"
+            val label = if (isExpense) {
+                if (isPositive) "比上月多 $pctVal%" else "比上月省 $pctVal%"
+            } else {
+                if (isPositive) "比上月增 $pctVal%" else "比上月少 $pctVal%"
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "$arrow $label",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
+                color = badgeColor
+            )
+        }
     }
 }
