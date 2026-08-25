@@ -69,25 +69,24 @@ fun AddEditRecordScreen(
         }
     }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val toast = com.yuanman.app.ui.components.LocalToastHostState.current
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
+            toast.error(msg)
             viewModel.clearErrorMessage()
         }
     }
 
     LaunchedEffect(uiState.savedFeedbackMessage) {
         uiState.savedFeedbackMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
+            toast.success(msg)
             viewModel.clearSavedFeedbackMessage()
         }
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {

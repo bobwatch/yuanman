@@ -42,8 +42,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
 
     var showBudgetDialog by remember { mutableStateOf(false) }
@@ -53,14 +52,13 @@ fun SettingsScreen(
 
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
-            snackbarHostState.showSnackbar("全部数据已成功清空并恢复默认设置")
+            toast.success("全部数据已成功清空并恢复默认设置")
             viewModel.resetClearedFlag()
         }
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("设置", fontWeight = FontWeight.Bold) }
@@ -296,10 +294,7 @@ fun SettingsScreen(
     if (showWifiSyncModal) {
         FamilySyncBottomSheet(
             syncManager = viewModel.syncManager,
-            onDismiss = { showWifiSyncModal = false },
-            onShowSnackbar = { msg ->
-                scope.launch { snackbarHostState.showSnackbar(msg) }
-            }
+            onDismiss = { showWifiSyncModal = false }
         )
     }
 
@@ -405,8 +400,7 @@ private fun SettingsRowItem(
 @Composable
 private fun FamilySyncBottomSheet(
     syncManager: com.yuanman.app.sync.FamilySyncManager,
-    onDismiss: () -> Unit,
-    onShowSnackbar: (String) -> Unit
+    onDismiss: () -> Unit
 ) {
     val devices by syncManager.devices.collectAsStateWithLifecycle()
     val status by syncManager.status.collectAsStateWithLifecycle()
@@ -415,6 +409,7 @@ private fun FamilySyncBottomSheet(
     val lastEvent by syncManager.lastEvent.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     var inputCode by remember { mutableStateOf("") }
     var joinMessage by remember { mutableStateOf<String?>(null) }
     var confirmRegenerate by remember { mutableStateOf(false) }
@@ -430,7 +425,7 @@ private fun FamilySyncBottomSheet(
 
     LaunchedEffect(lastEvent) {
         lastEvent?.let { event ->
-            onShowSnackbar("已成功同步设备 ${event.peerName} (${event.recordCount} 条账单)")
+            toast.success("已成功同步设备 ${event.peerName} (${event.recordCount} 条账单)")
         }
     }
 
@@ -498,7 +493,7 @@ private fun FamilySyncBottomSheet(
                             onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
-                                onShowSnackbar("配对码已复制")
+                                toast.success("配对码已复制")
                             }
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
@@ -554,7 +549,7 @@ private fun FamilySyncBottomSheet(
                             onClick = {
                                 if (syncManager.setPairingCode(inputCode)) {
                                     joinMessage = "已设置配对码 $inputCode"
-                                    onShowSnackbar("配对码已设置，正在同步")
+                                    toast.success("配对码已设置，正在同步")
                                 } else {
                                     joinMessage = "请输入 6 位数字配对码"
                                 }
@@ -587,22 +582,10 @@ private fun FamilySyncBottomSheet(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "在线设备 (${devices.size})",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-
-                        Text(
-                            text = status,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = primaryColor
-                        )
-                    }
+                    Text(
+                        text = "在线设备 (${devices.size})",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
 
                     if (devices.isEmpty()) {
                         Row(
@@ -698,7 +681,7 @@ private fun FamilySyncBottomSheet(
                     onClick = {
                         syncManager.regeneratePairingCode()
                         confirmRegenerate = false
-                        onShowSnackbar("已生成新配对码")
+                        toast.success("已生成新配对码")
                     }
                 ) {
                     Text("确定更换")

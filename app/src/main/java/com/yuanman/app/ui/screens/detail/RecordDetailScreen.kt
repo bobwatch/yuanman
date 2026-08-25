@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,10 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.RecordType
@@ -26,6 +26,7 @@ import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,27 +37,51 @@ fun RecordDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCopyDialog by remember { mutableStateOf(false) }
+    var deleteUndone by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) {
-            onNavigateBack()
+            deleteUndone = false
+            toast.show(
+                message = "账单已删除",
+                type = com.yuanman.app.ui.components.ToastType.INFO,
+                actionLabel = "撤销",
+                onAction = {
+                    deleteUndone = true
+                    viewModel.undoDelete()
+                },
+                durationMillis = 4500L
+            )
+            delay(4500L)
+            if (!deleteUndone) {
+                onNavigateBack()
+            }
         }
     }
 
     LaunchedEffect(uiState.isCopiedSuccess) {
         if (uiState.isCopiedSuccess) {
-            snackbarHostState.showSnackbar("已以此账单为模板复制新增今日记录 ✨")
+            toast.success("已成功复制一笔账单")
             viewModel.resetCopiedFlag()
         }
     }
 
-    val item = uiState.recordWithCategory
+    LaunchedEffect(Unit) {
+        viewModel.operationErrors.collect { message ->
+            toast.error(message)
+        }
+    }
+
+    val item = uiState.displayRecord
+    val deleteMessage = item?.let {
+        "确定删除「${it.category?.name ?: "未分类"}」${MoneyUtils.formatCurrency(it.record.amount)}吗？删除后可在提示栏中撤销。"
+    } ?: "确定删除这条账单吗？删除后可在提示栏中撤销。"
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("账单详情", fontWeight = FontWeight.Bold) },
@@ -66,11 +91,14 @@ fun RecordDetailScreen(
                     }
                 },
                 actions = {
-                    if (item != null) {
+                    if (item != null && !uiState.isDeleted) {
                         IconButton(onClick = { onNavigateToEdit(item.record.id) }) {
                             Icon(Icons.Default.Edit, contentDescription = "编辑")
                         }
-                        IconButton(onClick = { showDeleteDialog = true }) {
+                        IconButton(
+                            onClick = { showDeleteDialog = true },
+                            enabled = !uiState.isDeleting
+                        ) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "删除",
@@ -178,7 +206,11 @@ fun RecordDetailScreen(
                             DetailRow(label = "收支类型", value = if (isExpense) "支出" else "收入")
                             DetailRow(label = "支付方式", value = record.paymentMethod.ifBlank { "默认" })
                             DetailRow(label = "记账时间", value = DateTimeUtils.formatDateTime(record.recordTime))
-                            DetailRow(label = "备注说明", value = record.remark.ifBlank { "无备注" })
+                            DetailRow(
+                                label = "备注说明",
+                                value = record.remark.ifBlank { "无备注" },
+                                valueMaxLines = 3
+                            )
                             DetailRow(label = "创建时间", value = DateTimeUtils.formatDateTime(record.createdAt))
                         }
                     }
@@ -186,51 +218,20 @@ fun RecordDetailScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 底部操作按钮栏 (复制再记、编辑、删除)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                // 保留一个明确的次要操作，编辑与删除统一放在顶部
+                if (!uiState.isDeleted) {
                     OutlinedButton(
-                        onClick = { viewModel.copyRecord() },
+                        onClick = { showCopyDialog = true },
+                        enabled = !uiState.isCopying,
                         modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp),
+                            .fillMaxWidth()
+                            .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("复制一笔", fontSize = 13.sp, maxLines = 1)
-                    }
-
-                    Button(
-                        onClick = { onNavigateToEdit(record.id) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("编辑", fontSize = 13.sp, maxLines = 1)
-                    }
-
-                    OutlinedButton(
-                        onClick = { showDeleteDialog = true },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        ),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("删除", fontSize = 13.sp, maxLines = 1)
+                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("复制到今天", fontWeight = FontWeight.Medium)
                     }
                 }
 
@@ -242,32 +243,63 @@ fun RecordDetailScreen(
     ConfirmDeleteDialog(
         visible = showDeleteDialog,
         title = "删除账单",
-        message = "确定要删除这条账单记录吗？删除后数据不可恢复。",
+        message = deleteMessage,
         onConfirm = { viewModel.deleteRecord() },
         onDismiss = { showDeleteDialog = false }
     )
+
+    if (showCopyDialog) {
+        AlertDialog(
+            onDismissRequest = { showCopyDialog = false },
+            icon = {
+                Icon(Icons.Default.ContentCopy, contentDescription = null)
+            },
+            title = { Text("复制到今天？") },
+            text = {
+                Text("将按当前分类、金额、支付方式和备注，新建一条记账时间为今天的账单。")
+            },
+            dismissButton = {
+                TextButton(onClick = { showCopyDialog = false }) {
+                    Text("取消")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCopyDialog = false
+                    viewModel.copyRecord()
+                }) {
+                    Text("确认复制")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun DetailRow(
     label: String,
     value: String,
+    valueMaxLines: Int = 1,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.width(72.dp)
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.End,
+            maxLines = valueMaxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
     }
 }
