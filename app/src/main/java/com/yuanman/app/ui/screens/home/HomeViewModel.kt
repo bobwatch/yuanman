@@ -231,6 +231,12 @@ class HomeViewModel(
         }
     }
 
+    fun undoDelete(record: RecordEntity) {
+        viewModelScope.launch {
+            recordRepository.insertRecord(record)
+        }
+    }
+
     class Factory(
         private val recordRepository: RecordRepository,
         private val preferencesRepository: PreferencesRepository

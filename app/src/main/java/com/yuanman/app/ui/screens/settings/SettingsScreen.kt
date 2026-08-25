@@ -47,6 +47,7 @@ fun SettingsScreen(
 
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
+    var showThemeDropdown by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
 
@@ -161,7 +162,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 🌟 卡片 3: 外观与显示（去标题化）
+            // 🌟 卡片 3: 外观与显示（下拉菜单选择）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -169,26 +170,48 @@ fun SettingsScreen(
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    ThemeMode.values().forEach { mode ->
-                        val isSelected = uiState.themeMode == mode
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setThemeMode(mode) },
-                            label = {
-                                Text(
-                                    mode.title,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                    SettingsRowItem(
+                        icon = Icons.Outlined.DarkMode,
+                        title = "主题外观",
+                        subtitle = uiState.themeMode.title,
+                        subtitleHighlight = true,
+                        onClick = { showThemeDropdown = true }
+                    )
+
+                    DropdownMenu(
+                        expanded = showThemeDropdown,
+                        onDismissRequest = { showThemeDropdown = false }
+                    ) {
+                        ThemeMode.values().forEach { mode ->
+                            val isSelected = uiState.themeMode == mode
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = mode.title,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                leadingIcon = {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    viewModel.setThemeMode(mode)
+                                    showThemeDropdown = false
+                                }
+                            )
+                        }
                     }
                 }
             }

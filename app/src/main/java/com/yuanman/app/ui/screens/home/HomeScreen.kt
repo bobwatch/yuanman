@@ -41,6 +41,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToAddRecord: (RecordType) -> Unit,
     onNavigateToDetail: (Long) -> Unit,
+    onNavigateToEdit: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToList: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
@@ -48,6 +49,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val defaultType by viewModel.defaultRecordType.collectAsState()
+    val toast = LocalToastHostState.current
     val haptic = LocalHapticFeedback.current
 
     var showMonthPicker by remember { mutableStateOf(false) }
@@ -169,10 +171,59 @@ fun HomeScreen(
                             items = records,
                             key = { "record_${it.record.id}" }
                         ) { item ->
-                            BitgetTransactionItem(
-                                item = item,
-                                onClick = { onNavigateToDetail(item.record.id) },
-                                onLongClick = { activeMenuRecord = item }
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        recordToDelete = item
+                                        false
+                                    } else {
+                                        false
+                                    }
+                                }
+                            )
+
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(MaterialTheme.colorScheme.errorContainer),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .clickable { recordToDelete = item }
+                                                .padding(horizontal = 20.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "删除",
+                                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "删除",
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp
+                                            )
+                                        }
+                                    }
+                                },
+                                content = {
+                                    BitgetTransactionItem(
+                                        item = item,
+                                        onClick = { onNavigateToEdit(item.record.id) },
+                                        onLongClick = { activeMenuRecord = item }
+                                    )
+                                }
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
@@ -267,7 +318,7 @@ fun HomeScreen(
         }
     }
 
-    // 长按快捷操作底部弹层
+    // 长按快捷操作底部弹层（查看明细与复制功能）
     if (activeMenuRecord != null) {
         val target = activeMenuRecord!!
         ModalBottomSheet(
@@ -282,27 +333,14 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "账单操作 · ${target.category?.name ?: "未分类"} ¥${MoneyUtils.centsToYuanString(target.record.amount)}",
+                    text = "${target.category?.name ?: "未分类"} · ¥${MoneyUtils.centsToYuanString(target.record.amount)}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
                 ListItem(
-                    headlineContent = { Text("复制再记一笔") },
-                    supportingContent = { Text("以此分类与金额为模板快速新增一条今日账单") },
-                    leadingContent = {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            viewModel.copyRecord(target.record)
-                            activeMenuRecord = null
-                        }
-                )
-
-                ListItem(
-                    headlineContent = { Text("查看详情") },
+                    headlineContent = { Text("查看明细") },
+                    supportingContent = { Text("查看该笔账单的完整创建与修改详情") },
                     leadingContent = {
                         Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     },
@@ -316,15 +354,17 @@ fun HomeScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("删除该账单", color = MaterialTheme.colorScheme.error) },
+                    headlineContent = { Text("复制一笔") },
+                    supportingContent = { Text("以此分类与金额为模板快速复制一条今日账单") },
                     leadingContent = {
-                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     },
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
-                            recordToDelete = target
+                            viewModel.copyRecord(target.record)
                             activeMenuRecord = null
+                            toast.success("已成功复制一笔账单")
                         }
                 )
 
@@ -337,9 +377,16 @@ fun HomeScreen(
     ConfirmDeleteDialog(
         visible = recordToDelete != null,
         title = "删除账单",
-        message = "确定要删除分类为「${recordToDelete?.category?.name}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
+        message = "确定要删除「${recordToDelete?.category?.name ?: "未分类"}」金额为 ¥${MoneyUtils.centsToYuanString(recordToDelete?.record?.amount ?: 0L)} 的账单吗？",
         onConfirm = {
-            recordToDelete?.let { viewModel.deleteRecord(it) }
+            recordToDelete?.let { target ->
+                viewModel.deleteRecord(target)
+                toast.info(
+                    message = "账单已删除",
+                    actionLabel = "撤销",
+                    onAction = { viewModel.undoDelete(target.record) }
+                )
+            }
             recordToDelete = null
         },
         onDismiss = { recordToDelete = null }

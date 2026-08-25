@@ -25,6 +25,18 @@ class PreferencesRepository(private val context: Context) {
         val MONTHLY_BUDGET = longPreferencesKey("monthly_budget")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
         val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
+        val CUSTOM_TAGS = stringPreferencesKey("custom_tags")
+    }
+
+    val defaultPresetTags = listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "超市买菜", "地铁打车", "零食水果", "日用品", "房租水电", "聚会请客", "网购")
+
+    val customTags: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[PreferencesKeys.CUSTOM_TAGS]
+        if (raw.isNullOrBlank()) {
+            defaultPresetTags
+        } else {
+            raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -101,6 +113,44 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setHapticFeedbackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setCustomTags(tags: List<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CUSTOM_TAGS] = tags.joinToString(",")
+        }
+    }
+
+    suspend fun addCustomTag(tag: String) {
+        val trimmed = tag.trim()
+        if (trimmed.isEmpty()) return
+        context.dataStore.edit { preferences ->
+            val raw = preferences[PreferencesKeys.CUSTOM_TAGS]
+            val current = if (raw.isNullOrBlank()) defaultPresetTags else raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            if (!current.contains(trimmed)) {
+                preferences[PreferencesKeys.CUSTOM_TAGS] = (current + trimmed).joinToString(",")
+            }
+        }
+    }
+
+    suspend fun updateCustomTag(oldTag: String, newTag: String) {
+        val trimmed = newTag.trim()
+        if (trimmed.isEmpty()) return
+        context.dataStore.edit { preferences ->
+            val raw = preferences[PreferencesKeys.CUSTOM_TAGS]
+            val current = if (raw.isNullOrBlank()) defaultPresetTags else raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val updated = current.map { if (it == oldTag) trimmed else it }.distinct()
+            preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
+        }
+    }
+
+    suspend fun deleteCustomTag(tag: String) {
+        context.dataStore.edit { preferences ->
+            val raw = preferences[PreferencesKeys.CUSTOM_TAGS]
+            val current = if (raw.isNullOrBlank()) defaultPresetTags else raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val updated = current.filterNot { it == tag }
+            preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
         }
     }
 

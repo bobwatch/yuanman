@@ -73,7 +73,8 @@ class ToastHostState {
     fun success(message: String) = show(message, ToastType.SUCCESS)
     fun error(message: String) = show(message, ToastType.ERROR)
     fun warning(message: String) = show(message, ToastType.WARNING)
-    fun info(message: String) = show(message, ToastType.INFO)
+    fun info(message: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) =
+        show(message, ToastType.INFO, actionLabel, onAction)
 
     fun dismiss(id: Long) {
         _toasts.update { list ->

@@ -141,29 +141,12 @@ fun YuanmanNavGraph(
                     onNavigateToDetail = { recordId ->
                         navController.navigate(Screen.RecordDetail.createRoute(recordId))
                     },
+                    onNavigateToEdit = { recordId ->
+                        navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
+                    },
                     onNavigateToStatistics = {
                         navController.navigate(Screen.Statistics.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onNavigateToList = {
-                        navController.navigate(Screen.RecordList.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onNavigateToSettings = {
-                        navController.navigate(Screen.Settings.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
+                            popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -208,7 +191,8 @@ fun YuanmanNavGraph(
             composable(Screen.CategoryManage.route) {
                 val categoryViewModel: CategoryManageViewModel = viewModel(
                     factory = CategoryManageViewModel.Factory(
-                        categoryRepository = app.categoryRepository
+                        categoryRepository = app.categoryRepository,
+                        preferencesRepository = app.preferencesRepository
                     )
                 )
                 CategoryManageScreen(

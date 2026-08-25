@@ -6,9 +6,16 @@ import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
+import com.yuanman.app.data.repository.PreferencesRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+enum class ManageTab(val title: String) {
+    EXPENSE("支出分类"),
+    INCOME("收入分类"),
+    TAGS("快捷标签")
+}
 
 data class CategoryWithUsage(
     val category: CategoryEntity,
@@ -16,36 +23,45 @@ data class CategoryWithUsage(
 )
 
 data class CategoryUiState(
-    val currentType: RecordType = RecordType.EXPENSE,
+    val currentTab: ManageTab = ManageTab.EXPENSE,
     val categoriesWithUsage: List<CategoryWithUsage> = emptyList(),
+    val customTags: List<String> = emptyList(),
     val errorDialogMessage: String? = null,
     val isLoading: Boolean = false
 )
 
 class CategoryManageViewModel(
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
-    private val _currentType = MutableStateFlow(RecordType.EXPENSE)
+    private val _currentTab = MutableStateFlow(ManageTab.EXPENSE)
     private val _errorDialogMessage = MutableStateFlow<String?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val categoriesFlow = _currentType.flatMapLatest { type ->
-        categoryRepository.getCategoriesByType(type)
+    private val categoriesFlow = _currentTab.flatMapLatest { tab ->
+        val recordType = when (tab) {
+            ManageTab.EXPENSE -> RecordType.EXPENSE
+            ManageTab.INCOME -> RecordType.INCOME
+            ManageTab.TAGS -> RecordType.EXPENSE
+        }
+        categoryRepository.getCategoriesByType(recordType)
     }
 
     val uiState: StateFlow<CategoryUiState> = combine(
-        _currentType,
+        _currentTab,
         categoriesFlow,
+        preferencesRepository.customTags,
         _errorDialogMessage
-    ) { type, categories, errorMsg ->
+    ) { tab, categories, tags, errorMsg ->
         val listWithUsage = categories.map { cat ->
             val count = categoryRepository.getCategoryUsageCount(cat.id)
             CategoryWithUsage(cat, count)
         }
         CategoryUiState(
-            currentType = type,
+            currentTab = tab,
             categoriesWithUsage = listWithUsage,
+            customTags = tags,
             errorDialogMessage = errorMsg,
             isLoading = false
         )
@@ -55,18 +71,19 @@ class CategoryManageViewModel(
         initialValue = CategoryUiState(isLoading = true)
     )
 
-    fun switchType(type: RecordType) {
-        _currentType.value = type
+    fun switchTab(tab: ManageTab) {
+        _currentTab.value = tab
     }
 
     fun addCategory(name: String, iconName: String, colorHex: Long) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
 
+        val type = if (_currentTab.value == ManageTab.INCOME) RecordType.INCOME else RecordType.EXPENSE
         viewModelScope.launch {
             val newCategory = CategoryEntity(
                 name = trimmed,
-                type = _currentType.value.name,
+                type = type.name,
                 iconName = iconName,
                 colorHex = colorHex,
                 isDefault = false,
@@ -99,16 +116,35 @@ class CategoryManageViewModel(
         }
     }
 
+    fun addTag(tag: String) {
+        viewModelScope.launch {
+            preferencesRepository.addCustomTag(tag)
+        }
+    }
+
+    fun updateTag(oldTag: String, newTag: String) {
+        viewModelScope.launch {
+            preferencesRepository.updateCustomTag(oldTag, newTag)
+        }
+    }
+
+    fun deleteTag(tag: String) {
+        viewModelScope.launch {
+            preferencesRepository.deleteCustomTag(tag)
+        }
+    }
+
     fun clearErrorDialog() {
         _errorDialogMessage.value = null
     }
 
     class Factory(
-        private val categoryRepository: CategoryRepository
+        private val categoryRepository: CategoryRepository,
+        private val preferencesRepository: PreferencesRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CategoryManageViewModel(categoryRepository) as T
+            return CategoryManageViewModel(categoryRepository, preferencesRepository) as T
         }
     }
 }

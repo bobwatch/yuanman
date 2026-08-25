@@ -84,10 +84,11 @@ class AddEditRecordViewModel(
                         } else {
                             list.firstOrNull()
                         }
+                        val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
                         val remarks = if (newSelected != null) {
-                            CategoryIconHelper.getPresetRemarks(newSelected.name)
+                            (CategoryIconHelper.getPresetRemarks(newSelected.name) + custom).distinct()
                         } else {
-                            emptyList()
+                            custom
                         }
                         state.copy(
                             availableCategories = list,
@@ -107,16 +108,19 @@ class AddEditRecordViewModel(
                     val record = recordWithCategory.record
                     val recType = RecordType.fromString(record.type)
                     val cat = recordWithCategory.category
+                    val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
+                    val preset = if (cat != null) CategoryIconHelper.getPresetRemarks(cat.name) else emptyList()
+                    val remarks = (preset + custom).distinct()
                     _uiState.update {
                         it.copy(
                             isEditMode = true,
                             type = recType,
                             expression = MoneyUtils.centsToYuanString(record.amount, withGrouping = false),
                             selectedCategory = cat,
-                            quickRemarks = if (cat != null) CategoryIconHelper.getPresetRemarks(cat.name) else emptyList(),
                             recordTime = record.recordTime,
                             remark = record.remark,
-                            paymentMethod = record.paymentMethod
+                            paymentMethod = record.paymentMethod,
+                            quickRemarks = remarks
                         )
                     }
                 }
@@ -135,13 +139,17 @@ class AddEditRecordViewModel(
     }
 
     fun selectCategory(category: CategoryEntity) {
-        val remarks = CategoryIconHelper.getPresetRemarks(category.name)
-        _uiState.update {
-            it.copy(
-                selectedCategory = category,
-                quickRemarks = remarks,
-                errorMessage = null
-            )
+        viewModelScope.launch {
+            val preset = CategoryIconHelper.getPresetRemarks(category.name)
+            val custom = preferencesRepository.customTags.firstOrNull() ?: emptyList()
+            val combined = (preset + custom).distinct()
+            _uiState.update {
+                it.copy(
+                    selectedCategory = category,
+                    quickRemarks = combined,
+                    errorMessage = null
+                )
+            }
         }
     }
 
