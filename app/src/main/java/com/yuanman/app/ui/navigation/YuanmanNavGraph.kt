@@ -223,7 +223,8 @@ fun YuanmanNavGraph(
                     factory = SettingsViewModel.Factory(
                         preferencesRepository = app.preferencesRepository,
                         recordRepository = app.recordRepository,
-                        categoryRepository = app.categoryRepository
+                        categoryRepository = app.categoryRepository,
+                        syncManager = app.syncManager
                     )
                 )
                 SettingsScreen(

@@ -12,6 +12,7 @@ import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
+import com.yuanman.app.sync.FamilySyncManager
 import com.yuanman.app.utils.CsvExportUtils
 import com.yuanman.app.utils.JsonBackupUtils
 import kotlinx.coroutines.flow.*
@@ -46,7 +47,8 @@ private data class FeaturePrefs(
 class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val recordRepository: RecordRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    val syncManager: FamilySyncManager
 ) : ViewModel() {
 
     private val _isClearedSuccess = MutableStateFlow(false)
@@ -63,12 +65,19 @@ class SettingsViewModel(
         preferencesRepository.hapticFeedbackEnabled
     ) { budget, privacy, haptic -> FeaturePrefs(budget, privacy, haptic) }
 
+    val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allRecords: StateFlow<List<RecordWithCategory>> = recordRepository.getAllRecords()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val uiState: StateFlow<SettingsUiState> = combine(
         generalPrefsFlow,
         featurePrefsFlow,
-        recordRepository.getAllRecords(),
-        categoryRepository.getAllCategories()
-    ) { general, feature, records, categories ->
+        allCategories,
+        allRecords,
+        _isClearedSuccess
+    ) { general, feature, categories, records, cleared ->
         SettingsUiState(
             themeMode = general.theme,
             defaultRecordType = general.defaultType,
@@ -79,7 +88,7 @@ class SettingsViewModel(
             totalRecordCount = records.size,
             allRecords = records,
             allCategories = categories,
-            isClearedSuccess = _isClearedSuccess.value,
+            isClearedSuccess = cleared,
             isLoading = false
         )
     }.stateIn(
@@ -106,9 +115,9 @@ class SettingsViewModel(
         }
     }
 
-    fun setMonthlyBudget(budgetCents: Long) {
+    fun setMonthlyBudget(budget: Long) {
         viewModelScope.launch {
-            preferencesRepository.setMonthlyBudget(budgetCents)
+            preferencesRepository.setMonthlyBudget(budget)
         }
     }
 
@@ -163,41 +172,6 @@ class SettingsViewModel(
         }
     }
 
-    fun startWifiServer(onStarted: (Boolean, String?) -> Unit) {
-        val ip = com.yuanman.app.utils.WifiSyncManager.getLocalIpAddress()
-        if (ip == null) {
-            onStarted(false, null)
-            return
-        }
-        viewModelScope.launch {
-            val categories = uiState.value.allCategories
-            val records = uiState.value.allRecords
-            val success = com.yuanman.app.utils.WifiSyncManager.startServer(categories, records)
-            onStarted(success, ip)
-        }
-    }
-
-    fun stopWifiServer() {
-        com.yuanman.app.utils.WifiSyncManager.stopServer()
-    }
-
-    fun syncFromPeer(targetIp: String, onResult: (Boolean, String) -> Unit) {
-        viewModelScope.launch {
-            val result = com.yuanman.app.utils.WifiSyncManager.pullDataFromPeer(targetIp)
-            result.onSuccess { data ->
-                if (data.categories.isNotEmpty()) {
-                    categoryRepository.insertCategories(data.categories)
-                }
-                if (data.records.isNotEmpty()) {
-                    recordRepository.insertRecords(data.records)
-                }
-                onResult(true, "同步成功！已拉取并导入 ${data.records.size} 笔账单与 ${data.categories.size} 个分类")
-            }.onFailure { error ->
-                onResult(false, error.message ?: "同步失败")
-            }
-        }
-    }
-
     fun resetClearedFlag() {
         _isClearedSuccess.value = false
     }
@@ -205,14 +179,16 @@ class SettingsViewModel(
     class Factory(
         private val preferencesRepository: PreferencesRepository,
         private val recordRepository: RecordRepository,
-        private val categoryRepository: CategoryRepository
+        private val categoryRepository: CategoryRepository,
+        private val syncManager: FamilySyncManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return SettingsViewModel(
                 preferencesRepository,
                 recordRepository,
-                categoryRepository
+                categoryRepository,
+                syncManager
             ) as T
         }
     }

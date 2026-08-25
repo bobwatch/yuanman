@@ -1,6 +1,10 @@
 package com.yuanman.app.ui.screens.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,10 +27,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yuanman.app.data.model.ThemeMode
+import com.yuanman.app.sync.PeerDevice
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.utils.MoneyUtils
-import com.yuanman.app.utils.WifiSyncManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,70 +72,109 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 🌟 1. 预算与分类
-            SettingsGroupCard(title = "偏好与分类") {
-                // 月度预算
-                SettingsRowItem(
-                    icon = Icons.Outlined.Savings,
-                    title = "月度预算目标",
-                    subtitle = if (uiState.monthlyBudget > 0L) "当前设定: ¥${MoneyUtils.centsToYuanString(uiState.monthlyBudget)}" else "未设定（点击立即设定）",
-                    subtitleHighlight = uiState.monthlyBudget > 0L,
-                    onClick = { showBudgetDialog = true }
-                )
-
-                if (onNavigateToCategoryManage != null) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
+            // 🌟 卡片 1: 预算与分类（去标题化，极简纯净）
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    // 月度预算
                     SettingsRowItem(
-                        icon = Icons.Outlined.Category,
-                        title = "收支分类管理",
-                        subtitle = "新增、编辑分类图标与配色",
-                        onClick = { onNavigateToCategoryManage() }
+                        icon = Icons.Outlined.Savings,
+                        title = "月度预算目标",
+                        subtitle = if (uiState.monthlyBudget > 0L) "当前设定: ¥${MoneyUtils.centsToYuanString(uiState.monthlyBudget)}" else "未设定（点击立即设定）",
+                        subtitleHighlight = uiState.monthlyBudget > 0L,
+                        onClick = { showBudgetDialog = true }
+                    )
+
+                    if (onNavigateToCategoryManage != null) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                        )
+
+                        SettingsRowItem(
+                            icon = Icons.Outlined.Category,
+                            title = "收支分类管理",
+                            subtitle = "自定义分类图标与配色",
+                            onClick = { onNavigateToCategoryManage() }
+                        )
+                    }
+                }
+            }
+
+            // 🌟 卡片 2: 数据与跨设备同步（去标题化）
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    // WiFi 局域网同步 (基于 NSD 自动发现 + 配对码)
+                    SettingsRowItem(
+                        icon = Icons.Outlined.Wifi,
+                        title = "局域网跨设备同步",
+                        subtitle = "同一 WiFi 自动发现设备，配对极速同步",
+                        onClick = { showWifiSyncModal = true }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    // 导出表格
+                    SettingsRowItem(
+                        icon = Icons.Outlined.FileDownload,
+                        title = "导出账单表格",
+                        subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
+                        onClick = { viewModel.exportRecordsCsv(context) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    // 清空全部数据
+                    SettingsRowItem(
+                        icon = Icons.Outlined.DeleteForever,
+                        title = "清空全部数据",
+                        subtitle = "清除所有账单记录并重置分类",
+                        isDestructive = true,
+                        onClick = { showFirstConfirmDialog = true }
                     )
                 }
             }
 
-            // 🌟 2. 数据与跨设备同步
-            SettingsGroupCard(title = "数据与同步") {
-                // WiFi 局域网同步
-                SettingsRowItem(
-                    icon = Icons.Outlined.Wifi,
-                    title = "局域网跨设备同步",
-                    subtitle = "同一 WiFi 局域网内免流量快速互传",
-                    onClick = { showWifiSyncModal = true }
-                )
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                // 导出表格
-                SettingsRowItem(
-                    icon = Icons.Outlined.FileDownload,
-                    title = "导出账单表格",
-                    subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
-                    onClick = { viewModel.exportRecordsCsv(context) }
-                )
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                // 清空全部数据
-                SettingsRowItem(
-                    icon = Icons.Outlined.DeleteForever,
-                    title = "清空全部数据",
-                    subtitle = "清除所有账单记录并重置分类",
-                    isDestructive = true,
-                    onClick = { showFirstConfirmDialog = true }
-                )
-            }
-
-            // 🌟 3. 外观与显示
-            SettingsGroupCard(title = "外观与显示") {
+            // 🌟 卡片 3: 外观与显示（去标题化）
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ThemeMode.values().forEach { mode ->
@@ -138,18 +182,24 @@ fun SettingsScreen(
                         FilterChip(
                             selected = isSelected,
                             onClick = { viewModel.setThemeMode(mode) },
-                            label = { Text(mode.title, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                            label = {
+                                Text(
+                                    mode.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
 
-            // 🌟 4. 关于应用
+            // 🌟 关于应用
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -242,14 +292,11 @@ fun SettingsScreen(
         }
     }
 
-    // 🌟 局域网跨设备同步 BottomSheet
+    // 🌟 局域网跨设备同步 BottomSheet (参考 moneyhistory 架构)
     if (showWifiSyncModal) {
-        WifiSyncBottomSheet(
-            viewModel = viewModel,
-            onDismiss = {
-                viewModel.stopWifiServer()
-                showWifiSyncModal = false
-            },
+        FamilySyncBottomSheet(
+            syncManager = viewModel.syncManager,
+            onDismiss = { showWifiSyncModal = false },
             onShowSnackbar = { msg ->
                 scope.launch { snackbarHostState.showSnackbar(msg) }
             }
@@ -281,36 +328,6 @@ fun SettingsScreen(
         },
         onDismiss = { showSecondConfirmDialog = false }
     )
-}
-
-@Composable
-private fun SettingsGroupCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                content = content
-            )
-        }
-    }
 }
 
 @Composable
@@ -382,24 +399,40 @@ private fun SettingsRowItem(
 }
 
 /**
- * 🌟 局域网跨设备同步弹层 (WiFi Sync Modal BottomSheet)
+ * 🌟 局域网跨设备同步弹层 (基于 NSD 自动发现 + 6位配对码 + AES-GCM 加密同步)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WifiSyncBottomSheet(
-    viewModel: SettingsViewModel,
+private fun FamilySyncBottomSheet(
+    syncManager: com.yuanman.app.sync.FamilySyncManager,
     onDismiss: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: 发送端 (开服), 1: 接收端 (拉取)
-    var serverIp by remember { mutableStateOf<String?>(null) }
-    var isServerRunning by remember { mutableStateOf(false) }
-    var targetIpInput by remember { mutableStateOf("") }
-    var isSyncing by remember { mutableStateOf(false) }
+    val devices by syncManager.devices.collectAsStateWithLifecycle()
+    val status by syncManager.status.collectAsStateWithLifecycle()
+    val syncing by syncManager.syncing.collectAsStateWithLifecycle()
+    val myCode by syncManager.pairingCode.collectAsStateWithLifecycle()
+    val lastEvent by syncManager.lastEvent.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    var inputCode by remember { mutableStateOf("") }
+    var joinMessage by remember { mutableStateOf<String?>(null) }
+    var confirmRegenerate by remember { mutableStateOf(false) }
+
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    // 自动获取本机 IP
-    val localIp = remember { WifiSyncManager.getLocalIpAddress() }
+    DisposableEffect(Unit) {
+        syncManager.start()
+        onDispose {
+            syncManager.stop()
+        }
+    }
+
+    LaunchedEffect(lastEvent) {
+        lastEvent?.let { event ->
+            onShowSnackbar("已成功同步设备 ${event.peerName} (${event.recordCount} 条账单)")
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -409,8 +442,9 @@ private fun WifiSyncBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -428,159 +462,229 @@ private fun WifiSyncBottomSheet(
             }
 
             Text(
-                text = "两台手机连接在同一个 WiFi 路由器下，即可免流量、零云端、点对点极速同步全部账单与分类数据。",
+                text = "在同一 WiFi 下自动发现彼此设备，双向加密全量同步账本。不经过任何服务器，100% 隐私安全。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
 
-            // 模式切换 Tab
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.clip(RoundedCornerShape(12.dp))
+            // 🌟 本机配对码展示卡片
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("作为发送端", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("作为接收端", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) }
-                )
-            }
-
-            if (selectedTab == 0) {
-                // 发送端
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Text(
+                        text = "本机配对码",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = myCode,
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = primaryColor,
+                        letterSpacing = 6.sp,
+                        maxLines = 1
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isServerRunning) Icons.Default.CloudDone else Icons.Default.WifiTethering,
-                            contentDescription = null,
-                            tint = if (isServerRunning) primaryColor else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(44.dp)
-                        )
-
-                        Text(
-                            text = if (isServerRunning) "同步服务已启动" else "未启动同步服务",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-
-                        if (localIp != null) {
-                            Text(
-                                text = "本机局域网 IP: $localIp",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, color = primaryColor)
-                            )
-                            Text(
-                                text = "请在接收端手机打开本功能，选择「作为接收端」并输入上述 IP 地址即可开始同步。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        } else {
-                            Text(
-                                text = "未检测到局域网 WiFi 连接，请先连接 WiFi",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
+                        TextButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
+                                onShowSnackbar("配对码已复制到剪贴板")
+                            }
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("复制配对码")
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Button(
-                            onClick = {
-                                if (isServerRunning) {
-                                    viewModel.stopWifiServer()
-                                    isServerRunning = false
-                                } else {
-                                    viewModel.startWifiServer { success, ip ->
-                                        isServerRunning = success
-                                        serverIp = ip
-                                        if (success) {
-                                            onShowSnackbar("同步服务已就绪 (端口 8999)")
-                                        } else {
-                                            onShowSnackbar("启动失败，请检查网络权限")
-                                        }
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isServerRunning) MaterialTheme.colorScheme.error else primaryColor
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (isServerRunning) "停止同步服务" else "启动同步服务")
+                        TextButton(onClick = { confirmRegenerate = true }) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("重新生成")
                         }
                     }
                 }
-            } else {
-                // 接收端
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
+            }
+
+            // 🌟 加入配对输入框
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Text(
+                        text = "加入已有配对码",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "从发送端设备拉取数据",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = inputCode,
+                            onValueChange = { input ->
+                                inputCode = input.filter { it.isDigit() }.take(6)
+                                joinMessage = null
+                            },
+                            label = { Text("输入另一台手机的 6 位配对码") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
                         )
 
-                        OutlinedTextField(
-                            value = targetIpInput,
-                            onValueChange = { targetIpInput = it },
-                            label = { Text("发送端手机 IP 地址") },
-                            placeholder = { Text("如: 192.168.1.105") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Spacer(modifier = Modifier.width(10.dp))
 
                         Button(
                             onClick = {
-                                if (targetIpInput.isBlank()) {
-                                    onShowSnackbar("请输入发送端手机的 IP 地址")
-                                    return@Button
-                                }
-                                isSyncing = true
-                                viewModel.syncFromPeer(targetIpInput) { success, msg ->
-                                    isSyncing = false
-                                    onShowSnackbar(msg)
-                                    if (success) {
-                                        onDismiss()
-                                    }
+                                if (syncManager.setPairingCode(inputCode)) {
+                                    joinMessage = "已设置配对码 $inputCode"
+                                    onShowSnackbar("配对码设置成功，正在自动同步")
+                                } else {
+                                    joinMessage = "请输入 6 位数字配对码"
                                 }
                             },
-                            enabled = !isSyncing,
-                            modifier = Modifier.fillMaxWidth()
+                            enabled = inputCode.length == 6
                         ) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(18.dp)
+                            Text("确认")
+                        }
+                    }
+
+                    if (joinMessage != null) {
+                        Text(
+                            text = joinMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = primaryColor
+                        )
+                    }
+                }
+            }
+
+            // 🌟 局域网已发现设备与同步触发
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "局域网在线设备 (${devices.size})",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = primaryColor
+                        )
+                    }
+
+                    if (devices.isEmpty()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp),
+                                color = primaryColor
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "正在搜索同一 WiFi 下的设备...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    } else {
+                        devices.forEach { device ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhoneAndroid,
+                                        contentDescription = null,
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = device.name,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                        )
+                                        Text(
+                                            text = "${device.host.hostAddress}:${device.port}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = if (device.connected) "已连接" else "在线",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = primaryColor
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("正在同步中...")
-                            } else {
-                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("连接并同步数据")
                             }
+                        }
+                    }
+
+                    Button(
+                        onClick = { syncManager.syncNow() },
+                        enabled = !syncing && devices.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (syncing) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("正在同步中...")
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("立即同步全部数据")
                         }
                     }
                 }
@@ -588,5 +692,29 @@ private fun WifiSyncBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (confirmRegenerate) {
+        AlertDialog(
+            onDismissRequest = { confirmRegenerate = false },
+            title = { Text("重新生成配对码") },
+            text = { Text("重新生成后，之前已配对的设备将需要重新输入新的配对码才能同步。确定要重新生成吗？") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        syncManager.regeneratePairingCode()
+                        confirmRegenerate = false
+                        onShowSnackbar("已生成新配对码")
+                    }
+                ) {
+                    Text("确定重新生成")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRegenerate = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
