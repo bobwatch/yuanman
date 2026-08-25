@@ -72,7 +72,7 @@ fun AddEditCategoryDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = if (categoryToEdit == null) "新增分类与子标签" else "编辑分类与子标签",
+                    text = if (categoryToEdit == null) "新增分类" else "编辑分类",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
 

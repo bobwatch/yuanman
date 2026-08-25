@@ -13,6 +13,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -38,6 +40,7 @@ import com.yuanman.app.ui.navigation.BottomNavTab
 @Composable
 fun BottomNavBar(
     navController: NavController,
+    onAddRecord: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -47,6 +50,7 @@ fun BottomNavBar(
 
     val tabs = BottomNavTab.ALL
     val selectedIndex = tabs.indexOfFirst { it.screen.route == currentRoute }.coerceAtLeast(0)
+    val selectedSlotIndex = if (selectedIndex >= 2) selectedIndex + 1 else selectedIndex
 
     val activeColor = if (isDark) Color(0xFF34D399) else Color(0xFF059669)
     val inactiveColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
@@ -81,7 +85,7 @@ fun BottomNavBar(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(64.dp)
         ) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -89,12 +93,12 @@ fun BottomNavBar(
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                val tabCount = tabs.size
+                val tabCount = tabs.size + 1
                 val itemWidth = maxWidth / tabCount
 
                 // 🌟 微型滑动光晕小块 (比 Icon 还小，直径 18dp 的微型柔光球 + 底部小滑点)
                 val indicatorCenterOffset by animateDpAsState(
-                    targetValue = itemWidth * selectedIndex + (itemWidth - 18.dp) / 2,
+                    targetValue = itemWidth * selectedSlotIndex + (itemWidth - 18.dp) / 2,
                     animationSpec = spring(
                         dampingRatio = 0.72f,
                         stiffness = Spring.StiffnessMediumLow
@@ -120,7 +124,7 @@ fun BottomNavBar(
 
                 // 2. 底部极细小光标条 (12dp x 3dp)
                 val bottomDotOffset by animateDpAsState(
-                    targetValue = itemWidth * selectedIndex + (itemWidth - 12.dp) / 2,
+                    targetValue = itemWidth * selectedSlotIndex + (itemWidth - 12.dp) / 2,
                     animationSpec = spring(
                         dampingRatio = 0.72f,
                         stiffness = Spring.StiffnessMediumLow
@@ -145,6 +149,35 @@ fun BottomNavBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     tabs.forEachIndexed { index, tab ->
+                        if (index == 2) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onAddRecord()
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = activeColor,
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier.size(52.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "记一笔",
+                                            tint = if (isDark) Color(0xFF062E24) else MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         val isSelected = index == selectedIndex
                         val targetRoute = tab.screen.route
 

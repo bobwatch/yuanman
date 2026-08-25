@@ -183,7 +183,7 @@ fun DonutChart(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .widthIn(max = 160.dp)
+                .width(150.dp)
                 .padding(horizontal = 6.dp, vertical = 2.dp)
                 .clip(CircleShape)
                 .clickable { onSelectCategory(null) }
@@ -234,10 +234,11 @@ fun DonutChart(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "轻触扇区看明细",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    text = "点击看明细",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f),
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

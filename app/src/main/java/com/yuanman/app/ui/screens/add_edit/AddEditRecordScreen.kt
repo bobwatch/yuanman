@@ -85,6 +85,14 @@ fun AddEditRecordScreen(
         }
     }
 
+    // 系统键盘通过返回键隐藏时，输入框通常仍保持焦点；主动清焦点才能恢复数字键盘。
+    LaunchedEffect(isImeVisible) {
+        if (!isImeVisible && isRemarkFocused) {
+            focusManager.clearFocus(force = true)
+            isRemarkFocused = false
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -124,8 +132,7 @@ fun AddEditRecordScreen(
             TabRow(
                 selectedTabIndex = if (uiState.type == RecordType.EXPENSE) 0 else 1,
                 containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                contentColor = MaterialTheme.colorScheme.primary
             ) {
                 Tab(
                     selected = uiState.type == RecordType.EXPENSE,
@@ -239,6 +246,26 @@ fun AddEditRecordScreen(
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
+                        }
+                    }
+                }
+
+                if (uiState.isEditMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = { viewModel.setExpression("") },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.RestartAlt,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("清空重输")
                         }
                     }
                 }
@@ -454,7 +481,7 @@ fun AddEditRecordScreen(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
-                        focusManager.clearFocus()
+                        focusManager.clearFocus(force = true)
                         isRemarkFocused = false
                     }),
                     trailingIcon = {

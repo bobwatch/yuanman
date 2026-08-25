@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +35,7 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.MonthPickerModal
+import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 import com.yuanman.app.ui.screens.home.BitgetTransactionItem
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
@@ -53,6 +55,8 @@ fun RecordListScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
+    var searchFocused by remember { mutableStateOf(false) }
+    var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
@@ -129,15 +133,19 @@ fun RecordListScreen(
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                border = BorderStroke(
+                    width = if (searchFocused) 1.5.dp else 0.75.dp,
+                    color = if (searchFocused) primaryColor.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -170,7 +178,9 @@ fun RecordListScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             ),
                             cursorBrush = SolidColor(primaryColor),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { searchFocused = it.isFocused }
                         )
                     }
                     if (uiState.searchQuery.isNotEmpty()) {
@@ -448,13 +458,15 @@ fun RecordListScreen(
             if (uiState.filteredRecords.isEmpty()) {
                 EmptyStateView(
                     title = if (uiState.searchQuery.isNotEmpty()) "未找到相关账单" else "该时间段暂无账单记录",
-                    description = if (uiState.searchQuery.isNotEmpty()) "可尝试搜索其他关键词" else "去记一笔新的账单吧",
+                    description = if (uiState.searchQuery.isNotEmpty()) "换个关键词试试" else "点击底部「＋」记账",
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 88.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 88.dp)
                 ) {
                     uiState.groupedRecords.forEach { (dayTimestamp, recordsInDay) ->
                         val summary = uiState.daySummaries[dayTimestamp]
@@ -470,16 +482,19 @@ fun RecordListScreen(
                             items = recordsInDay,
                             key = { it.record.id }
                         ) { item ->
-                            BitgetTransactionItem(
-                                item = item,
-                                onClick = { onNavigateToDetail(item.record.id) },
-                                onLongClick = { activeMenuRecord = item }
-                            )
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 68.dp, end = 16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                thickness = 0.5.dp
-                            )
+                            SwipeRevealDeleteItem(
+                                itemKey = item.record.id,
+                                openKey = openSwipeItemId,
+                                onOpen = { openSwipeItemId = it },
+                                onDelete = { recordToDelete = item }
+                            ) {
+                                BitgetTransactionItem(
+                                    item = item,
+                                    onClick = { onNavigateToDetail(item.record.id) },
+                                    onLongClick = { activeMenuRecord = item }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }

@@ -180,7 +180,7 @@ fun StatisticsScreen(
                         onClick = { viewModel.selectType(RecordType.EXPENSE) },
                         text = {
                             Text(
-                                "支出结构占比",
+                                "支出占比",
                                 fontWeight = if (uiState.selectedType == RecordType.EXPENSE) FontWeight.Bold else FontWeight.Normal
                             )
                         }
@@ -190,7 +190,7 @@ fun StatisticsScreen(
                         onClick = { viewModel.selectType(RecordType.INCOME) },
                         text = {
                             Text(
-                                "收入来源占比",
+                                "收入占比",
                                 fontWeight = if (uiState.selectedType == RecordType.INCOME) FontWeight.Bold else FontWeight.Normal
                             )
                         }
@@ -212,7 +212,7 @@ fun StatisticsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = if (uiState.selectedType == RecordType.EXPENSE) "支出结构占比" else "收入来源占比",
+                            text = if (uiState.selectedType == RecordType.EXPENSE) "支出占比" else "收入占比",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             modifier = Modifier.align(Alignment.Start)
                         )

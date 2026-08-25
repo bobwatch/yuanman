@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,7 @@ fun YuanmanNavGraph(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val defaultRecordType by app.preferencesRepository.defaultRecordType.collectAsState(initial = RecordType.EXPENSE)
 
     val showBottomBar = currentRoute in BottomNavTab.ALL.map { it.screen.route }
 
@@ -137,9 +139,6 @@ fun YuanmanNavGraph(
                 )
                 HomeScreen(
                     viewModel = homeViewModel,
-                    onNavigateToAddRecord = { type ->
-                        navController.navigate(Screen.AddEditRecord.createRoute(type = type))
-                    },
                     onNavigateToDetail = { recordId ->
                         navController.navigate(Screen.RecordDetail.createRoute(recordId))
                     },
@@ -330,6 +329,11 @@ fun YuanmanNavGraph(
         if (showBottomBar) {
             BottomNavBar(
                 navController = navController,
+                onAddRecord = {
+                    navController.navigate(
+                        Screen.AddEditRecord.createRoute(type = defaultRecordType)
+                    )
+                },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }

@@ -25,6 +25,7 @@ import com.yuanman.app.ui.components.AlertInfoDialog
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.LocalToastHostState
+import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,13 +40,14 @@ fun CategoryManageScreen(
     val toast = LocalToastHostState.current
 
     var categoryToDelete by remember { mutableStateOf<CategoryEntity?>(null) }
+    var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("分类与标签管理", fontWeight = FontWeight.Bold) },
+                title = { Text("分类管理", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     if (onNavigateBack != null) {
                         IconButton(onClick = onNavigateBack) {
@@ -55,17 +57,24 @@ fun CategoryManageScreen(
                 }
             )
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    onNavigateToAddCategory(uiState.currentType)
-                },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("新增分类", fontWeight = FontWeight.Bold) },
-                containerColor = primaryColor,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.padding(bottom = 76.dp)
-            )
+        bottomBar = {
+            Surface(
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp
+            ) {
+                Button(
+                    onClick = { onNavigateToAddCategory(uiState.currentType) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .navigationBarsPadding(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("新增分类", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -113,7 +122,7 @@ fun CategoryManageScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "暂无分类，点击右下角新增",
+                        text = "暂无分类，点击下方新增",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -123,7 +132,7 @@ fun CategoryManageScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
@@ -134,64 +143,13 @@ fun CategoryManageScreen(
                         val usageCount = item.usageCount
                         val childTags = category.getTagList()
 
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    if (usageCount > 0) {
-                                        viewModel.deleteCategory(category)
-                                    } else {
-                                        categoryToDelete = category
-                                    }
-                                    false
-                                } else {
-                                    false
-                                }
-                            }
-                        )
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = false,
-                            enableDismissFromEndToStart = true,
-                            backgroundContent = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(MaterialTheme.colorScheme.errorContainer),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .clickable {
-                                                if (usageCount > 0) {
-                                                    viewModel.deleteCategory(category)
-                                                } else {
-                                                    categoryToDelete = category
-                                                }
-                                            }
-                                            .padding(horizontal = 20.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "删除",
-                                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "删除",
-                                            color = MaterialTheme.colorScheme.onErrorContainer,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp
-                                        )
-                                    }
-                                }
-                            },
-                            content = {
-                                Card(
+                        SwipeRevealDeleteItem(
+                            itemKey = category.id,
+                            openKey = openSwipeItemId,
+                            onOpen = { openSwipeItemId = it },
+                            onDelete = { categoryToDelete = category }
+                        ) {
+                            Card(
                                     shape = RoundedCornerShape(14.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
@@ -247,7 +205,7 @@ fun CategoryManageScreen(
                                             }
 
                                             Text(
-                                                text = "点击编辑 · 左滑删除",
+                                                text = "点击编辑 · 左滑后点删除",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
                                             )
@@ -283,9 +241,8 @@ fun CategoryManageScreen(
                                             }
                                         }
                                     }
-                                }
                             }
-                        )
+                        }
                     }
                 }
             }

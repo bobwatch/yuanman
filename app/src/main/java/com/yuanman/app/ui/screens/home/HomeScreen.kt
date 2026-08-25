@@ -39,7 +39,6 @@ import com.yuanman.app.utils.MoneyUtils
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onNavigateToAddRecord: (RecordType) -> Unit,
     onNavigateToDetail: (Long) -> Unit,
     onNavigateToEdit: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
@@ -48,9 +47,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val defaultType by viewModel.defaultRecordType.collectAsState()
     val toast = LocalToastHostState.current
-    val haptic = LocalHapticFeedback.current
 
     var showMonthPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
@@ -61,6 +58,7 @@ fun HomeScreen(
     // 长按快捷菜单状态
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
+    var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
 
     // 过滤后的分组数据
     val filteredGroupedRecords = remember(uiState.groupedRecords, filterType) {
@@ -75,19 +73,6 @@ fun HomeScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onNavigateToAddRecord(defaultType)
-                },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("记一笔", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.padding(bottom = 68.dp)
-            )
-        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -144,9 +129,7 @@ fun HomeScreen(
             if (filteredGroupedRecords.isEmpty()) {
                 EmptyStateView(
                     title = "${uiState.selectedYear}年${uiState.selectedMonth}月暂无账单",
-                    description = "点击右下角「记一笔」按钮，记录生活中的每一笔收支",
-                    actionButtonText = "立即记一笔",
-                    onActionClick = { onNavigateToAddRecord(defaultType) },
+                    description = "点击底部「＋」记账",
                     modifier = Modifier.weight(1f)
                 )
             } else {
@@ -171,60 +154,18 @@ fun HomeScreen(
                             items = records,
                             key = { "record_${it.record.id}" }
                         ) { item ->
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { value ->
-                                    if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        recordToDelete = item
-                                        false
-                                    } else {
-                                        false
-                                    }
-                                }
-                            )
-
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                enableDismissFromEndToStart = true,
-                                backgroundContent = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(MaterialTheme.colorScheme.errorContainer),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxHeight()
-                                                .clickable { recordToDelete = item }
-                                                .padding(horizontal = 20.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "删除",
-                                                tint = MaterialTheme.colorScheme.onErrorContainer,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "删除",
-                                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.5.sp
-                                            )
-                                        }
-                                    }
-                                },
-                                content = {
-                                    BitgetTransactionItem(
-                                        item = item,
-                                        onClick = { onNavigateToEdit(item.record.id) },
-                                        onLongClick = { activeMenuRecord = item }
-                                    )
-                                }
-                            )
+                            SwipeRevealDeleteItem(
+                                itemKey = item.record.id,
+                                openKey = openSwipeItemId,
+                                onOpen = { openSwipeItemId = it },
+                                onDelete = { recordToDelete = item }
+                            ) {
+                                BitgetTransactionItem(
+                                    item = item,
+                                    onClick = { onNavigateToEdit(item.record.id) },
+                                    onLongClick = { activeMenuRecord = item }
+                                )
+                            }
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }

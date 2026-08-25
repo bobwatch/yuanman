@@ -509,7 +509,7 @@ fun AddEditCategoryScreen(
                     .height(52.dp)
             ) {
                 Text(
-                    text = if (uiState.isEditMode) "保存分类与子标签修改" else "完成并创建分类",
+                    text = if (uiState.isEditMode) "保存修改" else "创建分类",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )

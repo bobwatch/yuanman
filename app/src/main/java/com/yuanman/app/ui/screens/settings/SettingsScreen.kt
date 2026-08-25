@@ -108,7 +108,7 @@ fun SettingsScreen(
                     SettingsRowItem(
                         icon = Icons.Outlined.Category,
                         title = "分类管理",
-                        subtitle = "管理支出/收入分类与快捷标签",
+                        subtitle = "管理支出与收入分类",
                         onClick = { onNavigateToCategoryManage?.invoke() }
                     )
 
