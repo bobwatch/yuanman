@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 启动屏 Logo：羊脂白玉·森林暮松 (中心 50, 50，放大半径 36) -->
+<!-- 启动屏 Logo：羊脂白玉·森林暮松 (黄金比例半径 30) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="100dp"
     android:height="100dp"
@@ -8,26 +8,26 @@
 
     <!-- 居中正圆剪裁 -->
     <group>
-        <clip-path android:pathData="M14,50 a36,36 0 1,0 72,0 a36,36 0 1,0 -72,0" />
+        <clip-path android:pathData="M20,50 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
 
         <!-- 深层水波 -->
         <path
             android:fillColor="#4F7767"
             android:fillAlpha="0.35"
-            android:pathData="M12,51 C24,45 38,45 50,51 C62,57 76,57 88,51 L92,92 L8,92 Z" />
+            android:pathData="M18,51 C27,45 39,45 50,51 C61,57 73,57 82,51 L86,86 L14,86 Z" />
 
         <!-- 浅层水波 -->
         <path
             android:fillColor="#3D6657"
-            android:pathData="M12,51 C24,57 38,57 50,51 C62,45 76,45 88,51 L92,92 L8,92 Z" />
+            android:pathData="M18,51 C27,57 39,57 50,51 C61,45 73,45 82,51 L86,86 L14,86 Z" />
     </group>
 
     <!-- 主圆环 -->
     <path
-        android:pathData="M14,50 a36,36 0 1,0 72,0 a36,36 0 1,0 -72,0"
+        android:pathData="M20,50 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0"
         android:fillColor="#00000000"
         android:strokeColor="#284A3E"
-        android:strokeWidth="4.5"
+        android:strokeWidth="4.2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 </vector>
