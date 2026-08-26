@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ fun RecordListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val listState = rememberLazyListState()
     var showMonthPicker by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
@@ -60,10 +62,27 @@ fun RecordListScreen(
     var searchFocused by remember { mutableStateOf(false) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
 
+    // 🌟 提前 4 项静默预加载下一页（无感加载）
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisibleItemIndex >= totalItems - 4
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore && uiState.hasMore && !uiState.isLoadingMore && !uiState.isLoading) {
+            viewModel.loadNextPage()
+        }
+    }
+
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
                 title = {
@@ -475,6 +494,7 @@ fun RecordListScreen(
                 )
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
@@ -507,6 +527,39 @@ fun RecordListScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+
+                    // 🌟 底部平滑加载/全部展示提示
+                    if (uiState.isLoadingMore) {
+                        item(key = "footer_loading_more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = primaryColor
+                                )
+                            }
+                        }
+                    } else if (!uiState.hasMore && uiState.filteredRecords.size >= 25) {
+                        item(key = "footer_no_more_records") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "— 已展示全部账单 —",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                                )
+                            }
                         }
                     }
                 }

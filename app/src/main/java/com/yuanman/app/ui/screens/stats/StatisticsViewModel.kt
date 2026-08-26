@@ -15,13 +15,17 @@ import kotlinx.coroutines.flow.*
 import java.util.Calendar
 
 enum class StatisticsPeriod(val title: String) {
-    MONTH("按月统计"),
-    YEAR("按年统计")
+    WEEK("周"),
+    MONTH("月"),
+    YEAR("年")
 }
 
 data class StatisticsUiState(
     val selectedYear: Int,
     val selectedMonth: Int,
+    val selectedWeek: Int,
+    val weekStartTimestamp: Long = 0L,
+    val weekEndTimestamp: Long = 0L,
     val periodMode: StatisticsPeriod = StatisticsPeriod.MONTH,
     val selectedType: RecordType = RecordType.EXPENSE,
     val summary: MonthSummaryData = MonthSummaryData(),
@@ -29,8 +33,8 @@ data class StatisticsUiState(
     val selectedCategory: CategoryStatItem? = null,
     val dailyTrends: List<DailyTrendItem> = emptyList(),
     val smartInsight: String = "",
-    val prevMonthExpense: Long = 0L,
-    val prevMonthIncome: Long = 0L,
+    val prevPeriodExpense: Long = 0L,
+    val prevPeriodIncome: Long = 0L,
     val expenseDiffPercent: Float? = null,
     val incomeDiffPercent: Float? = null,
     val isLoading: Boolean = false
@@ -42,70 +46,106 @@ class StatisticsViewModel(
 ) : ViewModel() {
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
+    private val currentYearWeek = DateTimeUtils.getCurrentYearWeek()
+
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
+    private val _selectedWeek = MutableStateFlow(currentYearWeek.second)
     private val _periodMode = MutableStateFlow(StatisticsPeriod.MONTH)
     private val _selectedType = MutableStateFlow(RecordType.EXPENSE)
     private val _selectedCategory = MutableStateFlow<CategoryStatItem?>(null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val activeRecordsFlow = combine(_selectedYear, _selectedMonth, _periodMode) { year, month, period ->
-        Triple(year, month, period)
-    }.flatMapLatest { (year, month, period) ->
-        if (period == StatisticsPeriod.MONTH) {
-            recordRepository.getRecordsByMonth(year, month)
-        } else {
-            recordRepository.getRecordsByYear(year)
+    private val activeRecordsFlow = combine(_selectedYear, _selectedMonth, _selectedWeek, _periodMode) { year, month, week, period ->
+        PeriodQuery(year, month, week, period)
+    }.flatMapLatest { query ->
+        when (query.period) {
+            StatisticsPeriod.WEEK -> recordRepository.getRecordsByWeek(query.year, query.week)
+            StatisticsPeriod.MONTH -> recordRepository.getRecordsByMonth(query.year, query.month)
+            StatisticsPeriod.YEAR -> recordRepository.getRecordsByYear(query.year)
         }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val prevMonthRecordsFlow = combine(_selectedYear, _selectedMonth) { year, month ->
-        val (pYear, pMonth) = if (month == 1) Pair(year - 1, 12) else Pair(year, month - 1)
-        Pair(pYear, pMonth)
-    }.flatMapLatest { (pYear, pMonth) ->
-        recordRepository.getRecordsByMonth(pYear, pMonth)
+    private val prevPeriodRecordsFlow = combine(_selectedYear, _selectedMonth, _selectedWeek, _periodMode) { year, month, week, period ->
+        PeriodQuery(year, month, week, period)
+    }.flatMapLatest { query ->
+        when (query.period) {
+            StatisticsPeriod.WEEK -> {
+                val (pYear, pWeek) = if (query.week <= 1) {
+                    val prevY = query.year - 1
+                    Pair(prevY, DateTimeUtils.getMaxWeeksInYear(prevY))
+                } else {
+                    Pair(query.year, query.week - 1)
+                }
+                recordRepository.getRecordsByWeek(pYear, pWeek)
+            }
+            StatisticsPeriod.MONTH -> {
+                val (pYear, pMonth) = if (query.month == 1) Pair(query.year - 1, 12) else Pair(query.year, query.month - 1)
+                recordRepository.getRecordsByMonth(pYear, pMonth)
+            }
+            StatisticsPeriod.YEAR -> {
+                recordRepository.getRecordsByYear(query.year - 1)
+            }
+        }
     }
 
     val uiState: StateFlow<StatisticsUiState> = combine(
         _selectedYear,
         _selectedMonth,
+        _selectedWeek,
         _periodMode,
-        _selectedType,
-        _selectedCategory
-    ) { year, month, period, type, activeCategory ->
-        FiveParams(year, month, period, type, activeCategory)
+        _selectedType
+    ) { year, month, week, period, type ->
+        PeriodHeader(year, month, week, period, type)
+    }.combine(_selectedCategory) { header, activeCategory ->
+        SixParams(header.year, header.month, header.week, header.period, header.type, activeCategory)
     }.combine(activeRecordsFlow) { params, rawRecords ->
         Pair(params, rawRecords)
-    }.combine(prevMonthRecordsFlow) { pair, prevRecords ->
+    }.combine(prevPeriodRecordsFlow) { pair, prevRecords ->
         val params = pair.first
         val rawRecords = pair.second
 
         val year = params.year
         val month = params.month
+        val week = params.week
         val period = params.period
         val type = params.type
         val activeCategory = params.activeCategory
+
+        val weekStart = if (period == StatisticsPeriod.WEEK) DateTimeUtils.getWeekStartTimestamp(year, week) else 0L
+        val weekEnd = if (period == StatisticsPeriod.WEEK) DateTimeUtils.getWeekEndTimestamp(year, week) else 0L
 
         var totalExp = 0L
         var totalInc = 0L
         var expCount = 0
         var incCount = 0
 
-        val isMonthMode = period == StatisticsPeriod.MONTH
-        val daysInMonth = if (isMonthMode) DateTimeUtils.getDaysInMonth(year, month) else 12
-        val trendExpenseMap = LongArray(if (isMonthMode) daysInMonth + 1 else 13)
-        val trendIncomeMap = LongArray(if (isMonthMode) daysInMonth + 1 else 13)
+        val daysInMonth = if (period == StatisticsPeriod.MONTH) DateTimeUtils.getDaysInMonth(year, month) else 12
+        val trendSlots = when (period) {
+            StatisticsPeriod.WEEK -> 7
+            StatisticsPeriod.MONTH -> daysInMonth
+            StatisticsPeriod.YEAR -> 12
+        }
+
+        val trendExpenseMap = LongArray(trendSlots + 1)
+        val trendIncomeMap = LongArray(trendSlots + 1)
 
         val targetTypeRecords = mutableListOf<RecordWithCategory>()
         val cal = Calendar.getInstance()
 
         rawRecords.forEach { item ->
-            val slotIndex = if (isMonthMode) {
-                DateTimeUtils.getDayOfMonth(item.record.recordTime).coerceIn(1, daysInMonth)
-            } else {
-                cal.timeInMillis = item.record.recordTime
-                (cal.get(Calendar.MONTH) + 1).coerceIn(1, 12)
+            val slotIndex = when (period) {
+                StatisticsPeriod.WEEK -> {
+                    DateTimeUtils.getDayOfWeekIndex(item.record.recordTime).coerceIn(1, 7)
+                }
+                StatisticsPeriod.MONTH -> {
+                    DateTimeUtils.getDayOfMonth(item.record.recordTime).coerceIn(1, daysInMonth)
+                }
+                StatisticsPeriod.YEAR -> {
+                    cal.timeInMillis = item.record.recordTime
+                    (cal.get(Calendar.MONTH) + 1).coerceIn(1, 12)
+                }
             }
 
             if (item.record.type == RecordType.EXPENSE.name) {
@@ -123,21 +163,19 @@ class StatisticsViewModel(
             }
         }
 
-        // 计算上月收支以支持环比分析（月度模式下）
+        // 计算上个周期收支以支持环比分析
         var prevExp = 0L
         var prevInc = 0L
-        if (isMonthMode) {
-            prevRecords.forEach { item ->
-                if (item.record.type == RecordType.EXPENSE.name) {
-                    prevExp += item.record.amount
-                } else {
-                    prevInc += item.record.amount
-                }
+        prevRecords.forEach { item ->
+            if (item.record.type == RecordType.EXPENSE.name) {
+                prevExp += item.record.amount
+            } else {
+                prevInc += item.record.amount
             }
         }
 
-        val expenseDiff = if (isMonthMode && prevExp > 0L) ((totalExp - prevExp).toFloat() / prevExp.toFloat()) else null
-        val incomeDiff = if (isMonthMode && prevInc > 0L) ((totalInc - prevInc).toFloat() / prevInc.toFloat()) else null
+        val expenseDiff = if (prevExp > 0L) ((totalExp - prevExp).toFloat() / prevExp.toFloat()) else null
+        val incomeDiff = if (prevInc > 0L) ((totalInc - prevInc).toFloat() / prevInc.toFloat()) else null
 
         // 分类聚合统计
         val totalForTargetType = if (type == RecordType.EXPENSE) totalExp else totalInc
@@ -164,68 +202,97 @@ class StatisticsViewModel(
         }.sortedByDescending { it.totalAmount }
 
         // 趋势数据生成
-        val trends = (1..daysInMonth).map { slot ->
+        val trends = (1..trendSlots).map { slot ->
             DailyTrendItem(
                 day = slot,
-                dateFormatted = if (isMonthMode) "$month-$slot" else "${slot}月",
+                dateFormatted = when (period) {
+                    StatisticsPeriod.WEEK -> DateTimeUtils.getWeekDayName(slot)
+                    StatisticsPeriod.MONTH -> "$month-$slot"
+                    StatisticsPeriod.YEAR -> "${slot}月"
+                },
                 expenseAmount = trendExpenseMap[slot],
                 incomeAmount = trendIncomeMap[slot]
             )
         }
 
         val maxExp = trends.maxOfOrNull { it.expenseAmount } ?: 0L
-        val avgExp = if (isMonthMode) {
-            if (daysInMonth > 0) totalExp / daysInMonth else 0L
-        } else {
-            totalExp / 12
+        val avgExp = when (period) {
+            StatisticsPeriod.WEEK -> totalExp / 7
+            StatisticsPeriod.MONTH -> if (daysInMonth > 0) totalExp / daysInMonth else 0L
+            StatisticsPeriod.YEAR -> totalExp / 12
         }
 
         // 智能消费洞察
         val topCategory = categoryStats.firstOrNull()
-        val insightText = if (isMonthMode) {
-            if (type == RecordType.EXPENSE) {
-                if (totalExp == 0L) {
-                    "本月暂无支出记录，继续保持理性的生活节奏～ ✨"
-                } else if (topCategory != null) {
-                    val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
-                    when {
-                        topCategory.category.name.contains("餐") ->
-                            "本月最大开销是「${topCategory.category.name}」(占 $pctStr)，好好吃饭是最好的投资，但也别忘了荤素搭配、适度下厨哦～ 🍲"
-                        topCategory.category.name.contains("购") || topCategory.category.name.contains("买") ->
-                            "本月「${topCategory.category.name}」支出占了 $pctStr，理性拔草，给生活添置真正能带来幸福感的好物 🛍️"
-                        topCategory.category.name.contains("住") || topCategory.category.name.contains("房") ->
-                            "固定居住成本占了 $pctStr，守护属于自己的一方温馨天地，辛苦啦 🏡"
-                        else ->
-                            "本月消费主要集中在「${topCategory.category.name}」(占 $pctStr)，日均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，财务结构清晰有序 📈"
+        val insightText = when (period) {
+            StatisticsPeriod.WEEK -> {
+                if (type == RecordType.EXPENSE) {
+                    if (totalExp == 0L) {
+                        "本周暂无支出记录，继续保持理性消费哦～ ✨"
+                    } else if (topCategory != null) {
+                        val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
+                        val peakDayItem = trends.maxByOrNull { it.expenseAmount }
+                        val peakDayStr = peakDayItem?.dateFormatted ?: ""
+                        "本周支出主要在「${topCategory.category.name}」(占 $pctStr)，周均日销 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高为 $peakDayStr 📊"
+                    } else {
+                        "本周累计支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，合理规划每一天 🌿"
                     }
                 } else {
-                    "用心对待每一笔收支，让生活更有底气与从容 🌿"
-                }
-            } else {
-                if (totalInc == 0L) {
-                    "本月暂未记录收入，期待每一份努力换来丰硕回报 🌱"
-                } else {
-                    "本月累计收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一笔进账都是辛勤付出的见证，继续加油！ 🎉"
+                    if (totalInc == 0L) {
+                        "本周暂未记录收入，每一分积累都值得期待 🌱"
+                    } else {
+                        "本周累计进账 ¥${MoneyUtils.centsToYuanString(totalInc)}，辛勤付出收获满满 🎉"
+                    }
                 }
             }
-        } else {
-            // 年度洞察
-            if (type == RecordType.EXPENSE) {
-                if (totalExp == 0L) {
-                    "${year}年暂无支出记录，时光沉淀财富，未来皆可期 🌟"
+            StatisticsPeriod.MONTH -> {
+                if (type == RecordType.EXPENSE) {
+                    if (totalExp == 0L) {
+                        "本月暂无支出记录，继续保持理性的生活节奏～ ✨"
+                    } else if (topCategory != null) {
+                        val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
+                        when {
+                            topCategory.category.name.contains("餐") ->
+                                "本月最大开销是「${topCategory.category.name}」(占 $pctStr)，好好吃饭是最好的投资，但也别忘了荤素搭配、适度下厨哦～ 🍲"
+                            topCategory.category.name.contains("购") || topCategory.category.name.contains("买") ->
+                                "本月「${topCategory.category.name}」支出占了 $pctStr，理性拔草，给生活添置真正能带来幸福感的好物 🛍️"
+                            topCategory.category.name.contains("住") || topCategory.category.name.contains("房") ->
+                                "固定居住成本占了 $pctStr，守护属于自己的一方温馨天地，辛苦啦 🏡"
+                            else ->
+                                "本月消费主要集中在「${topCategory.category.name}」(占 $pctStr)，日均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，财务结构清晰有序 📈"
+                        }
+                    } else {
+                        "用心对待每一笔收支，让生活更有底气与从容 🌿"
+                    }
                 } else {
-                    val peakMonthItem = trends.maxByOrNull { it.expenseAmount }
-                    val peakMonthStr = peakMonthItem?.let { "${it.day}月" } ?: ""
-                    "${year}年累计总支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，月均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高月份为 $peakMonthStr 🏆"
+                    if (totalInc == 0L) {
+                        "本月暂未记录收入，期待每一份努力换来丰硕回报 🌱"
+                    } else {
+                        "本月累计收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一笔进账都是辛勤付出的见证，继续加油！ 🎉"
+                    }
                 }
-            } else {
-                "${year}年累计总收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一份收获都值得自豪与庆祝 🎊"
+            }
+            StatisticsPeriod.YEAR -> {
+                if (type == RecordType.EXPENSE) {
+                    if (totalExp == 0L) {
+                        "${year}年暂无支出记录，时光沉淀财富，未来皆可期 🌟"
+                    } else {
+                        val peakMonthItem = trends.maxByOrNull { it.expenseAmount }
+                        val peakMonthStr = peakMonthItem?.let { "${it.day}月" } ?: ""
+                        "${year}年累计总支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，月均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高月份为 $peakMonthStr 🏆"
+                    }
+                } else {
+                    "${year}年累计总收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一份收获都值得自豪与庆祝 🎊"
+                }
             }
         }
 
         StatisticsUiState(
             selectedYear = year,
             selectedMonth = month,
+            selectedWeek = week,
+            weekStartTimestamp = weekStart,
+            weekEndTimestamp = weekEnd,
             periodMode = period,
             selectedType = type,
             summary = MonthSummaryData(
@@ -241,8 +308,8 @@ class StatisticsViewModel(
             selectedCategory = activeCategory,
             dailyTrends = trends,
             smartInsight = insightText,
-            prevMonthExpense = prevExp,
-            prevMonthIncome = prevInc,
+            prevPeriodExpense = prevExp,
+            prevPeriodIncome = prevInc,
             expenseDiffPercent = expenseDiff,
             incomeDiffPercent = incomeDiff,
             isLoading = false
@@ -253,6 +320,7 @@ class StatisticsViewModel(
         initialValue = StatisticsUiState(
             selectedYear = currentYearMonth.first,
             selectedMonth = currentYearMonth.second,
+            selectedWeek = currentYearWeek.second,
             isLoading = true
         )
     )
@@ -268,31 +336,65 @@ class StatisticsViewModel(
         _selectedCategory.value = null
     }
 
+    fun selectWeek(year: Int, week: Int) {
+        _selectedYear.value = year
+        _selectedWeek.value = week
+        _selectedCategory.value = null
+    }
+
     fun previousPeriod() {
-        if (_periodMode.value == StatisticsPeriod.YEAR) {
-            _selectedYear.value -= 1
-        } else {
-            var y = _selectedYear.value
-            var m = _selectedMonth.value - 1
-            if (m < 1) {
-                m = 12
-                y -= 1
+        when (_periodMode.value) {
+            StatisticsPeriod.WEEK -> {
+                if (_selectedWeek.value <= 1) {
+                    val prevYear = _selectedYear.value - 1
+                    _selectedYear.value = prevYear
+                    _selectedWeek.value = DateTimeUtils.getMaxWeeksInYear(prevYear)
+                } else {
+                    _selectedWeek.value -= 1
+                }
+                _selectedCategory.value = null
             }
-            selectMonth(y, m)
+            StatisticsPeriod.MONTH -> {
+                var y = _selectedYear.value
+                var m = _selectedMonth.value - 1
+                if (m < 1) {
+                    m = 12
+                    y -= 1
+                }
+                selectMonth(y, m)
+            }
+            StatisticsPeriod.YEAR -> {
+                _selectedYear.value -= 1
+                _selectedCategory.value = null
+            }
         }
     }
 
     fun nextPeriod() {
-        if (_periodMode.value == StatisticsPeriod.YEAR) {
-            _selectedYear.value += 1
-        } else {
-            var y = _selectedYear.value
-            var m = _selectedMonth.value + 1
-            if (m > 12) {
-                m = 1
-                y += 1
+        when (_periodMode.value) {
+            StatisticsPeriod.WEEK -> {
+                val maxWeeks = DateTimeUtils.getMaxWeeksInYear(_selectedYear.value)
+                if (_selectedWeek.value >= maxWeeks) {
+                    _selectedYear.value += 1
+                    _selectedWeek.value = 1
+                } else {
+                    _selectedWeek.value += 1
+                }
+                _selectedCategory.value = null
             }
-            selectMonth(y, m)
+            StatisticsPeriod.MONTH -> {
+                var y = _selectedYear.value
+                var m = _selectedMonth.value + 1
+                if (m > 12) {
+                    m = 1
+                    y += 1
+                }
+                selectMonth(y, m)
+            }
+            StatisticsPeriod.YEAR -> {
+                _selectedYear.value += 1
+                _selectedCategory.value = null
+            }
         }
     }
 
@@ -316,9 +418,25 @@ class StatisticsViewModel(
     }
 }
 
-private data class FiveParams(
+private data class PeriodQuery(
     val year: Int,
     val month: Int,
+    val week: Int,
+    val period: StatisticsPeriod
+)
+
+private data class PeriodHeader(
+    val year: Int,
+    val month: Int,
+    val week: Int,
+    val period: StatisticsPeriod,
+    val type: RecordType
+)
+
+private data class SixParams(
+    val year: Int,
+    val month: Int,
+    val week: Int,
     val period: StatisticsPeriod,
     val type: RecordType,
     val activeCategory: CategoryStatItem?

@@ -36,6 +36,8 @@ import com.yuanman.app.ui.screens.home.HomeScreen
 import com.yuanman.app.ui.screens.home.HomeViewModel
 import com.yuanman.app.ui.screens.list.RecordListScreen
 import com.yuanman.app.ui.screens.list.RecordListViewModel
+import com.yuanman.app.ui.screens.stats.CategoryRecordsScreen
+import com.yuanman.app.ui.screens.stats.CategoryRecordsViewModel
 import com.yuanman.app.ui.screens.stats.StatisticsScreen
 import com.yuanman.app.ui.screens.stats.StatisticsViewModel
 import com.yuanman.app.ui.screens.settings.SettingsScreen
@@ -177,11 +179,14 @@ fun YuanmanNavGraph(
                     )
                 )
                 StatisticsScreen(
-                    viewModel = statsViewModel
+                    viewModel = statsViewModel,
+                    onCategoryClick = { categoryId ->
+                        navController.navigate(Screen.CategoryRecords.createRoute(categoryId))
+                    }
                 )
             }
 
-            // 4. 分类管理 (二级页面)
+            // 4. 分类管理
             composable(Screen.CategoryManage.route) {
                 val categoryViewModel: CategoryManageViewModel = viewModel(
                     factory = CategoryManageViewModel.Factory(
@@ -230,18 +235,24 @@ fun YuanmanNavGraph(
                     navArgument("type") {
                         type = NavType.StringType
                         defaultValue = ""
+                    },
+                    navArgument("categoryId") {
+                        type = NavType.LongType
+                        defaultValue = 0L
                     }
                 )
             ) { backStackEntry ->
                 val recordId = backStackEntry.arguments?.getLong("recordId") ?: 0L
                 val typeStr = backStackEntry.arguments?.getString("type") ?: ""
+                val categoryId = backStackEntry.arguments?.getLong("categoryId") ?: 0L
                 val initialType = if (typeStr.isNotBlank()) RecordType.fromString(typeStr) else null
 
                 val addEditViewModel: AddEditRecordViewModel = viewModel(
-                    key = "add_edit_$recordId",
+                    key = "add_edit_${recordId}_${typeStr}_$categoryId",
                     factory = AddEditRecordViewModel.Factory(
                         recordId = recordId,
                         initialType = initialType,
+                        initialCategoryId = categoryId,
                         recordRepository = app.recordRepository,
                         categoryRepository = app.categoryRepository,
                         preferencesRepository = app.preferencesRepository
@@ -287,6 +298,37 @@ fun YuanmanNavGraph(
                 AddEditCategoryScreen(
                     viewModel = addEditCategoryViewModel,
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // 8. 分类账单详情 (统计页分类排行点击进入)
+            composable(
+                route = Screen.CategoryRecords.route,
+                arguments = listOf(
+                    navArgument("categoryId") {
+                        type = NavType.LongType
+                        defaultValue = 0L
+                    }
+                )
+            ) { backStackEntry ->
+                val categoryId = backStackEntry.arguments?.getLong("categoryId") ?: 0L
+                val categoryRecordsViewModel: CategoryRecordsViewModel = viewModel(
+                    key = "category_records_$categoryId",
+                    factory = CategoryRecordsViewModel.Factory(
+                        categoryId = categoryId,
+                        recordRepository = app.recordRepository,
+                        categoryRepository = app.categoryRepository
+                    )
+                )
+                CategoryRecordsScreen(
+                    viewModel = categoryRecordsViewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToEdit = { recordId ->
+                        navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
+                    },
+                    onNavigateToAddRecord = { type, catId ->
+                        navController.navigate(Screen.AddEditRecord.createRoute(type = type, categoryId = catId))
+                    }
                 )
             }
         }

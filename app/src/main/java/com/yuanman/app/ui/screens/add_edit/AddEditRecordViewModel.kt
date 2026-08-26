@@ -30,6 +30,8 @@ data class AddEditUiState(
     val remark: String = "",
     val paymentMethod: String = PaymentMethod.defaultMethod(),
     val spreadMonths: Int = 1,
+    val expenseCategories: List<CategoryEntity> = emptyList(),
+    val incomeCategories: List<CategoryEntity> = emptyList(),
     val availableCategories: List<CategoryEntity> = emptyList(),
     val quickRemarks: List<String> = emptyList(),
     val hapticEnabled: Boolean = true,
@@ -42,6 +44,7 @@ data class AddEditUiState(
 class AddEditRecordViewModel(
     private val recordId: Long,
     initialType: RecordType?,
+    private val initialCategoryId: Long = 0L,
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
     private val preferencesRepository: PreferencesRepository
@@ -56,6 +59,11 @@ class AddEditRecordViewModel(
     )
     val uiState: StateFlow<AddEditUiState> = _uiState.asStateFlow()
 
+    private var cachedExpenseCategories: List<CategoryEntity> = emptyList()
+    private var cachedIncomeCategories: List<CategoryEntity> = emptyList()
+    private var lastSelectedExpenseCategory: CategoryEntity? = null
+    private var lastSelectedIncomeCategory: CategoryEntity? = null
+
     init {
         // 加载偏好设置
         viewModelScope.launch {
@@ -69,7 +77,7 @@ class AddEditRecordViewModel(
                 preferencesRepository.defaultPaymentMethod.firstOrNull()?.let { method ->
                     _uiState.update { it.copy(paymentMethod = method) }
                 }
-                if (initialType == null) {
+                if (initialType == null && initialCategoryId <= 0L) {
                     preferencesRepository.defaultRecordType.firstOrNull()?.let { type ->
                         _uiState.update { it.copy(type = type) }
                     }
@@ -77,24 +85,40 @@ class AddEditRecordViewModel(
             }
         }
 
-        // 加载分类列表与快捷备注
-        viewModelScope.launch {
-            _uiState.map { it.type }.distinctUntilChanged().collectLatest { currentType ->
-                categoryRepository.getCategoriesByType(currentType).collectLatest { list ->
-                    _uiState.update { state ->
-                        val currentSelected = state.selectedCategory
-                        val newSelected = if (currentSelected != null && list.any { it.id == currentSelected.id }) {
-                            currentSelected
-                        } else {
-                            list.firstOrNull()
-                        }
-                        val remarks = newSelected?.getTagList() ?: emptyList()
-                        state.copy(
-                            availableCategories = list,
-                            selectedCategory = newSelected,
-                            quickRemarks = remarks
+        // 若传入了指定初始分类，提前加载该分类以确定收支类型与选中态
+        if (recordId <= 0L && initialCategoryId > 0L) {
+            viewModelScope.launch {
+                val cat = categoryRepository.getCategoryById(initialCategoryId)
+                if (cat != null) {
+                    val catType = runCatching { RecordType.valueOf(cat.type) }.getOrDefault(RecordType.EXPENSE)
+                    _uiState.update {
+                        it.copy(
+                            type = catType,
+                            selectedCategory = cat,
+                            quickRemarks = cat.getTagList()
                         )
                     }
+                }
+            }
+        }
+
+        // 双向预加载并常驻缓存支出与收入分类，确保类型切换 0 延迟秒切
+        viewModelScope.launch {
+            categoryRepository.getCategoriesByType(RecordType.EXPENSE).collectLatest { list ->
+                cachedExpenseCategories = list
+                _uiState.update { it.copy(expenseCategories = list) }
+                if (_uiState.value.type == RecordType.EXPENSE) {
+                    applyCategories(list)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            categoryRepository.getCategoriesByType(RecordType.INCOME).collectLatest { list ->
+                cachedIncomeCategories = list
+                _uiState.update { it.copy(incomeCategories = list) }
+                if (_uiState.value.type == RecordType.INCOME) {
+                    applyCategories(list)
                 }
             }
         }
@@ -125,12 +149,56 @@ class AddEditRecordViewModel(
         }
     }
 
+    private fun applyCategories(list: List<CategoryEntity>) {
+        _uiState.update { state ->
+            val currentSelected = state.selectedCategory
+            val matchInitial = if (initialCategoryId > 0L && (currentSelected == null || currentSelected.id == initialCategoryId)) {
+                list.find { it.id == initialCategoryId }
+            } else null
+
+            val newSelected = matchInitial
+                ?: if (currentSelected != null && list.any { it.id == currentSelected.id }) {
+                    currentSelected
+                } else if (initialCategoryId > 0L && list.any { it.id == initialCategoryId }) {
+                    list.find { it.id == initialCategoryId }
+                } else {
+                    list.firstOrNull()
+                }
+
+            val remarks = newSelected?.getTagList() ?: emptyList()
+            state.copy(
+                availableCategories = list,
+                selectedCategory = newSelected,
+                quickRemarks = remarks
+            )
+        }
+    }
+
     fun setRecordType(type: RecordType) {
         if (_uiState.value.type != type) {
+            // 记录切换前的选中分类偏好记忆
+            if (_uiState.value.type == RecordType.EXPENSE) {
+                lastSelectedExpenseCategory = _uiState.value.selectedCategory
+            } else {
+                lastSelectedIncomeCategory = _uiState.value.selectedCategory
+            }
+
+            val targetList = if (type == RecordType.EXPENSE) cachedExpenseCategories else cachedIncomeCategories
+            val rememberedCategory = if (type == RecordType.EXPENSE) lastSelectedExpenseCategory else lastSelectedIncomeCategory
+            val newSelected = if (rememberedCategory != null && targetList.any { it.id == rememberedCategory.id }) {
+                rememberedCategory
+            } else {
+                targetList.firstOrNull()
+            }
+
+            val remarks = newSelected?.getTagList() ?: emptyList()
+
             _uiState.update {
                 it.copy(
                     type = type,
-                    selectedCategory = null,
+                    availableCategories = targetList,
+                    selectedCategory = newSelected,
+                    quickRemarks = remarks,
                     spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1
                 )
             }
@@ -318,8 +386,9 @@ class AddEditRecordViewModel(
     }
 
     class Factory(
-        private val recordId: Long,
-        private val initialType: RecordType?,
+        private val recordId: Long = 0L,
+        private val initialType: RecordType? = null,
+        private val initialCategoryId: Long = 0L,
         private val recordRepository: RecordRepository,
         private val categoryRepository: CategoryRepository,
         private val preferencesRepository: PreferencesRepository
@@ -327,11 +396,12 @@ class AddEditRecordViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return AddEditRecordViewModel(
-                recordId,
-                initialType,
-                recordRepository,
-                categoryRepository,
-                preferencesRepository
+                recordId = recordId,
+                initialType = initialType,
+                initialCategoryId = initialCategoryId,
+                recordRepository = recordRepository,
+                categoryRepository = categoryRepository,
+                preferencesRepository = preferencesRepository
             ) as T
         }
     }

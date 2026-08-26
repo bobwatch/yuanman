@@ -85,27 +85,17 @@ fun CategoryManageScreen(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
                     }
+                },
+                actions = {
+                    IconButton(onClick = { onNavigateToAddCategory(uiState.currentType) }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "新增分类",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             )
-        },
-        bottomBar = {
-            Surface(
-                tonalElevation = 3.dp,
-                shadowElevation = 6.dp
-            ) {
-                Button(
-                    onClick = { onNavigateToAddCategory(uiState.currentType) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .navigationBarsPadding(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("新增分类", fontWeight = FontWeight.Bold)
-                }
-            }
         }
     ) { innerPadding ->
         Column(
@@ -241,7 +231,7 @@ fun CategoryManageScreen(
                                 }
                             )
                         },
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(

@@ -14,6 +14,10 @@ class CategoryRepository(
     private val recordDao: RecordDao
 ) {
     fun getAllCategories(): Flow<List<CategoryEntity>> = categoryDao.getAllCategories()
+    
+    suspend fun getAllCategoriesDirect(): List<CategoryEntity> = withContext(Dispatchers.IO) {
+        categoryDao.getAllCategoriesList()
+    }
 
     fun getCategoriesByType(type: RecordType): Flow<List<CategoryEntity>> {
         return categoryDao.getCategoriesByType(type.name)

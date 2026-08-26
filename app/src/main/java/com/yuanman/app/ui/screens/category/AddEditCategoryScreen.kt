@@ -74,6 +74,7 @@ fun AddEditCategoryScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
                 title = {
@@ -105,8 +106,10 @@ fun AddEditCategoryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
+                .imePadding()
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -403,7 +406,7 @@ fun AddEditCategoryScreen(
                             .fillMaxWidth()
                             .heightIn(max = 280.dp)
                     ) {
-                        items(filteredIcons) { iconInfo ->
+                        items(filteredIcons, key = { it.key }) { iconInfo ->
                             val isSelected = uiState.selectedIcon == iconInfo.key
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -470,7 +473,7 @@ fun AddEditCategoryScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(CategoryIconHelper.PRESET_COLORS) { colorHex ->
+                        items(CategoryIconHelper.PRESET_COLORS, key = { it }) { colorHex ->
                             val isSelected = uiState.selectedColor == colorHex
                             Box(
                                 modifier = Modifier

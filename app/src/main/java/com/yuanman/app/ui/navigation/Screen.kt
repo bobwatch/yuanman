@@ -15,10 +15,10 @@ sealed class Screen(val route: String) {
     object CategoryManage : Screen("category_manage")
     object Settings : Screen("settings")
 
-    object AddEditRecord : Screen("add_edit_record?recordId={recordId}&type={type}") {
-        fun createRoute(recordId: Long = 0L, type: RecordType? = null): String {
+    object AddEditRecord : Screen("add_edit_record?recordId={recordId}&type={type}&categoryId={categoryId}") {
+        fun createRoute(recordId: Long = 0L, type: RecordType? = null, categoryId: Long = 0L): String {
             val typeParam = type?.name ?: ""
-            return "add_edit_record?recordId=$recordId&type=$typeParam"
+            return "add_edit_record?recordId=$recordId&type=$typeParam&categoryId=$categoryId"
         }
     }
 

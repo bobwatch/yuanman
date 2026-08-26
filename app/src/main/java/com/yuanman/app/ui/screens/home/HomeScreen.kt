@@ -36,6 +36,7 @@ import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
+import com.yuanman.app.utils.clickableDebounce
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +75,7 @@ fun HomeScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.statusBars,
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -96,16 +98,17 @@ fun HomeScreen(
                 onNextMonth = { viewModel.nextMonth() },
                 onMonthClick = { showMonthPicker = true },
                 onBudgetClick = { showBudgetDialog = true },
+                onCardClick = null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 2.dp)
             )
 
             // 🌟 2. 分段切换 Tabs (全部 / 支出 / 收入)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -138,7 +141,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 88.dp)
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 96.dp)
                 ) {
                     filteredGroupedRecords.forEach { (dayTimestamp, records) ->
                         val daySum = uiState.daySummaries[dayTimestamp] ?: Pair(0L, 0L)
@@ -167,7 +170,7 @@ fun HomeScreen(
                                     onLongClick = { activeMenuRecord = item }
                                 )
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(5.dp))
                         }
                     }
                 }
@@ -341,21 +344,28 @@ private fun FinancialOverviewCard(
     onNextMonth: () -> Unit,
     onMonthClick: () -> Unit,
     onBudgetClick: () -> Unit,
+    onCardClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Card(
-        modifier = modifier.clip(RoundedCornerShape(22.dp)),
-        shape = RoundedCornerShape(22.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .then(
+                if (onCardClick != null) {
+                    Modifier.clickableDebounce(debounceTimeMs = 500L, onClick = onCardClick)
+                } else Modifier
+            ),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             // 顶栏：账本标题 + 月份切换器
             Row(
@@ -365,39 +375,42 @@ private fun FinancialOverviewCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(7.dp)
                             .clip(CircleShape)
                             .background(primaryColor)
                     )
                     Text(
                         text = "沅满账本",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 // 月份胶囊
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                     border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
                     ) {
                         IconButton(
                             onClick = onPrevMonth,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ChevronLeft,
                                 contentDescription = "上月",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
 
@@ -405,31 +418,31 @@ private fun FinancialOverviewCard(
                             text = "${year}年${month}月",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                fontSize = 12.sp
                             ),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable { onMonthClick() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
                         )
 
                         IconButton(
                             onClick = onNextMonth,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
                                 contentDescription = "下月",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // 🌟 支出与收入并重展示区 (大字号清晰表达)
+            // 🌟 支出与收入并重展示区 (紧凑清晰表达)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -439,22 +452,22 @@ private fun FinancialOverviewCard(
                 Column(modifier = Modifier.weight(1.2f)) {
                     Text(
                         text = "本月总支出",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.outline
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             text = "¥",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
                             color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(bottom = 3.dp)
+                            modifier = Modifier.padding(bottom = 2.dp)
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = MoneyUtils.centsToYuanString(totalExpense, withGrouping = true),
                             style = MaterialTheme.typography.displayMedium.copy(
-                                fontSize = 28.sp,
+                                fontSize = 23.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp
                             ),
@@ -470,19 +483,19 @@ private fun FinancialOverviewCard(
                 ) {
                     Text(
                         text = "本月总收入",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.outline
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = "¥${MoneyUtils.centsToYuanString(totalIncome, withGrouping = true)}",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 20.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = primaryColor
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = if (balance >= 0) "结余 +¥${MoneyUtils.centsToYuanString(balance)}" else "结余 -¥${MoneyUtils.centsToYuanString(-balance)}",
                         style = MaterialTheme.typography.labelSmall.copy(
@@ -494,9 +507,9 @@ private fun FinancialOverviewCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // 🌟 预算设置与进度条展示区
             if (monthlyBudget > 0L) {
@@ -509,9 +522,9 @@ private fun FinancialOverviewCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .clickable { onBudgetClick() }
-                        .padding(vertical = 2.dp)
+                        .padding(vertical = 1.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -524,12 +537,12 @@ private fun FinancialOverviewCard(
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = "修改预算",
                                 tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(11.dp)
+                                modifier = Modifier.size(10.dp)
                             )
                         }
 
@@ -547,20 +560,20 @@ private fun FinancialOverviewCard(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     LinearProgressIndicator(
                         progress = { budgetUsedPercent.coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
                         color = budgetColor,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
 
                     if (remainingDays > 0 && remainingBudgetCents > 0L) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "本月剩余 $remainingDays 天 · 日均建议支出 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
@@ -573,32 +586,32 @@ private fun FinancialOverviewCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .clickable { onBudgetClick() }
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tune,
                             contentDescription = null,
                             tint = primaryColor,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = "暂未设置月度预算，点击快速设定",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     Text(
                         text = "设预算",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = primaryColor)
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                     )
                 }
             }
@@ -616,10 +629,10 @@ private fun BitgetFilterPill(
     val haptic = LocalHapticFeedback.current
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -628,11 +641,11 @@ private fun BitgetFilterPill(
         Text(
             text = title,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
+                fontSize = 11.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
             ),
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.5.dp)
         )
     }
 }
@@ -653,43 +666,43 @@ fun BitgetTransactionItem(
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongClick?.invoke() }
-                )
-            }
+            .clip(RoundedCornerShape(12.dp))
+            .clickableDebounce(
+                debounceTimeMs = 500L,
+                onLongClick = onLongClick,
+                onClick = onClick
+            )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CategoryIconView(
                 iconName = category?.iconName ?: "other",
                 colorHex = category?.colorHex ?: 0xFF607D8BL,
-                size = 40.dp,
-                iconSize = 20.dp
+                size = 32.dp,
+                iconSize = 16.dp
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = category?.name ?: "未分类",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp
+                    ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-
-                Spacer(modifier = Modifier.height(2.dp))
 
                 val subtitle = when {
                     record.remark.isNotBlank() && record.paymentMethod.isNotBlank() -> "${record.remark} · ${record.paymentMethod}"
@@ -700,7 +713,7 @@ fun BitgetTransactionItem(
 
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -714,16 +727,14 @@ fun BitgetTransactionItem(
                     text = if (isExpense) "-¥${MoneyUtils.centsToYuanString(record.amount)}" else "+¥${MoneyUtils.centsToYuanString(record.amount)}",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 15.sp
                     ),
                     color = if (isExpense) MaterialTheme.colorScheme.error else primaryColor
                 )
 
-                Spacer(modifier = Modifier.height(2.dp))
-
                 Text(
                     text = DateTimeUtils.formatTime(record.recordTime),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
             }

@@ -3,6 +3,7 @@ package com.yuanman.app.ui.screens.list
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yuanman.app.data.local.dao.RecordFilterSummary
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
@@ -13,6 +14,7 @@ import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
@@ -47,6 +49,8 @@ data class RecordListUiState(
     val totalIncome: Long = 0L,
     val recordCount: Int = 0,
     val isPrivacyMode: Boolean = false,
+    val hasMore: Boolean = true,
+    val isLoadingMore: Boolean = false,
     val isLoading: Boolean = false
 )
 
@@ -59,13 +63,42 @@ private data class FilterParams(
     val paymentMethod: String?,
     val sortOrder: RecordSortOrder,
     val query: String
-)
+) {
+    fun calculateTimestamps(): Pair<Long, Long> {
+        return if (day != null) {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month - 1)
+                set(Calendar.DAY_OF_MONTH, day)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val start = cal.timeInMillis
+            cal.set(Calendar.HOUR_OF_DAY, 23)
+            cal.set(Calendar.MINUTE, 59)
+            cal.set(Calendar.SECOND, 59)
+            cal.set(Calendar.MILLISECOND, 999)
+            Pair(start, cal.timeInMillis)
+        } else {
+            Pair(
+                DateTimeUtils.getMonthStartTimestamp(year, month),
+                DateTimeUtils.getMonthEndTimestamp(year, month)
+            )
+        }
+    }
+}
 
 class RecordListViewModel(
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
     private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
+
+    companion object {
+        const val PAGE_SIZE = 25
+    }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
@@ -77,15 +110,16 @@ class RecordListViewModel(
     private val _sortOrder = MutableStateFlow(RecordSortOrder.TIME_DESC)
     private val _searchQuery = MutableStateFlow("")
 
+    private val _loadedRecords = MutableStateFlow<List<RecordWithCategory>>(emptyList())
+    private val _hasMore = MutableStateFlow(true)
+    private val _isLoadingMore = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(true)
+
+    private var currentLoadJob: Job? = null
+    private var currentFilterParams: FilterParams? = null
+
     val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val monthRecordsFlow = combine(_selectedYear, _selectedMonth) { year, month ->
-        Pair(year, month)
-    }.flatMapLatest { (year, month) ->
-        recordRepository.getRecordsByMonth(year, month)
-    }
 
     private val filtersFlow = combine(
         _selectedYear,
@@ -112,46 +146,111 @@ class RecordListViewModel(
         )
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val summaryFlow: Flow<RecordFilterSummary> = filtersFlow.flatMapLatest { params ->
+        val (start, end) = params.calculateTimestamps()
+        recordRepository.getFilteredSummary(
+            startTime = start,
+            endTime = end,
+            type = params.type?.name,
+            categoryId = params.categoryId,
+            paymentMethod = params.paymentMethod,
+            searchQuery = params.query.trim()
+        )
+    }
+
+    init {
+        // 监听筛选条件变化，自动触发第一页加载
+        viewModelScope.launch {
+            filtersFlow.collectLatest { params ->
+                currentFilterParams = params
+                reloadFirstPage(params)
+            }
+        }
+    }
+
+    private fun reloadFirstPage(params: FilterParams) {
+        currentLoadJob?.cancel()
+        currentLoadJob = viewModelScope.launch {
+            _isLoading.value = true
+            _hasMore.value = true
+            _loadedRecords.value = emptyList()
+
+            val (start, end) = params.calculateTimestamps()
+            val initialList = recordRepository.getRecordsFilteredPaged(
+                startTime = start,
+                endTime = end,
+                type = params.type?.name,
+                categoryId = params.categoryId,
+                paymentMethod = params.paymentMethod,
+                searchQuery = params.query.trim(),
+                sortOrder = params.sortOrder.name,
+                limit = PAGE_SIZE,
+                offset = 0
+            )
+
+            _loadedRecords.value = initialList
+            _hasMore.value = initialList.size >= PAGE_SIZE
+            _isLoading.value = false
+        }
+    }
+
+    fun loadNextPage() {
+        val params = currentFilterParams ?: return
+        if (_isLoadingMore.value || !_hasMore.value || _isLoading.value) return
+
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            val currentOffset = _loadedRecords.value.size
+            val (start, end) = params.calculateTimestamps()
+
+            val nextBatch = recordRepository.getRecordsFilteredPaged(
+                startTime = start,
+                endTime = end,
+                type = params.type?.name,
+                categoryId = params.categoryId,
+                paymentMethod = params.paymentMethod,
+                searchQuery = params.query.trim(),
+                sortOrder = params.sortOrder.name,
+                limit = PAGE_SIZE,
+                offset = currentOffset
+            )
+
+            if (nextBatch.isNotEmpty()) {
+                val existingIds = _loadedRecords.value.map { it.record.id }.toSet()
+                val distinctNew = nextBatch.filter { it.record.id !in existingIds }
+                _loadedRecords.value = _loadedRecords.value + distinctNew
+            }
+
+            _hasMore.value = nextBatch.size >= PAGE_SIZE
+            _isLoadingMore.value = false
+        }
+    }
+
     val uiState: StateFlow<RecordListUiState> = combine(
         filtersFlow,
-        monthRecordsFlow,
-        allCategories,
-        preferencesRepository.privacyMode
-    ) { filters, rawRecords, categories, privacy ->
-
-        val filtered = rawRecords.filter { item ->
-            val matchDay = filters.day == null || DateTimeUtils.getDayOfMonth(item.record.recordTime) == filters.day
-            val matchType = filters.type == null || item.record.type == filters.type.name
-            val matchCategory = filters.categoryId == null || item.record.categoryId == filters.categoryId
-            val matchPayment = filters.paymentMethod == null || item.record.paymentMethod == filters.paymentMethod
-            val query = filters.query.trim()
-            val amountPlain = MoneyUtils.centsToYuanString(item.record.amount, withGrouping = false)
-            val amountGrouped = MoneyUtils.centsToYuanString(item.record.amount, withGrouping = true)
-            val amountInteger = amountPlain.substringBefore('.')
-            val matchAmount = amountPlain.contains(query) ||
-                    amountGrouped.contains(query) ||
-                    amountInteger == query ||
-                    (item.record.amount.toString() == query)
-
-            val matchQuery = query.isBlank() ||
-                    item.record.remark.contains(query, ignoreCase = true) ||
-                    (item.category?.name?.contains(query, ignoreCase = true) == true) ||
-                    item.record.paymentMethod.contains(query, ignoreCase = true) ||
-                    matchAmount
-
-            matchDay && matchType && matchCategory && matchPayment && matchQuery
+        _loadedRecords,
+        summaryFlow,
+        allCategories
+    ) { filters, records, summary, categories ->
+        FourCombine(filters, records, summary, categories)
+    }.combine(
+        combine(preferencesRepository.privacyMode, _hasMore, _isLoadingMore, _isLoading) { privacy, hasMore, isLoadingMore, isLoading ->
+            FourFlags(privacy, hasMore, isLoadingMore, isLoading)
         }
+    ) { part1, part2 ->
+        val filters = part1.filters
+        val records = part1.records
+        val summary = part1.summary
+        val categories = part1.categories
 
-        // 排序处理
-        val sorted = when (filters.sortOrder) {
-            RecordSortOrder.TIME_DESC -> filtered.sortedByDescending { it.record.recordTime }
-            RecordSortOrder.TIME_ASC -> filtered.sortedBy { it.record.recordTime }
-            RecordSortOrder.AMOUNT_DESC -> filtered.sortedByDescending { it.record.amount }
-            RecordSortOrder.AMOUNT_ASC -> filtered.sortedBy { it.record.amount }
-        }
+        val privacy = part2.privacy
+        val hasMore = part2.hasMore
+        val isLoadingMore = part2.isLoadingMore
+        val isLoading = part2.isLoading
 
         // 按自然日分组 (截取当天 00:00:00 毫秒戳)
-        val grouped = sorted.groupBy { item ->
+        val grouped = records.groupBy { item ->
             val cal = Calendar.getInstance().apply {
                 timeInMillis = item.record.recordTime
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -162,21 +261,16 @@ class RecordListViewModel(
             cal.timeInMillis
         }
 
-        // 计算每日小计与月度总和
+        // 计算每日小计
         val daySums = mutableMapOf<Long, DayGroupSummary>()
-        var totalExp = 0L
-        var totalInc = 0L
-
         grouped.forEach { (dayTimestamp, list) ->
             var dayExp = 0L
             var dayInc = 0L
             list.forEach { rwc ->
                 if (rwc.record.type == RecordType.EXPENSE.name) {
                     dayExp += rwc.record.amount
-                    totalExp += rwc.record.amount
                 } else {
                     dayInc += rwc.record.amount
-                    totalInc += rwc.record.amount
                 }
             }
             daySums[dayTimestamp] = DayGroupSummary(dayTimestamp, dayExp, dayInc)
@@ -192,14 +286,16 @@ class RecordListViewModel(
             sortOrder = filters.sortOrder,
             searchQuery = filters.query,
             availableCategories = categories,
-            filteredRecords = sorted,
+            filteredRecords = records,
             groupedRecords = grouped,
             daySummaries = daySums,
-            totalExpense = totalExp,
-            totalIncome = totalInc,
-            recordCount = sorted.size,
+            totalExpense = summary.totalExpense,
+            totalIncome = summary.totalIncome,
+            recordCount = summary.totalCount,
             isPrivacyMode = privacy,
-            isLoading = false
+            hasMore = hasMore,
+            isLoadingMore = isLoadingMore,
+            isLoading = isLoading
         )
     }.stateIn(
         scope = viewModelScope,
@@ -277,16 +373,30 @@ class RecordListViewModel(
                 updatedAt = System.currentTimeMillis()
             )
             recordRepository.insertRecord(duplicate)
+            currentFilterParams?.let { reloadFirstPage(it) }
         }
     }
 
     fun deleteRecord(recordWithCategory: RecordWithCategory) {
         viewModelScope.launch {
             recordRepository.deleteRecord(recordWithCategory.record)
+            _loadedRecords.value = _loadedRecords.value.filter { it.record.id != recordWithCategory.record.id }
         }
     }
 
     private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
+    private data class FourCombine(
+        val filters: FilterParams,
+        val records: List<RecordWithCategory>,
+        val summary: RecordFilterSummary,
+        val categories: List<CategoryEntity>
+    )
+    private data class FourFlags(
+        val privacy: Boolean,
+        val hasMore: Boolean,
+        val isLoadingMore: Boolean,
+        val isLoading: Boolean
+    )
 
     class Factory(
         private val recordRepository: RecordRepository,
@@ -299,3 +409,4 @@ class RecordListViewModel(
         }
     }
 }
+

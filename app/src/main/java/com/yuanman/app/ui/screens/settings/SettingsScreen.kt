@@ -3,6 +3,8 @@ package com.yuanman.app.ui.screens.settings
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,12 +51,27 @@ fun SettingsScreen(
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
 
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importRecordsFromCsv(context, uri) { success, message ->
+                if (success) {
+                    toast.success(message)
+                } else {
+                    toast.error(message)
+                }
+            }
+        }
+    }
+
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
     var showThemeBottomSheet by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
+    var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
 
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
@@ -64,6 +81,8 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(updateState) {
+        val prev = prevUpdateState
+        prevUpdateState = updateState
         when (val state = updateState) {
             is UpdateState.ReadyToInstall -> {
                 toast.success("新版本下载完成，点击「版本更新」即可立即安装！")
@@ -73,10 +92,23 @@ fun SettingsScreen(
             }
             else -> {}
         }
+        // 手动点击「版本更新」后，检查完成时给出成功提示
+        if (prev is UpdateState.Checking) {
+            when (val state = updateState) {
+                is UpdateState.UpToDate -> {
+                    toast.success("已是最新版本 v${viewModel.updateManager.currentVersionName}，无需更新")
+                }
+                is UpdateState.Available -> {
+                    toast.success("获取成功：发现新版本 v${state.info.versionName}")
+                }
+                else -> {}
+            }
+        }
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
                 title = { Text("设置", fontWeight = FontWeight.Bold) }
@@ -86,9 +118,10 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 🌟 卡片 1: 记账偏好设置（最高频常用）
@@ -171,6 +204,29 @@ fun SettingsScreen(
                         title = "导出账单表格",
                         subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
                         onClick = { viewModel.exportRecordsCsv(context) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    // 导入账单表格
+                    SettingsRowItem(
+                        icon = Icons.Outlined.FileUpload,
+                        title = "导入账单表格",
+                        subtitle = "支持导入 CSV 账单表格并自动归类入库",
+                        onClick = {
+                            csvPickerLauncher.launch(
+                                arrayOf(
+                                    "text/comma-separated-values",
+                                    "text/csv",
+                                    "text/plain",
+                                    "application/csv",
+                                    "*/*"
+                                )
+                            )
+                        }
                     )
 
                     HorizontalDivider(
@@ -713,15 +769,33 @@ private fun FamilySyncBottomSheet(
     val myCode by syncManager.pairingCode.collectAsStateWithLifecycle()
     val devices by syncManager.devices.collectAsStateWithLifecycle()
     val syncing by syncManager.syncing.collectAsStateWithLifecycle()
-    val status by syncManager.status.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
 
     var peerCodeInput by remember { mutableStateOf("") }
     var confirmRegenerate by remember { mutableStateOf(false) }
+    var knownDeviceNames by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(Unit) {
         syncManager.start()
+    }
+
+    // 🌟 设备互联成功提示：发现新设备时 toast
+    LaunchedEffect(devices) {
+        val newlyFound = devices.filter { it.name !in knownDeviceNames }
+        if (newlyFound.isNotEmpty()) {
+            knownDeviceNames = devices.map { it.name }.toSet()
+            newlyFound.forEach { device ->
+                toast.success("已与设备 ${device.name} 互联成功")
+            }
+        }
+    }
+
+    // 🌟 同步完成提示：每次数据互通完成后 toast
+    LaunchedEffect(Unit) {
+        syncManager.events.collect { event ->
+            toast.success("同步完成：与 ${event.peerName} 互通 ${event.recordCount} 笔账单、${event.categoryCount} 个分类")
+        }
     }
 
     ModalBottomSheet(

@@ -1,6 +1,7 @@
 package com.yuanman.app.ui.screens.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,8 @@ import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.sync.FamilySyncManager
 import com.yuanman.app.utils.CsvExportUtils
+import com.yuanman.app.utils.CsvImportUtils
+import com.yuanman.app.utils.ImportResult
 import com.yuanman.app.utils.JsonBackupUtils
 import com.yuanman.app.utils.UpdateInfo
 import com.yuanman.app.utils.UpdateManager
@@ -156,6 +159,26 @@ class SettingsViewModel(
     fun exportRecordsCsv(context: Context) {
         val records = uiState.value.allRecords
         CsvExportUtils.shareCsvContent(context, records)
+    }
+
+    fun importRecordsFromCsv(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val result = CsvImportUtils.importFromCsvUri(
+                    context = context,
+                    uri = uri,
+                    categoryRepository = categoryRepository,
+                    recordRepository = recordRepository
+                )
+                if (result.successCount > 0) {
+                    onResult(true, result.message)
+                } else {
+                    onResult(false, result.message)
+                }
+            } catch (e: Exception) {
+                onResult(false, "导入失败：${e.message ?: "表格格式错误"}")
+            }
+        }
     }
 
     fun exportJsonBackup(context: Context) {

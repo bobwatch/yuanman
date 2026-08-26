@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
+import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,6 +28,7 @@ import com.yuanman.app.utils.MoneyUtils
 fun StatisticsScreen(
     viewModel: StatisticsViewModel,
     onNavigateBack: (() -> Unit)? = null,
+    onCategoryClick: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -34,6 +36,7 @@ fun StatisticsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
                 title = { Text("数据统计", fontWeight = FontWeight.Bold) },
@@ -67,12 +70,8 @@ fun StatisticsScreen(
                                 )
                             }
 
-                            Text(
-                                text = if (uiState.periodMode == StatisticsPeriod.MONTH) "${uiState.selectedYear}年${uiState.selectedMonth}月" else "${uiState.selectedYear}年",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                ),
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
@@ -80,8 +79,30 @@ fun StatisticsScreen(
                                             showMonthPicker = true
                                         }
                                     }
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = when (uiState.periodMode) {
+                                        StatisticsPeriod.WEEK -> "${uiState.selectedYear}年 第${uiState.selectedWeek}周"
+                                        StatisticsPeriod.MONTH -> "${uiState.selectedYear}年${uiState.selectedMonth}月"
+                                        StatisticsPeriod.YEAR -> "${uiState.selectedYear}年"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                                if (uiState.periodMode == StatisticsPeriod.WEEK && uiState.weekStartTimestamp > 0L) {
+                                    Text(
+                                        text = DateTimeUtils.formatWeekRangeShort(uiState.weekStartTimestamp, uiState.weekEndTimestamp),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                                        )
+                                    )
+                                }
+                            }
 
                             IconButton(
                                 onClick = { viewModel.nextPeriod() },
@@ -106,22 +127,45 @@ fun StatisticsScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 周期切换（按月 / 按年）
+            // 🌟 周期切换（周 / 月 / 年 3 Tab 现代分段胶囊）
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    StatisticsPeriod.values().forEach { period ->
-                        val isSelected = uiState.periodMode == period
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.selectPeriod(period) },
-                            label = { Text(period.title, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                            modifier = Modifier.weight(1f)
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        StatisticsPeriod.values().forEach { period ->
+                            val isSelected = uiState.periodMode == period
+                            Surface(
+                                shape = RoundedCornerShape(11.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                                shadowElevation = if (isSelected) 2.dp else 0.dp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(11.dp))
+                                    .clickable { viewModel.selectPeriod(period) }
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = period.title,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -129,7 +173,7 @@ fun StatisticsScreen(
             // 1. 综合概览卡片
             item {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -137,12 +181,16 @@ fun StatisticsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         StatSummaryColumn(
-                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "总收入" else "全年收入",
+                            title = when (uiState.periodMode) {
+                                StatisticsPeriod.WEEK -> "本周收入"
+                                StatisticsPeriod.MONTH -> "总收入"
+                                StatisticsPeriod.YEAR -> "全年收入"
+                            },
                             amount = uiState.summary.totalIncome,
                             amountColor = MaterialTheme.colorScheme.primary
                         )
@@ -151,7 +199,11 @@ fun StatisticsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant
                         )
                         StatSummaryColumn(
-                            title = if (uiState.periodMode == StatisticsPeriod.MONTH) "总支出" else "全年支出",
+                            title = when (uiState.periodMode) {
+                                StatisticsPeriod.WEEK -> "本周支出"
+                                StatisticsPeriod.MONTH -> "总支出"
+                                StatisticsPeriod.YEAR -> "全年支出"
+                            },
                             amount = uiState.summary.totalExpense,
                             amountColor = MaterialTheme.colorScheme.error
                         )
@@ -201,14 +253,14 @@ fun StatisticsScreen(
             // 3. 结构分布图
             item {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(18.dp),
+                            .padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -217,7 +269,7 @@ fun StatisticsScreen(
                             modifier = Modifier.align(Alignment.Start)
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         val totalTarget = if (uiState.selectedType == RecordType.EXPENSE) {
                             uiState.summary.totalExpense
@@ -243,14 +295,14 @@ fun StatisticsScreen(
             if (uiState.dailyTrends.isNotEmpty()) {
                 item {
                     Card(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(18.dp)
+                                .padding(14.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -258,18 +310,25 @@ fun StatisticsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (uiState.periodMode == StatisticsPeriod.MONTH) "每日支出走势" else "12个月支出走势",
+                                    text = when (uiState.periodMode) {
+                                        StatisticsPeriod.WEEK -> "7天支出走势"
+                                        StatisticsPeriod.MONTH -> "每日支出走势"
+                                        StatisticsPeriod.YEAR -> "12个月支出走势"
+                                    },
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
 
                                 Text(
-                                    text = if (uiState.periodMode == StatisticsPeriod.MONTH) "日均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}" else "月均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}",
+                                    text = when (uiState.periodMode) {
+                                        StatisticsPeriod.WEEK, StatisticsPeriod.MONTH -> "日均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
+                                        StatisticsPeriod.YEAR -> "月均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             BarTrendChart(
                                 items = uiState.dailyTrends,
@@ -284,8 +343,8 @@ fun StatisticsScreen(
             item {
                 Text(
                     text = "分类排行 (${uiState.categoryStats.size} 项)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 0.dp)
                 )
             }
 
@@ -320,7 +379,7 @@ fun StatisticsScreen(
                         rank = index + 1,
                         isSelected = isSelected,
                         onClick = {
-                            viewModel.selectCategory(if (isSelected) null else item)
+                            onCategoryClick?.invoke(item.category.id)
                         }
                     )
                 }

@@ -139,8 +139,10 @@ object CategoryIconHelper {
         0xFF26A69A  // 薄荷绿
     )
 
+    private val ICON_MAP: Map<String, ImageVector> = AVAILABLE_ICONS.associate { it.key to it.icon }
+
     fun getIcon(key: String): ImageVector {
-        return AVAILABLE_ICONS.find { it.key == key }?.icon ?: Icons.Default.Category
+        return ICON_MAP[key] ?: Icons.Default.Category
     }
 
     /**

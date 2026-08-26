@@ -256,7 +256,7 @@ fun AddEditCategoryDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(CategoryIconHelper.AVAILABLE_ICONS) { iconInfo ->
+                        items(CategoryIconHelper.AVAILABLE_ICONS, key = { it.key }) { iconInfo ->
                             val isSelected = selectedIcon == iconInfo.key
                             Box(
                                 modifier = Modifier
@@ -300,7 +300,7 @@ fun AddEditCategoryDialog(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(CategoryIconHelper.PRESET_COLORS) { colorHex ->
+                    items(CategoryIconHelper.PRESET_COLORS, key = { it }) { colorHex ->
                         val isSelected = selectedColor == colorHex
                         Box(
                             modifier = Modifier
