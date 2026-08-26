@@ -18,7 +18,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index("categoryId"),
         Index("recordTime"),
-        Index("type")
+        Index("type"),
+        Index("splitGroupId")
     ]
 )
 data class RecordEntity(
@@ -30,6 +31,9 @@ data class RecordEntity(
     val recordTime: Long, // 记录发生的时间戳（毫秒）
     val remark: String = "",
     val paymentMethod: String, // "微信支付"、"支付宝"、"银行卡"等
+    val splitGroupId: String? = null,
+    val splitIndex: Int? = null,
+    val splitTotal: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

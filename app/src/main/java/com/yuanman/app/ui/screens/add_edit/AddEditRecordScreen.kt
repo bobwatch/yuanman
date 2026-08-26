@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,11 +34,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.yuanman.app.data.model.PaymentMethod
+import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
@@ -60,6 +64,10 @@ fun AddEditRecordScreen(
     val focusManager = LocalFocusManager.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPaymentSheet by remember { mutableStateOf(false) }
+    var showQuickEntryDialog by remember { mutableStateOf(false) }
+    var quickEntryText by remember { mutableStateOf("") }
+    var showSpreadMenu by remember { mutableStateOf(false) }
+    val categoryGridState = rememberLazyGridState()
 
     // 聚焦与软键盘状态（避免逐帧重组，保证极致丝滑）
     var isRemarkFocused by remember { mutableStateOf(false) }
@@ -94,6 +102,11 @@ fun AddEditRecordScreen(
             focusManager.clearFocus(force = true)
             isRemarkFocused = false
         }
+    }
+
+    // 每次打开或切换支出/收入时，分类网格都回到第一排，避免复用上次的滚动位置。
+    LaunchedEffect(uiState.type, uiState.availableCategories.size) {
+        categoryGridState.scrollToItem(0)
     }
 
     val isExpense = uiState.type == RecordType.EXPENSE
@@ -172,11 +185,16 @@ fun AddEditRecordScreen(
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
-                    } else if (onNavigateToCategoryManage != null) {
-                        IconButton(onClick = { onNavigateToCategoryManage() }) {
+                    } else {
+                        IconButton(
+                            onClick = {
+                                quickEntryText = ""
+                                showQuickEntryDialog = true
+                            }
+                        ) {
                             Icon(
-                                Icons.Default.Tune,
-                                contentDescription = "管理分类",
+                                Icons.Default.Bolt,
+                                contentDescription = "快捷录入",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -279,9 +297,81 @@ fun AddEditRecordScreen(
                 }
             }
 
+            if (!uiState.isEditMode && isExpense) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (uiState.spreadMonths > 1) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EventRepeat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "跨月分摊",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(
+                                text = if (uiState.spreadMonths > 1) {
+                                    "总额将平均记入未来 ${uiState.spreadMonths} 个月"
+                                } else {
+                                    "房租、半年付、分期付款可按月计入预算"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box {
+                            FilterChip(
+                                selected = uiState.spreadMonths > 1,
+                                onClick = { showSpreadMenu = true },
+                                label = { Text(if (uiState.spreadMonths > 1) "${uiState.spreadMonths}个月" else "单笔") },
+                                leadingIcon = if (uiState.spreadMonths > 1) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                } else null
+                            )
+                            DropdownMenu(
+                                expanded = showSpreadMenu,
+                                onDismissRequest = { showSpreadMenu = false }
+                            ) {
+                                listOf(1, 2, 3, 6, 12, 24).forEach { months ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (months == 1) "单笔记账" else "分摊 ${months} 个月") },
+                                        onClick = {
+                                            viewModel.setSpreadMonths(months)
+                                            showSpreadMenu = false
+                                        },
+                                        trailingIcon = if (uiState.spreadMonths == months) {
+                                            { Icon(Icons.Default.Check, contentDescription = null) }
+                                        } else null
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 🌟 2. 主分类选择矩阵 (占主要空间，4列排布，滑动顺畅)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
+                state = categoryGridState,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
@@ -608,6 +698,84 @@ fun AddEditRecordScreen(
                     isEditMode = uiState.isEditMode,
                     hapticEnabled = uiState.hapticEnabled
                 )
+            }
+        }
+    }
+
+    if (showQuickEntryDialog) {
+        val quickPreview = remember(quickEntryText, uiState.availableCategories) {
+            QuickEntryParser.parse(quickEntryText, uiState.availableCategories)
+        }
+        Dialog(onDismissRequest = { showQuickEntryDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, tint = themeActiveColor)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "快捷录入",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                    Text(
+                        text = "输入描述和金额，系统会自动识别分类",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    OutlinedTextField(
+                        value = quickEntryText,
+                        onValueChange = { quickEntryText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("例如：奶茶 18") },
+                        leadingIcon = { Icon(Icons.Outlined.EditNote, contentDescription = null) },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done
+                        )
+                    )
+                    if (quickEntryText.isNotBlank()) {
+                        if (quickPreview != null) {
+                            val previewCategory = quickPreview.category ?: uiState.selectedCategory
+                            val previewRemark = quickPreview.remark
+                                .takeIf { it.isNotBlank() }
+                                ?.let { " · $it" }
+                                .orEmpty()
+                            Text(
+                                text = "识别结果：${previewCategory?.name ?: "当前分类"} · ¥${quickPreview.amountYuan.toPlainString()}$previewRemark",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                text = "请输入金额，例如：奶茶 18",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showQuickEntryDialog = false }) { Text("取消") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.saveQuickEntry(quickEntryText)
+                                showQuickEntryDialog = false
+                            },
+                            enabled = quickPreview != null
+                        ) { Text("立即记账") }
+                    }
+                }
             }
         }
     }

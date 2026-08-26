@@ -208,12 +208,12 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "设置月度预算",
+                        text = "设置 ${uiState.selectedYear}年${uiState.selectedMonth}月预算",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
 
                     Text(
-                        text = "设定合理的月度预算目标，实时把控消费节奏，避免超支。",
+                        text = "只影响当前月份；切换月份即可查看和设置各月预算。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )

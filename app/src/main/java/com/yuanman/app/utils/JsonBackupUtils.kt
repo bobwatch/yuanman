@@ -57,6 +57,9 @@ object JsonBackupUtils {
                 put("recordTime", r.recordTime)
                 put("remark", r.remark)
                 put("paymentMethod", r.paymentMethod)
+                r.splitGroupId?.let { put("splitGroupId", it) }
+                r.splitIndex?.let { put("splitIndex", it) }
+                r.splitTotal?.let { put("splitTotal", it) }
                 put("createdAt", r.createdAt)
                 put("updatedAt", r.updatedAt)
             }
@@ -104,6 +107,9 @@ object JsonBackupUtils {
                         recordTime = obj.optLong("recordTime", System.currentTimeMillis()),
                         remark = obj.optString("remark", ""),
                         paymentMethod = obj.optString("paymentMethod", "现金"),
+                        splitGroupId = obj.optString("splitGroupId", "").ifBlank { null },
+                        splitIndex = if (obj.has("splitIndex")) obj.optInt("splitIndex") else null,
+                        splitTotal = if (obj.has("splitTotal")) obj.optInt("splitTotal") else null,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
                     )

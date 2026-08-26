@@ -40,7 +40,8 @@ private data class MonthInfo(
 )
 
 private data class PrefsInfo(
-    val budget: Long,
+    val budgets: Map<String, Long>,
+    val legacyBudget: Long,
     val privacy: Boolean,
     val affirmation: WarmAffirmation
 )
@@ -71,18 +72,20 @@ class HomeViewModel(
     }
 
     private val prefsInfoFlow = combine(
+        preferencesRepository.monthlyBudgets,
         preferencesRepository.monthlyBudget,
         preferencesRepository.privacyMode,
         _currentAffirmation
-    ) { budget, privacy, affirmation ->
-        PrefsInfo(budget, privacy, affirmation)
+    ) { budgets, legacyBudget, privacy, affirmation ->
+        PrefsInfo(budgets, legacyBudget, privacy, affirmation)
     }
 
     val uiState: StateFlow<HomeUiState> = combine(monthInfoFlow, prefsInfoFlow) { monthInfo, prefsInfo ->
         val year = monthInfo.year
         val month = monthInfo.month
         val records = monthInfo.records
-        val budget = prefsInfo.budget
+        val budget = prefsInfo.budgets[PreferencesRepository.monthKey(year, month)]
+            ?: prefsInfo.legacyBudget
         val privacy = prefsInfo.privacy
         val affirmation = prefsInfo.affirmation
 
@@ -221,7 +224,11 @@ class HomeViewModel(
 
     fun setMonthlyBudget(budgetCents: Long) {
         viewModelScope.launch {
-            preferencesRepository.setMonthlyBudget(budgetCents)
+            preferencesRepository.setBudgetForMonth(
+                _selectedYear.value,
+                _selectedMonth.value,
+                budgetCents
+            )
         }
     }
 

@@ -64,3 +64,6 @@ Desktop.ini
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Adb sync working dir
+.adb_sync_backup/

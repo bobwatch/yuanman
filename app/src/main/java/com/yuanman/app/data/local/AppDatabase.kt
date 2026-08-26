@@ -17,7 +17,7 @@ import androidx.room.migration.Migration
 
 @Database(
     entities = [CategoryEntity::class, RecordEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -35,6 +35,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE records ADD COLUMN splitGroupId TEXT")
+                db.execSQL("ALTER TABLE records ADD COLUMN splitIndex INTEGER")
+                db.execSQL("ALTER TABLE records ADD COLUMN splitTotal INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_records_splitGroupId ON records(splitGroupId)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -43,6 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "yuanman_database.db"
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .addCallback(DatabaseCallback())
                     .build()

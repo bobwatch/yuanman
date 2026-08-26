@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
 }
+
+// 签名信息从 local.properties 读取（该文件不入库，避免泄露密钥）
+val signingProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val keystoreFile = rootProject.file("app/keystore/yuanman-release.jks")
 
 android {
     namespace = "com.yuanman.app"
@@ -21,6 +30,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = signingProps.getProperty("KEYSTORE_PASSWORD", "")
+                keyAlias = signingProps.getProperty("KEY_ALIAS", "yuanman")
+                keyPassword = signingProps.getProperty("KEY_PASSWORD", "")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -28,6 +48,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

@@ -12,7 +12,9 @@ import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import java.util.Calendar
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "yuanman_preferences")
 
@@ -23,6 +25,7 @@ class PreferencesRepository(private val context: Context) {
         val DEFAULT_RECORD_TYPE = stringPreferencesKey("default_record_type")
         val DEFAULT_PAYMENT_METHOD = stringPreferencesKey("default_payment_method")
         val MONTHLY_BUDGET = longPreferencesKey("monthly_budget")
+        val MONTHLY_BUDGETS = stringPreferencesKey("monthly_budgets")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
         val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
         val CUSTOM_TAGS = stringPreferencesKey("custom_tags")
@@ -61,8 +64,18 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] ?: PaymentMethod.defaultMethod()
     }
 
-    val monthlyBudget: Flow<Long> = context.dataStore.data.map { preferences ->
+    /** Legacy/default budget, kept for users who upgraded from the old single-budget version. */
+    private val legacyMonthlyBudget: Flow<Long> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.MONTHLY_BUDGET] ?: 0L
+    }
+
+    /** Explicit budgets keyed by yyyy-MM, so changing the month also changes the budget shown on Home. */
+    val monthlyBudgets: Flow<Map<String, Long>> = context.dataStore.data.map { preferences ->
+        parseMonthlyBudgets(preferences[PreferencesKeys.MONTHLY_BUDGETS])
+    }
+
+    val monthlyBudget: Flow<Long> = combine(monthlyBudgets, legacyMonthlyBudget) { budgets, legacy ->
+        budgets[monthKey(currentYear(), currentMonth())] ?: legacy
     }
 
     val privacyMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -92,8 +105,14 @@ class PreferencesRepository(private val context: Context) {
     }
 
     suspend fun setMonthlyBudget(budgetCents: Long) {
+        setBudgetForMonth(currentYear(), currentMonth(), budgetCents)
+    }
+
+    suspend fun setBudgetForMonth(year: Int, month: Int, budgetCents: Long) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.MONTHLY_BUDGET] = budgetCents
+            val budgets = parseMonthlyBudgets(preferences[PreferencesKeys.MONTHLY_BUDGETS]).toMutableMap()
+            budgets[monthKey(year, month)] = budgetCents.coerceAtLeast(0L)
+            preferences[PreferencesKeys.MONTHLY_BUDGETS] = serializeMonthlyBudgets(budgets)
         }
     }
 
@@ -158,5 +177,25 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences.clear()
         }
+    }
+
+    companion object {
+        fun monthKey(year: Int, month: Int): String = "%04d-%02d".format(year, month)
+
+        private fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
+        private fun currentMonth(): Int = Calendar.getInstance().get(Calendar.MONTH) + 1
+
+        private fun parseMonthlyBudgets(raw: String?): Map<String, Long> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            return raw.split(',').mapNotNull { entry ->
+                val parts = entry.split(':', limit = 2)
+                if (parts.size != 2) return@mapNotNull null
+                parts[0].takeIf { it.matches(Regex("\\d{4}-\\d{2}")) }
+                    ?.let { key -> key to (parts[1].toLongOrNull()?.coerceAtLeast(0L) ?: return@mapNotNull null) }
+            }.toMap()
+        }
+
+        private fun serializeMonthlyBudgets(budgets: Map<String, Long>): String =
+            budgets.toSortedMap().entries.joinToString(",") { "${it.key}:${it.value}" }
     }
 }

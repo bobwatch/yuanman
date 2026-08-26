@@ -7,15 +7,18 @@ import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.PaymentMethod
+import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.ui.components.KeypadEngine
+import com.yuanman.app.utils.CrossMonthExpenseUtils
 import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
+import java.util.UUID
 
 data class AddEditUiState(
     val isEditMode: Boolean = false,
@@ -26,6 +29,7 @@ data class AddEditUiState(
     val recordTime: Long = System.currentTimeMillis(),
     val remark: String = "",
     val paymentMethod: String = PaymentMethod.defaultMethod(),
+    val spreadMonths: Int = 1,
     val availableCategories: List<CategoryEntity> = emptyList(),
     val quickRemarks: List<String> = emptyList(),
     val hapticEnabled: Boolean = true,
@@ -123,8 +127,18 @@ class AddEditRecordViewModel(
 
     fun setRecordType(type: RecordType) {
         if (_uiState.value.type != type) {
-            _uiState.update { it.copy(type = type, selectedCategory = null) }
+            _uiState.update {
+                it.copy(
+                    type = type,
+                    selectedCategory = null,
+                    spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1
+                )
+            }
         }
+    }
+
+    fun setSpreadMonths(months: Int) {
+        _uiState.update { it.copy(spreadMonths = months.coerceIn(1, 36)) }
     }
 
     fun setExpression(expr: String) {
@@ -181,6 +195,28 @@ class AddEditRecordViewModel(
         _uiState.update { it.copy(savedFeedbackMessage = null) }
     }
 
+    fun saveQuickEntry(input: String) {
+        val state = _uiState.value
+        val parsed = QuickEntryParser.parse(input, state.availableCategories)
+        if (parsed == null) {
+            _uiState.update { it.copy(errorMessage = "请输入类似“奶茶 18”的内容") }
+            return
+        }
+        val category = parsed.category ?: state.selectedCategory ?: state.availableCategories.firstOrNull()
+        if (category == null) {
+            _uiState.update { it.copy(errorMessage = "未能识别分类，请先选择分类") }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                expression = parsed.amountYuan.toPlainString(),
+                selectedCategory = category,
+                remark = parsed.remark
+            )
+        }
+        saveRecord()
+    }
+
     fun saveRecord(continueNext: Boolean = false) {
         val state = _uiState.value
         val expr = state.expression.trim()
@@ -211,22 +247,45 @@ class AddEditRecordViewModel(
         }
 
         viewModelScope.launch {
-            val recordEntity = RecordEntity(
-                id = if (state.isEditMode) state.recordId else 0L,
-                type = state.type.name,
-                amount = amountInCents,
-                categoryId = category.id,
-                recordTime = state.recordTime,
-                remark = state.remark.trim(),
-                paymentMethod = state.paymentMethod,
-                updatedAt = System.currentTimeMillis()
-            )
-
-            if (state.isEditMode) {
-                recordRepository.updateRecord(recordEntity)
+            val monthCount = if (!state.isEditMode && state.type == RecordType.EXPENSE) {
+                state.spreadMonths.coerceAtLeast(1)
             } else {
-                recordRepository.insertRecord(recordEntity)
+                1
             }
+            val now = System.currentTimeMillis()
+            val splitGroupId = if (monthCount > 1) UUID.randomUUID().toString() else null
+            val splitAmounts = CrossMonthExpenseUtils.splitAmount(amountInCents, monthCount)
+            val records = splitAmounts.mapIndexed { index, splitAmount ->
+                val splitRemark = if (monthCount > 1) {
+                    listOfNotNull(
+                        state.remark.trim().takeIf { it.isNotBlank() },
+                        "跨月分摊 ${index + 1}/$monthCount"
+                    ).joinToString(" · ")
+                } else {
+                    state.remark.trim()
+                }
+                RecordEntity(
+                    id = if (state.isEditMode) state.recordId else 0L,
+                    type = state.type.name,
+                    amount = splitAmount,
+                    categoryId = category.id,
+                    recordTime = if (monthCount > 1) {
+                        CrossMonthExpenseUtils.addMonthsKeepingDay(state.recordTime, index)
+                    } else {
+                        state.recordTime
+                    },
+                    remark = splitRemark,
+                    paymentMethod = state.paymentMethod,
+                    splitGroupId = splitGroupId,
+                    splitIndex = if (monthCount > 1) index + 1 else null,
+                    splitTotal = if (monthCount > 1) monthCount else null,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+
+            if (state.isEditMode) recordRepository.updateRecord(records.first())
+            else recordRepository.insertRecords(records)
 
             if (continueNext) {
                 // 连记模式：清空金额与备注，重置时间为当前，弹出成功气泡
@@ -234,6 +293,7 @@ class AddEditRecordViewModel(
                     it.copy(
                         expression = "",
                         remark = "",
+                        spreadMonths = 1,
                         recordTime = System.currentTimeMillis(),
                         savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」✨ 可继续记下一笔"
                     )
