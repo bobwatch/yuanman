@@ -39,6 +39,7 @@ object JsonBackupUtils {
                 put("colorHex", c.colorHex)
                 put("isDefault", c.isDefault)
                 put("sortOrder", c.sortOrder)
+                put("tags", c.tags)
                 put("createdAt", c.createdAt)
             }
             catArray.put(obj)
@@ -88,6 +89,7 @@ object JsonBackupUtils {
                         colorHex = obj.optLong("colorHex", 0xFF607D8BL),
                         isDefault = obj.optBoolean("isDefault", false),
                         sortOrder = obj.optInt("sortOrder", 0),
+                        tags = obj.optString("tags", ""),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )

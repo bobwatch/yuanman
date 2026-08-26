@@ -12,6 +12,20 @@ val signingProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val keystoreFile = rootProject.file("app/keystore/yuanman-release.jks")
+val hasReleaseSigning = keystoreFile.isFile &&
+    !signingProps.getProperty("KEYSTORE_PASSWORD").isNullOrBlank() &&
+    !signingProps.getProperty("KEY_PASSWORD").isNullOrBlank()
+
+// Release 缺少生产签名时必须直接失败，避免生成无法覆盖安装的 APK，进而诱导用户卸载旧版本。
+tasks.configureEach {
+    if (name.contains("Release", ignoreCase = true)) {
+        doFirst {
+            check(hasReleaseSigning) {
+                "Release 构建已终止：缺少 app/keystore/yuanman-release.jks 或签名配置。请使用原生产签名构建升级包。"
+            }
+        }
+    }
+}
 
 android {
     namespace = "com.yuanman.app"
@@ -77,6 +91,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+ksp {
+    arg("room.schemaLocation", projectDir.resolve("schemas").absolutePath)
 }
 
 dependencies {

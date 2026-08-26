@@ -49,7 +49,8 @@ class YuanmanApplication : Application() {
         instance = this
         appScope.launch {
             // 1. 灾难自愈检测与恢复（若版本升级或意外出现表数据丢失，自动从安全备份恢复）
-            com.yuanman.app.data.local.DatabaseBackupManager.checkAndAutoRecover(this@YuanmanApplication, database)
+            // 必须在 Room 初始化前执行，避免在打开的数据库连接上覆盖文件。
+            com.yuanman.app.data.local.DatabaseBackupManager.checkAndAutoRecover(this@YuanmanApplication)
 
             // 2. 确保默认分类与体系正常
             categoryRepository.ensureDefaultCategories()

@@ -18,7 +18,7 @@ import androidx.room.migration.Migration
 @Database(
     entities = [CategoryEntity::class, RecordEntity::class],
     version = 3,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -45,22 +45,55 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         fun getDatabase(context: Context): AppDatabase {
+            val appContext = context.applicationContext
             return INSTANCE ?: synchronized(this) {
-                // 启动或版本升级前自动对现有数据库进行安全快照备份
-                DatabaseBackupManager.autoBackup(context.applicationContext)
-
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "yuanman_database.db"
-                )
-                    .addMigrations(MIGRATION_1_2)
-                    .addMigrations(MIGRATION_2_3)
-                    .addCallback(DatabaseCallback())
-                    .build()
-                INSTANCE = instance
-                instance
+                INSTANCE ?: run {
+                    // 启动或版本升级前自动对现有数据库进行安全快照备份
+                    DatabaseBackupManager.autoBackup(appContext)
+                    openDatabaseWithRecovery(appContext)
+                }
             }
+        }
+
+        private fun openDatabaseWithRecovery(context: Context): AppDatabase {
+            val instance = buildDatabase(context)
+            // DatabaseCallback.onCreate 需要在数据库真正打开前拿到实例。
+            INSTANCE = instance
+            return try {
+                // 提前打开，确保 Migration 错误能在这里被捕获，而不是异步启动后才崩溃。
+                instance.openHelper.writableDatabase
+                instance
+            } catch (openError: Exception) {
+                instance.close()
+                INSTANCE = null
+
+                if (!DatabaseBackupManager.restoreLatestBackup(context)) {
+                    throw openError
+                }
+
+                val recovered = buildDatabase(context)
+                INSTANCE = recovered
+                try {
+                    recovered.openHelper.writableDatabase
+                    recovered
+                } catch (retryError: Exception) {
+                    recovered.close()
+                    INSTANCE = null
+                    throw openError
+                }
+            }
+        }
+
+        private fun buildDatabase(context: Context): AppDatabase {
+            return Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                "yuanman_database.db"
+            )
+                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_2_3)
+                .addCallback(DatabaseCallback())
+                .build()
         }
 
         fun getDefaultCategories(): List<CategoryEntity> {
