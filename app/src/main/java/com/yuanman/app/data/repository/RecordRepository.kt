@@ -29,6 +29,10 @@ class RecordRepository(
         return recordDao.getRecentRecords(limit)
     }
 
+    fun getRecordsByCategoryId(categoryId: Long): Flow<List<RecordWithCategory>> {
+        return recordDao.getRecordsByCategoryId(categoryId)
+    }
+
     fun getRecordById(id: Long): Flow<RecordWithCategory?> {
         return recordDao.getRecordById(id)
     }

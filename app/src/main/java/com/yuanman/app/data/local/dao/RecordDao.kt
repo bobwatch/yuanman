@@ -12,6 +12,10 @@ interface RecordDao {
     fun getAllRecords(): Flow<List<RecordWithCategory>>
 
     @Transaction
+    @Query("SELECT * FROM records WHERE categoryId = :categoryId ORDER BY recordTime DESC, id DESC")
+    fun getRecordsByCategoryId(categoryId: Long): Flow<List<RecordWithCategory>>
+
+    @Transaction
     @Query("SELECT * FROM records WHERE recordTime >= :startTime AND recordTime <= :endTime ORDER BY recordTime DESC, id DESC")
     fun getRecordsByDateRange(startTime: Long, endTime: Long): Flow<List<RecordWithCategory>>
 
