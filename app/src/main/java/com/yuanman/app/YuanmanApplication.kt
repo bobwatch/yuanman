@@ -1,6 +1,8 @@
 package com.yuanman.app
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
@@ -47,6 +49,29 @@ class YuanmanApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var startedActivityCount = 0
+
+            override fun onActivityStarted(activity: Activity) {
+                startedActivityCount += 1
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                if (startedActivityCount == 0) {
+                    // 进入后台时立刻更新公共快照，确保随后卸载不会丢掉最近一次记账。
+                    appScope.launch(Dispatchers.IO) {
+                        com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(this@YuanmanApplication)
+                    }
+                }
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
         appScope.launch {
             // 1. 灾难自愈检测与恢复（若版本升级或意外出现表数据丢失，自动从安全备份恢复）
             // 必须在 Room 初始化前执行，避免在打开的数据库连接上覆盖文件。

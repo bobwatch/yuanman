@@ -20,7 +20,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -348,18 +350,56 @@ private fun FinancialOverviewCard(
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
+    val cardSurfaceColor = MaterialTheme.colorScheme.surface
+    val textureLineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.022f)
+    val textureGlowColor = primaryColor.copy(alpha = 0.035f)
+    val cardShape = RoundedCornerShape(18.dp)
 
     Card(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
+            .clip(cardShape)
+            .drawBehind {
+                // 低对比度斜向纹理 + 柔和光晕，增强层次但不干扰金额阅读。
+                drawRect(cardSurfaceColor)
+
+                val spacing = 22.dp.toPx()
+                val lineWidth = 1.dp.toPx()
+                var x = -size.height
+                while (x < size.width + size.height) {
+                    drawLine(
+                        color = textureLineColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x + size.height, size.height),
+                        strokeWidth = lineWidth
+                    )
+                    drawLine(
+                        color = textureLineColor.copy(alpha = 0.012f),
+                        start = Offset(x + size.height * 0.45f, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = lineWidth
+                    )
+                    x += spacing
+                }
+
+                drawCircle(
+                    color = textureGlowColor,
+                    radius = size.minDimension * 0.72f,
+                    center = Offset(size.width * 0.96f, size.height * 0.04f)
+                )
+                drawCircle(
+                    color = textureGlowColor.copy(alpha = 0.022f),
+                    radius = size.minDimension * 0.52f,
+                    center = Offset(size.width * 0.02f, size.height * 0.98f)
+                )
+            }
             .then(
                 if (onCardClick != null) {
                     Modifier.clickableDebounce(debounceTimeMs = 500L, onClick = onCardClick)
                 } else Modifier
             ),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Column(

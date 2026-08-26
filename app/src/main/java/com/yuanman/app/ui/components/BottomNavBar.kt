@@ -1,6 +1,7 @@
 package com.yuanman.app.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -22,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,6 +35,8 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.yuanman.app.ui.navigation.BottomNavTab
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * 沅满·纯Icon灵动悬浮导航栏 (Minimalist Icon Dock with Delicate Micro-Indicator)
@@ -181,6 +185,46 @@ fun BottomNavBar(
                         val isSelected = index == selectedIndex
                         val targetRoute = tab.screen.route
 
+                        // 选中时做一次轻微的弹跳与回正，让切换反馈更明确但不打扰操作。
+                        val entryScale = remember { Animatable(1f) }
+                        val entryRotation = remember { Animatable(0f) }
+                        LaunchedEffect(isSelected) {
+                            if (isSelected) {
+                                coroutineScope {
+                                    launch {
+                                        entryScale.snapTo(0.86f)
+                                        entryScale.animateTo(
+                                            targetValue = 1.10f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.48f,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                        entryScale.animateTo(
+                                            targetValue = 1.0f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.72f,
+                                                stiffness = Spring.StiffnessLow
+                                            )
+                                        )
+                                    }
+                                    launch {
+                                        entryRotation.snapTo(-8f)
+                                        entryRotation.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.62f,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+                                }
+                            } else {
+                                entryScale.snapTo(1.0f)
+                                entryRotation.snapTo(0f)
+                            }
+                        }
+
                         val iconScale by animateFloatAsState(
                             targetValue = if (isSelected) 1.15f else 1.0f,
                             animationSpec = spring(
@@ -224,7 +268,8 @@ fun BottomNavBar(
                                 contentDescription = tab.title,
                                 tint = iconTint,
                                 modifier = Modifier
-                                    .scale(iconScale)
+                                    .scale(iconScale * entryScale.value)
+                                    .rotate(entryRotation.value)
                                     .size(24.dp)
                             )
                         }

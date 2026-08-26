@@ -1,8 +1,13 @@
 package com.yuanman.app.data.local
 
+import android.content.ContentUris
 import android.content.Context
+import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,6 +21,13 @@ import java.util.Locale
 object DatabaseBackupManager {
     private const val TAG = "DatabaseBackupManager"
     private const val DB_NAME = "yuanman_database.db"
+    private const val SHARED_BACKUP_NAME = "yuanman_database_backup.db"
+    private const val SHARED_BACKUP_FILE_PREFIX = "yuanman_database_backup"
+    private const val BACKUP_STATE_PREFERENCES = "database_backup_state"
+    private const val DATABASE_INITIALIZED_KEY = "database_initialized"
+    private const val SHARED_BACKUP_TEMP_PREFIX = ".yuanman_database_backup_"
+    private const val SHARED_BACKUP_DIR_NAME = "Yuanman"
+    private const val SHARED_BACKUP_MIME_TYPE = "application/vnd.sqlite3"
     private const val MIN_VALID_DB_SIZE = 4096L
     private val backupLock = Any()
 
@@ -65,6 +77,11 @@ object DatabaseBackupManager {
                     }
                 }
 
+                // 应用私有目录会随卸载删除，额外写入公共 Documents，供重装后自动恢复。
+                if (!createSharedBackup(context, dbFile)) {
+                    Log.w(TAG, "Shared uninstall-safe backup was not updated.")
+                }
+
                 Log.i(TAG, "Database auto-backup completed successfully. Size: ${dbFile.length()} bytes")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to perform auto backup: ${e.message}", e)
@@ -77,15 +94,44 @@ object DatabaseBackupManager {
      * 合法的空账单数据库不会被误判为损坏。
      */
     suspend fun checkAndAutoRecover(context: Context): Boolean = withContext(Dispatchers.IO) {
-        synchronized(backupLock) {
+        checkAndAutoRecoverNow(context)
+    }
+
+    /**
+     * 在 Room 创建前同步检查，避免异步 Application 初始化与首帧打开数据库产生竞态。
+     */
+    fun checkAndAutoRecoverNow(context: Context): Boolean {
+        return synchronized(backupLock) {
             val appContext = context.applicationContext
             val dbFile = appContext.getDatabasePath(DB_NAME)
             if (isDatabaseUsable(dbFile)) {
-                false
+                // 全新安装时 Android 可能会先恢复一个合法但为空的 Room 数据库。
+                // 只有在本应用尚未完成过初始化时，才允许公共快照覆盖这个空库；
+                // 已使用过的应用即使账单为空，也不能被旧快照“复活”。
+                if (!isDatabaseInitialized(appContext)) {
+                    val restored = restoreLatestBackupLocked(appContext)
+                    Log.i(TAG, "Initial database recovery attempted. Restored: $restored")
+                    restored
+                } else {
+                    false
+                }
             } else {
                 restoreLatestBackupLocked(appContext)
             }
         }
+    }
+
+    fun markDatabaseInitialized(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(DATABASE_INITIALIZED_KEY, true)
+            .apply()
+    }
+
+    private fun isDatabaseInitialized(context: Context): Boolean {
+        return context.getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .getBoolean(DATABASE_INITIALIZED_KEY, false)
     }
 
     /**
@@ -192,6 +238,9 @@ object DatabaseBackupManager {
         val internalBackup = File(context.filesDir, "backups/auto_backup_latest.db")
         if (internalBackup.exists()) candidates.add(internalBackup)
 
+        findSharedBackup(context)?.let(candidates::add)
+        findLegacySharedBackup()?.let(candidates::add)
+
         context.getExternalFilesDir("backups")?.let { externalDir ->
             externalDir.listFiles { _, name -> name.endsWith(".db") }
                 ?.let(candidates::addAll)
@@ -204,6 +253,172 @@ object DatabaseBackupManager {
                 if (usable) deleteSqliteSidecars(candidate)
                 usable
             }
+    }
+
+    /**
+     * 将快照写入卸载后仍保留的共享存储。Android 10+ 使用 MediaStore，避免申请广泛存储权限。
+     */
+    private fun createSharedBackup(context: Context, source: File): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            createMediaStoreBackup(context, source)
+        } else {
+            val destination = legacySharedBackupFile() ?: return false
+            createVerifiedBackup(source, destination)
+        }
+    }
+
+    private fun createMediaStoreBackup(context: Context, source: File): Boolean {
+        val resolver = context.contentResolver
+        val collection = MediaStore.Files.getContentUri("external")
+        val pendingName = "$SHARED_BACKUP_TEMP_PREFIX${System.currentTimeMillis()}.tmp"
+        val pendingValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, pendingName)
+            put(MediaStore.MediaColumns.MIME_TYPE, SHARED_BACKUP_MIME_TYPE)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, sharedBackupRelativePath())
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val pendingUri = resolver.insert(collection, pendingValues) ?: return false
+
+        return try {
+            copyFileToUri(context, source, pendingUri)
+            val publishedValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, SHARED_BACKUP_NAME)
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+            check(resolver.update(pendingUri, publishedValues, null, null) == 1)
+
+            // 新快照已发布后再清理旧版本，避免更新过程中没有可恢复快照。
+            querySharedBackupUris(context)
+                .filterNot { it == pendingUri }
+                .forEach { resolver.delete(it, null, null) }
+
+            // 某些系统会因同名文件自动追加 "(1)"，旧文件清理后尝试恢复为稳定文件名。
+            resolver.update(
+                pendingUri,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, SHARED_BACKUP_NAME)
+                },
+                null,
+                null
+            )
+            true
+        } catch (e: Exception) {
+            resolver.delete(pendingUri, null, null)
+            Log.e(TAG, "MediaStore backup failed: ${e.message}", e)
+            false
+        }
+    }
+
+    private fun querySharedBackupUris(context: Context): List<Uri> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
+
+        val resolver = context.contentResolver
+        val collection = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,
+            MediaStore.MediaColumns.IS_PENDING
+        )
+        // 部分厂商 MediaProvider 对 RELATIVE_PATH 和 IS_PENDING 放在 selection 中的处理不一致。
+        // 先按名称前缀查询，再在游标中校验目录和发布状态，兼容性更好。
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+        val selectionArgs = arrayOf("$SHARED_BACKUP_FILE_PREFIX%")
+
+        return try {
+            buildList {
+                resolver.query(
+                    collection,
+                    projection,
+                    selection,
+                    selectionArgs,
+                    "CASE WHEN ${MediaStore.MediaColumns.DISPLAY_NAME} = '$SHARED_BACKUP_NAME' THEN 0 ELSE 1 END, " +
+                        "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+                )?.use { cursor ->
+                    val idIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                    val pendingIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING)
+                    while (cursor.moveToNext()) {
+                        val name = cursor.getString(nameIndex)
+                        val relativePath = cursor.getString(pathIndex)
+                        val isPending = cursor.getInt(pendingIndex) != 0
+                        if (name.startsWith(SHARED_BACKUP_FILE_PREFIX) &&
+                            relativePath == sharedBackupRelativePath() &&
+                            !isPending
+                        ) {
+                            add(ContentUris.withAppendedId(collection, cursor.getLong(idIndex)))
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to query shared backup: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    private fun findSharedBackup(context: Context): File? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val backupUri = querySharedBackupUris(context).firstOrNull() ?: return null
+        val cachedFile = File(context.cacheDir, "$SHARED_BACKUP_NAME.recovery")
+        deleteSqliteSidecars(cachedFile)
+        cachedFile.delete()
+
+        return try {
+            copyUriToFile(context, backupUri, cachedFile)
+            if (isDatabaseUsable(cachedFile)) {
+                deleteSqliteSidecars(cachedFile)
+                cachedFile
+            } else {
+                deleteSqliteSidecars(cachedFile)
+                cachedFile.delete()
+                null
+            }
+        } catch (e: Exception) {
+            deleteSqliteSidecars(cachedFile)
+            cachedFile.delete()
+            Log.w(TAG, "Unable to read shared backup: ${e.message}")
+            null
+        }
+    }
+
+    private fun legacySharedBackupFile(): File? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            Environment.getExternalStorageState() != Environment.MEDIA_MOUNTED
+        ) {
+            return null
+        }
+        return File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            "$SHARED_BACKUP_DIR_NAME/$SHARED_BACKUP_NAME"
+        )
+    }
+
+    private fun findLegacySharedBackup(): File? {
+        return legacySharedBackupFile()?.takeIf { it.isFile }
+    }
+
+    private fun sharedBackupRelativePath(): String {
+        return "${Environment.DIRECTORY_DOCUMENTS}/$SHARED_BACKUP_DIR_NAME/"
+    }
+
+    private fun copyFileToUri(context: Context, source: File, destination: Uri) {
+        context.contentResolver.openOutputStream(destination, "w")?.use { output ->
+            FileInputStream(source).use { input ->
+                input.copyTo(output)
+            }
+            output.flush()
+        } ?: throw IllegalStateException("Unable to open shared backup for writing")
+    }
+
+    private fun copyUriToFile(context: Context, source: Uri, destination: File) {
+        context.contentResolver.openInputStream(source)?.use { input ->
+            FileOutputStream(destination).use { output ->
+                input.copyTo(output)
+                output.channel.force(true)
+            }
+        } ?: throw IllegalStateException("Unable to open shared backup for reading")
     }
 
     private fun createVerifiedBackup(source: File, destination: File): Boolean {

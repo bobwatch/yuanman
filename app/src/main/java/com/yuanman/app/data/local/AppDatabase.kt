@@ -48,9 +48,13 @@ abstract class AppDatabase : RoomDatabase() {
             val appContext = context.applicationContext
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: run {
+                    // 首次安装/重装时必须先恢复公共快照，再让 Room 创建新库。
+                    DatabaseBackupManager.checkAndAutoRecoverNow(appContext)
                     // 启动或版本升级前自动对现有数据库进行安全快照备份
                     DatabaseBackupManager.autoBackup(appContext)
-                    openDatabaseWithRecovery(appContext)
+                    openDatabaseWithRecovery(appContext).also {
+                        DatabaseBackupManager.markDatabaseInitialized(appContext)
+                    }
                 }
             }
         }
