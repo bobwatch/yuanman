@@ -104,6 +104,12 @@ interface RecordDao {
         offset: Int
     ): List<RecordWithCategory>
 
+    @Query("SELECT COUNT(*) FROM records")
+    fun getTotalRecordCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM records")
+    suspend fun getTotalRecordCountDirect(): Int
+
     @Query("DELETE FROM records")
     suspend fun deleteAllRecords()
 }

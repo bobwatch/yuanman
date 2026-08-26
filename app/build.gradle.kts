@@ -42,6 +42,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (keystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

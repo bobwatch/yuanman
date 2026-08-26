@@ -48,7 +48,14 @@ class YuanmanApplication : Application() {
         super.onCreate()
         instance = this
         appScope.launch {
+            // 1. 灾难自愈检测与恢复（若版本升级或意外出现表数据丢失，自动从安全备份恢复）
+            com.yuanman.app.data.local.DatabaseBackupManager.checkAndAutoRecover(this@YuanmanApplication, database)
+
+            // 2. 确保默认分类与体系正常
             categoryRepository.ensureDefaultCategories()
+
+            // 3. 运行中周期性安全快照备份
+            com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(this@YuanmanApplication)
         }
     }
 

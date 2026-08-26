@@ -156,6 +156,9 @@ class UpdateManager(
                 return
             }
 
+            // 升级安装前执行紧急安全快照备份
+            com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(context)
+
             val uri: Uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
