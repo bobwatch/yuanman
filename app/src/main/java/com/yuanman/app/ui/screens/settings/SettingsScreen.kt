@@ -103,7 +103,8 @@ fun SettingsScreen(
         when (val state = updateState) {
             is UpdateState.ReadyToInstall -> {
                 if (prev is UpdateState.Downloading) {
-                    toast.success("更新包已下载，点击版本更新安装")
+                    showUpdateDialog = true
+                    toast.success("更新包已下载")
                 }
             }
             is UpdateState.Error -> {
