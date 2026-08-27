@@ -77,7 +77,7 @@ fun HomeScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.statusBars,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -103,7 +103,7 @@ fun HomeScreen(
                 onCardClick = null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 2.dp)
+                    .padding(bottom = 2.dp)
             )
 
             // 🌟 2. 分段切换 Tabs (全部 / 支出 / 收入)
@@ -353,7 +353,12 @@ private fun FinancialOverviewCard(
     val cardSurfaceColor = MaterialTheme.colorScheme.surface
     val textureLineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.022f)
     val textureGlowColor = primaryColor.copy(alpha = 0.035f)
-    val cardShape = RoundedCornerShape(18.dp)
+    val cardShape = RoundedCornerShape(
+        topStart = 0.dp,
+        topEnd = 0.dp,
+        bottomEnd = 18.dp,
+        bottomStart = 18.dp
+    )
 
     Card(
         modifier = modifier
@@ -405,6 +410,7 @@ private fun FinancialOverviewCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             // 顶栏：账本标题 + 月份切换器
@@ -427,7 +433,7 @@ private fun FinancialOverviewCard(
                         text = "沅满账本",
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 14.sp
                         ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -458,7 +464,7 @@ private fun FinancialOverviewCard(
                             text = "${year}年${month}月",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
+                                fontSize = 13.sp
                             ),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
@@ -492,14 +498,14 @@ private fun FinancialOverviewCard(
                 Column(modifier = Modifier.weight(1.2f)) {
                     Text(
                         text = "本月总支出",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
                         color = MaterialTheme.colorScheme.outline
                     )
                     Spacer(modifier = Modifier.height(1.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             text = "¥",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(bottom = 2.dp)
                         )
@@ -507,7 +513,7 @@ private fun FinancialOverviewCard(
                         Text(
                             text = MoneyUtils.centsToYuanString(totalExpense, withGrouping = true),
                             style = MaterialTheme.typography.displayMedium.copy(
-                                fontSize = 23.sp,
+                                fontSize = 25.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp
                             ),
@@ -523,14 +529,14 @@ private fun FinancialOverviewCard(
                 ) {
                     Text(
                         text = "本月总收入",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
                         color = MaterialTheme.colorScheme.outline
                     )
                     Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = "¥${MoneyUtils.centsToYuanString(totalIncome, withGrouping = true)}",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 17.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = primaryColor
@@ -539,7 +545,7 @@ private fun FinancialOverviewCard(
                     Text(
                         text = if (balance >= 0) "结余 +¥${MoneyUtils.centsToYuanString(balance)}" else "结余 -¥${MoneyUtils.centsToYuanString(-balance)}",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         ),
                         color = if (balance >= 0) primaryColor else MaterialTheme.colorScheme.error
@@ -574,7 +580,7 @@ private fun FinancialOverviewCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "月预算 ¥${MoneyUtils.centsToYuanString(monthlyBudget)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.width(3.dp))
@@ -593,7 +599,7 @@ private fun FinancialOverviewCard(
                                 "已超支 ¥${MoneyUtils.centsToYuanString(-remainingBudgetCents)}"
                             },
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = budgetColor
                             )
@@ -616,7 +622,7 @@ private fun FinancialOverviewCard(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "本月剩余 $remainingDays 天 · 日均建议支出 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -644,14 +650,14 @@ private fun FinancialOverviewCard(
                         )
                         Text(
                             text = "暂未设置月度预算，点击快速设定",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     Text(
                         text = "设预算",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                     )
                 }
             }
