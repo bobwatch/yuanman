@@ -61,6 +61,7 @@ class SettingsViewModel(
     private val _isClearedSuccess = MutableStateFlow(false)
 
     val updateState: StateFlow<UpdateState> = updateManager.updateState
+    val hasUnseenUpdate: StateFlow<Boolean> = updateManager.hasUnseenUpdate
 
     private val generalPrefsFlow = combine(
         preferencesRepository.themeMode,
@@ -108,8 +109,12 @@ class SettingsViewModel(
 
 
 
-    fun checkForUpdates() {
-        updateManager.checkForUpdates(isManual = true)
+    fun checkForUpdates(isManual: Boolean = true) {
+        updateManager.checkForUpdates(isManual = isManual)
+    }
+
+    fun markUpdateSeen(versionName: String) {
+        updateManager.markUpdateSeen(versionName)
     }
 
     fun startDownload(info: UpdateInfo) {

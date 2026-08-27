@@ -5,8 +5,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,6 +45,7 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.UpdateInfo
 import com.yuanman.app.utils.UpdateState
+import com.yuanman.app.utils.clickableDebounce
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +57,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
+    val hasUnseenUpdate by viewModel.hasUnseenUpdate.collectAsStateWithLifecycle()
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
 
@@ -72,6 +82,12 @@ fun SettingsScreen(
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
     var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
+    var manualCheckRequested by remember { mutableStateOf(false) }
+
+    // 进入设置页后静默检查一次，避免用户必须先点击才能知道有无新版本。
+    LaunchedEffect(Unit) {
+        viewModel.checkForUpdates(isManual = false)
+    }
 
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
@@ -82,24 +98,30 @@ fun SettingsScreen(
 
     LaunchedEffect(updateState) {
         val prev = prevUpdateState
+        val wasManualCheck = manualCheckRequested
         prevUpdateState = updateState
         when (val state = updateState) {
             is UpdateState.ReadyToInstall -> {
-                toast.success("新版本下载完成，点击「版本更新」即可立即安装！")
+                if (prev is UpdateState.Downloading) {
+                    toast.success("更新包已下载，点击版本更新安装")
+                }
             }
             is UpdateState.Error -> {
-                toast.error(state.message)
+                if (wasManualCheck) {
+                    toast.error(state.message)
+                }
             }
             else -> {}
         }
-        // 手动点击「版本更新」后，检查完成时给出成功提示
-        if (prev is UpdateState.Checking) {
+        // 只有手动检查才提示，静默检查不打扰用户。
+        if (prev is UpdateState.Checking && wasManualCheck) {
+            manualCheckRequested = false
             when (val state = updateState) {
                 is UpdateState.UpToDate -> {
-                    toast.success("已是最新版本 v${viewModel.updateManager.currentVersionName}，无需更新")
+                    toast.success("当前已是最新版本")
                 }
                 is UpdateState.Available -> {
-                    toast.success("获取成功：发现新版本 v${state.info.versionName}")
+                    toast.success("发现新版本 v${state.info.versionName}")
                 }
                 else -> {}
             }
@@ -258,15 +280,14 @@ fun SettingsScreen(
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     val currentVer = viewModel.updateManager.currentVersionName
-                    val hasNewVersion = updateState is UpdateState.Available || updateState is UpdateState.ReadyToInstall
                     val (updateSubtitle, subtitleHighlight, downloadProgress) = when (val state = updateState) {
-                        is UpdateState.Checking -> Triple("正在检查新版本...", true, null)
-                        is UpdateState.Available -> Triple("发现新版本 v${state.info.versionName} · 点击查看下载", true, null)
-                        is UpdateState.Downloading -> Triple("正在下载新版本 (${(state.progress * 100).toInt()}%)", true, state.progress)
-                        is UpdateState.ReadyToInstall -> Triple("新版本已就绪 · 点击立即安装", true, null)
-                        is UpdateState.UpToDate -> Triple("当前版本 v$currentVer · 已是最新版本", false, null)
-                        is UpdateState.Error -> Triple("检查更新失败 · 点击重试", false, null)
-                        else -> Triple("当前版本 v$currentVer · 点击检查更新", false, null)
+                        is UpdateState.Checking -> Triple("正在检查…", true, null)
+                        is UpdateState.Available -> Triple("发现 v${state.info.versionName} · 点此查看", true, null)
+                        is UpdateState.Downloading -> Triple("下载中 ${(state.progress * 100).toInt()}%", true, state.progress)
+                        is UpdateState.ReadyToInstall -> Triple("已下载 · 点此安装", true, null)
+                        is UpdateState.UpToDate -> Triple("v$currentVer · 已是最新", false, null)
+                        is UpdateState.Error -> Triple("检查失败 · 点此重试", false, null)
+                        else -> Triple("v$currentVer · 点此检查", false, null)
                     }
 
                     SettingsRowItem(
@@ -274,14 +295,16 @@ fun SettingsScreen(
                         title = "版本更新",
                         subtitle = updateSubtitle,
                         subtitleHighlight = subtitleHighlight,
-                        showBadge = hasNewVersion,
+                        showBadge = hasUnseenUpdate,
                         downloadProgress = downloadProgress,
                         onClick = {
                             when (val state = updateState) {
                                 is UpdateState.ReadyToInstall -> {
-                                    viewModel.installApk(state.apkFile)
+                                    viewModel.markUpdateSeen(state.info.versionName)
+                                    showUpdateDialog = true
                                 }
                                 is UpdateState.Available -> {
+                                    viewModel.markUpdateSeen(state.info.versionName)
                                     showUpdateDialog = true
                                 }
                                 is UpdateState.Downloading -> {
@@ -291,8 +314,9 @@ fun SettingsScreen(
                                     toast.info("正在检查最新版本，请稍候...")
                                 }
                                 else -> {
-                                    viewModel.checkForUpdates()
-                                    toast.info("正在获取最新版本信息...")
+                                    manualCheckRequested = true
+                                    viewModel.checkForUpdates(isManual = true)
+                                    toast.info("正在检查新版本…")
                                 }
                             }
                         }
@@ -424,80 +448,93 @@ fun SettingsScreen(
     }
 
     // 🌟 新版本更新详情弹窗
-    if (showUpdateDialog && updateState is UpdateState.Available) {
-        val info = (updateState as UpdateState.Available).info
-        AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "发现新版本 v${info.versionName}",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
+    if (showUpdateDialog) {
+        val info = when (val state = updateState) {
+            is UpdateState.Available -> state.info
+            is UpdateState.ReadyToInstall -> state.info
+            else -> null
+        }
+        val readyApk = (updateState as? UpdateState.ReadyToInstall)?.apkFile
+        if (info != null) {
+            AlertDialog(
+                onDismissRequest = { showUpdateDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (readyApk != null) {
+                                "更新已就绪 v${info.versionName}"
+                            } else {
+                                "发现新版本 v${info.versionName}"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                },
+                text = {
+                    Column(
                         modifier = Modifier
-                            .size(8.dp)
-                            .background(Color(0xFFE53935), CircleShape)
-                    )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (info.releaseTitle.isNotBlank()) {
-                        Text(
-                            text = info.releaseTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (info.releaseTitle.isNotBlank()) {
+                            Text(
+                                text = info.releaseTitle,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
-                    if (info.releaseNotes.isNotBlank()) {
-                        Text(
-                            text = info.releaseNotes,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            text = "本次更新包含体验优化与问题修复。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                        if (info.releaseNotes.isNotBlank()) {
+                            Text(
+                                text = info.releaseNotes,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "本次更新包含体验优化与问题修复。",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
 
-                    if (info.sizeBytes > 0L) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "安装包大小: ${"%.1f".format(info.sizeBytes / 1024.0 / 1024.0)} MB",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
+                        if (info.sizeBytes > 0L) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "安装包大小: ${"%.1f".format(info.sizeBytes / 1024.0 / 1024.0)} MB",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (readyApk != null) {
+                                viewModel.installApk(readyApk)
+                                toast.info("正在打开安装器…")
+                            } else {
+                                viewModel.startDownload(info)
+                                toast.info("开始下载更新…")
+                            }
+                            showUpdateDialog = false
+                        }
+                    ) {
+                        Text(if (readyApk != null) "立即安装" else "下载更新")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text("稍后")
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.startDownload(info)
-                        showUpdateDialog = false
-                        toast.info("已开始在后台下载新版本...")
-                    }
-                ) {
-                    Text("立即下载更新")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpdateDialog = false }) {
-                    Text("稍后再说")
-                }
-            }
-        )
+            )
+        }
     }
 
     // 🌟 主题外观底部选择弹层
@@ -669,7 +706,7 @@ private fun SettingsRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
+            .clickableDebounce(debounceTimeMs = 400L, onClick = onClick)
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -694,12 +731,7 @@ private fun SettingsRowItem(
                     }
                 }
                 if (showBadge) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(9.dp)
-                            .background(Color(0xFFE53935), CircleShape)
-                    )
+                    UpdateBadge()
                 }
             }
 
@@ -714,14 +746,6 @@ private fun SettingsRowItem(
                             color = if (isDestructive) errorColor else MaterialTheme.colorScheme.onSurface
                         )
                     )
-                    if (showBadge) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .background(Color(0xFFE53935), CircleShape)
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
@@ -754,6 +778,30 @@ private fun SettingsRowItem(
             modifier = Modifier.size(18.dp)
         )
     }
+}
+
+@Composable
+private fun BoxScope.UpdateBadge() {
+    val badgeTransition = rememberInfiniteTransition(label = "update-badge")
+    val badgeScale by badgeTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "update-badge-scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-2).dp)
+            .size(10.dp)
+            .scale(badgeScale)
+            .background(Color(0xFFE53935), CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+    )
 }
 
 /**

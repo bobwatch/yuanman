@@ -41,6 +41,13 @@ class UpdateManager(
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    private val updatePreferences = context.getSharedPreferences(
+        UPDATE_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
+    private val _hasUnseenUpdate = MutableStateFlow(false)
+    val hasUnseenUpdate: StateFlow<Boolean> = _hasUnseenUpdate.asStateFlow()
+
     val currentVersionName: String
         get() = try {
             BuildConfig.VERSION_NAME
@@ -49,7 +56,10 @@ class UpdateManager(
         }
 
     fun checkForUpdates(isManual: Boolean = true) {
-        if (_updateState.value is UpdateState.Checking || _updateState.value is UpdateState.Downloading) {
+        if (_updateState.value is UpdateState.Checking ||
+            _updateState.value is UpdateState.Downloading ||
+            (!isManual && _updateState.value is UpdateState.ReadyToInstall)
+        ) {
             return
         }
 
@@ -67,6 +77,10 @@ class UpdateManager(
                     val response = conn.inputStream.bufferedReader().use { it.readText() }
                     val info = parseRelease(response)
                     if (info != null && isNewer(info.versionName, currentVersionName)) {
+                        _hasUnseenUpdate.value = info.versionName != updatePreferences.getString(
+                            LAST_SEEN_VERSION,
+                            null
+                        )
                         // 检查本地是否已经下载过该版本的 APK
                         val cachedApk = File(context.cacheDir, cacheFileName(info.versionName))
                         if (cachedApk.exists() && cachedApk.length() > 0 && (info.sizeBytes == 0L || cachedApk.length() == info.sizeBytes)) {
@@ -86,6 +100,13 @@ class UpdateManager(
                 _updateState.value = UpdateState.Error(e.message ?: "网络连接异常")
             }
         }
+    }
+
+    fun markUpdateSeen(versionName: String) {
+        updatePreferences.edit()
+            .putString(LAST_SEEN_VERSION, versionName)
+            .apply()
+        _hasUnseenUpdate.value = false
     }
 
     fun startDownload(info: UpdateInfo) {
@@ -241,5 +262,7 @@ class UpdateManager(
     companion object {
         private const val GITHUB_REPO = "bobwatch/yuanman"
         private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+        private const val UPDATE_PREFERENCES = "yuanman_update_preferences"
+        private const val LAST_SEEN_VERSION = "last_seen_version"
     }
 }
