@@ -877,6 +877,7 @@ fun AddEditRecordScreen(
     if (showPaymentSheet) {
         ModalBottomSheet(
             onDismissRequest = { showPaymentSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
