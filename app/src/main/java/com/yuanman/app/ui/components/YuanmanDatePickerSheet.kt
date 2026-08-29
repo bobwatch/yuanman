@@ -33,7 +33,8 @@ fun YuanmanDatePickerSheet(
     onDateTimeSelected: ((Long) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
-    val maxDate = remember(maxDateMillis) { maxDateMillis }
+    // 默认上限是打开 sheet 时的当前时间；固定快照可避免 TimeInput 重组时把状态重置。
+    val maxDate = remember { maxDateMillis }
     val initialCalendar = remember(initialDateMillis, maxDate) {
         Calendar.getInstance().apply {
             timeInMillis = initialDateMillis.coerceAtMost(maxDate)
