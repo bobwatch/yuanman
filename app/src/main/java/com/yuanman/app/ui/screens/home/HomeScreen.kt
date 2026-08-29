@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -85,113 +88,164 @@ fun HomeScreen(
     val visibleRecords = if (selectedFilterType == null) todayRecords else todayRecords.filter {
         it.record.type == selectedFilterType?.name
     }
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
+    var refreshWasRunning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pullRefreshState.isRefreshing) {
+        if (pullRefreshState.isRefreshing) {
+            refreshWasRunning = true
+            viewModel.refresh()
+        }
+    }
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            refreshWasRunning = true
+        } else if (refreshWasRunning) {
+            if (pullRefreshState.isRefreshing) {
+                pullRefreshState.endRefresh()
+            }
+            toast.success("刷新成功")
+            refreshWasRunning = false
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 🌟 1. 顶部收支看板与预算进度卡片
-            FinancialOverviewCard(
-                year = uiState.selectedYear,
-                month = uiState.selectedMonth,
-                totalExpense = uiState.summary.totalExpense,
-                totalIncome = uiState.summary.totalIncome,
-                balance = uiState.summary.balance,
-                monthlyBudget = uiState.monthlyBudget,
-                budgetUsedPercent = uiState.budgetUsedPercent,
-                remainingBudgetCents = uiState.remainingBudgetCents,
-                dailyAvailableCents = uiState.dailyAvailableCents,
-                remainingDays = uiState.remainingDays,
-                onPrevMonth = { viewModel.previousMonth() },
-                onNextMonth = { viewModel.nextMonth() },
-                onMonthClick = { showMonthPicker = true },
-                onBudgetClick = { showBudgetDialog = true },
-                onCardClick = onNavigateToStatistics,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 2.dp)
-            )
-
-            // 2. 首页直达的自然语言快捷记账（可在设置中关闭）
-            if (uiState.quickEntryEnabled) {
-                QuickEntryStrip(
-                    type = quickEntryType,
-                    categories = uiState.quickEntryCategories,
-                    learningRules = uiState.quickEntryLearningRules,
-                    onTypeChange = { quickEntryType = it },
-                    onSubmit = { input, type ->
-                        val saved = viewModel.saveQuickEntry(input, type)
-                        if (saved != null) {
-                            val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
-                            toast.success(
-                                "已记下 ${saved.category?.name ?: "账单"} · ¥${saved.amountYuan.toPlainString()}$paymentSuffix"
-                            )
-                            true
-                        } else {
-                            toast.info("请输入类似“奶茶 18”的内容")
-                            false
-                        }
-                    },
-                    onClose = { showQuickEntryCloseConfirm = true },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
-            // 3. 今日账单
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Text(
-                    text = "今日账单",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                HomeFilterChip("全部", selectedFilterType == null) { selectedFilterType = null }
-                Spacer(modifier = Modifier.width(4.dp))
-                HomeFilterChip("支出", selectedFilterType == RecordType.EXPENSE) { selectedFilterType = RecordType.EXPENSE }
-                Spacer(modifier = Modifier.width(4.dp))
-                HomeFilterChip("收入", selectedFilterType == RecordType.INCOME) { selectedFilterType = RecordType.INCOME }
-            }
-
-            // 4. 当前时间范围账单列表
-            if (visibleRecords.isEmpty()) {
-                EmptyStateView(
-                    title = if (todayRecords.isEmpty()) "今日暂无账单" else "暂无${if (selectedFilterType == RecordType.EXPENSE) "支出" else "收入"}账单",
-                    description = null,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                LazyColumn(
+                // 🌟 1. 顶部收支看板与预算进度卡片
+                FinancialOverviewCard(
+                    year = uiState.selectedYear,
+                    month = uiState.selectedMonth,
+                    totalExpense = uiState.summary.totalExpense,
+                    totalIncome = uiState.summary.totalIncome,
+                    balance = uiState.summary.balance,
+                    monthlyBudget = uiState.monthlyBudget,
+                    budgetUsedPercent = uiState.budgetUsedPercent,
+                    remainingBudgetCents = uiState.remainingBudgetCents,
+                    dailyAvailableCents = uiState.dailyAvailableCents,
+                    remainingDays = uiState.remainingDays,
+                    onPrevMonth = { viewModel.previousMonth() },
+                    onNextMonth = { viewModel.nextMonth() },
+                    onMonthClick = { showMonthPicker = true },
+                    onBudgetClick = { showBudgetDialog = true },
+                    onCardClick = onNavigateToStatistics,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 96.dp)
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp)
+                )
+
+                // 2. 首页直达的自然语言快捷记账（可在设置中关闭）
+                if (uiState.quickEntryEnabled) {
+                    QuickEntryStrip(
+                        type = quickEntryType,
+                        categories = uiState.quickEntryCategories,
+                        learningRules = uiState.quickEntryLearningRules,
+                        onTypeChange = { quickEntryType = it },
+                        onSubmit = { input, type ->
+                            val saved = viewModel.saveQuickEntry(input, type)
+                            if (saved != null) {
+                                val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
+                                toast.success(
+                                    "已记下 ${saved.category?.name ?: "账单"} · ¥${saved.amountYuan.toPlainString()}$paymentSuffix"
+                                )
+                                true
+                            } else {
+                                toast.info("请输入类似“奶茶 18”的内容")
+                                false
+                            }
+                        },
+                        onClose = { showQuickEntryCloseConfirm = true },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+
+                // 3. 今日账单
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(
-                        items = visibleRecords,
-                        key = { "record_${it.record.id}" }
-                    ) { item ->
-                        SwipeRevealDeleteItem(
-                            itemKey = item.record.id,
-                            openKey = openSwipeItemId,
-                            onOpen = { openSwipeItemId = it },
-                            onDelete = { recordToDelete = item }
+                    Text(
+                        text = "今日账单",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    HomeFilterChip("全部", selectedFilterType == null) { selectedFilterType = null }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    HomeFilterChip("支出", selectedFilterType == RecordType.EXPENSE) { selectedFilterType = RecordType.EXPENSE }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    HomeFilterChip("收入", selectedFilterType == RecordType.INCOME) { selectedFilterType = RecordType.INCOME }
+                }
+
+                // 4. 当前时间范围账单列表
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .nestedScroll(pullRefreshState.nestedScrollConnection)
+                ) {
+                    if (visibleRecords.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            contentAlignment = Alignment.Center
                         ) {
-                            BitgetTransactionItem(
-                                item = item,
-                                onClick = { onNavigateToEdit(item.record.id) },
-                                onLongClick = { activeMenuRecord = item }
+                            EmptyStateView(
+                                title = if (todayRecords.isEmpty()) "今日暂无账单" else "暂无${if (selectedFilterType == RecordType.EXPENSE) "支出" else "收入"}账单",
+                                description = null,
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
-                        Spacer(modifier = Modifier.height(5.dp))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            contentPadding = PaddingValues(top = 2.dp, bottom = 96.dp)
+                        ) {
+                            items(
+                                items = visibleRecords,
+                                key = { "record_${it.record.id}" }
+                            ) { item ->
+                                SwipeRevealDeleteItem(
+                                    itemKey = item.record.id,
+                                    openKey = openSwipeItemId,
+                                    onOpen = { openSwipeItemId = it },
+                                    onDelete = { recordToDelete = item }
+                                ) {
+                                BitgetTransactionItem(
+                                    item = item,
+                                    onClick = { onNavigateToEdit(item.record.id) },
+                                    onLongClick = { activeMenuRecord = item }
+                                )
+                            }
+                                Spacer(modifier = Modifier.height(5.dp))
+                            }
+                        }
+                    }
+
+                    // 拖动阶段保留进度反馈，但使用透明容器，避免短距离下拉出现深色圆块。
+                    if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
+                        PullToRefreshContainer(
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 4.dp),
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }

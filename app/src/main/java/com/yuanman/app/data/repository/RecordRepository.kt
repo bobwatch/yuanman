@@ -86,6 +86,8 @@ class RecordRepository(
         return recordDao.getRecordById(id)
     }
 
+    fun observeLatestRecordUpdate(): Flow<Long> = recordDao.observeLatestRecordUpdate()
+
     suspend fun getRecordByIdDirect(id: Long): RecordWithCategory? = withContext(Dispatchers.IO) {
         recordDao.getRecordByIdDirect(id)
     }

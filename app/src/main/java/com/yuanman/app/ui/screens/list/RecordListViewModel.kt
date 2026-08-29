@@ -15,6 +15,7 @@ import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.*
@@ -114,6 +115,9 @@ class RecordListViewModel(
     private val _hasMore = MutableStateFlow(true)
     private val _isLoadingMore = MutableStateFlow(false)
     private val _isLoading = MutableStateFlow(true)
+    private val _isRefreshing = MutableStateFlow(false)
+
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private var currentLoadJob: Job? = null
     private var currentFilterParams: FilterParams? = null
@@ -168,14 +172,26 @@ class RecordListViewModel(
                 reloadFirstPage(params)
             }
         }
+
+        // 分页列表本身是一次性查询，因此编辑页返回后需要根据数据库变更重新拉取
+        // 当前筛选条件。Home 页使用 Room Flow 可自动刷新，但这里的分页查询不会。
+        viewModelScope.launch {
+            recordRepository.observeLatestRecordUpdate()
+                .drop(1) // 忽略首次订阅时的初始值
+                .collect {
+                    currentFilterParams?.let { params -> reloadFirstPage(params, preserveExisting = true) }
+                }
+        }
     }
 
-    private fun reloadFirstPage(params: FilterParams) {
+    private fun reloadFirstPage(params: FilterParams, preserveExisting: Boolean = false) {
         currentLoadJob?.cancel()
         currentLoadJob = viewModelScope.launch {
-            _isLoading.value = true
-            _hasMore.value = true
-            _loadedRecords.value = emptyList()
+            if (!preserveExisting || _loadedRecords.value.isEmpty()) {
+                _isLoading.value = true
+                _hasMore.value = true
+                if (!preserveExisting) _loadedRecords.value = emptyList()
+            }
 
             val (start, end) = params.calculateTimestamps()
             val initialList = recordRepository.getRecordsFilteredPaged(
@@ -194,6 +210,43 @@ class RecordListViewModel(
             _loadedRecords.value = initialList
             _hasMore.value = initialList.size >= PAGE_SIZE
             _isLoading.value = false
+        }
+    }
+
+    /**
+     * 下拉刷新当前筛选结果。刷新时保留现有列表，避免用户看到空白闪烁；
+     * 初次加载仍由筛选条件变化触发并显示完整加载态。
+     */
+    fun refresh() {
+        val params = currentFilterParams ?: return
+        if (_isRefreshing.value) return
+
+        currentLoadJob?.cancel()
+        currentLoadJob = viewModelScope.launch {
+            _isRefreshing.value = true
+            // 取消首屏加载时不能遗留 isLoading=true，否则刷新完成后会一直显示加载态。
+            _isLoading.value = false
+            try {
+                val (start, end) = params.calculateTimestamps()
+                val refreshedList = recordRepository.getRecordsFilteredPaged(
+                    startTime = start,
+                    endTime = end,
+                    type = params.type?.name,
+                    categoryIds = params.categoryIds.toList(),
+                    categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
+                    paymentMethod = params.paymentMethod,
+                    searchQuery = params.query.trim(),
+                    sortOrder = params.sortOrder.name,
+                    limit = PAGE_SIZE,
+                    offset = 0
+                )
+                _loadedRecords.value = refreshedList
+                _hasMore.value = refreshedList.size >= PAGE_SIZE
+                // 避免极快的本地查询让刷新箭头一闪而过。
+                delay(220)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

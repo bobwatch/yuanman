@@ -150,7 +150,18 @@ fun CategoryManageScreen(
                 .padding(innerPadding)
         ) {
             // 🌟 分类及其专属子标签列表
-            if (orderedItems.isEmpty()) {
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = primaryColor,
+                        strokeWidth = 2.5.dp
+                    )
+                }
+            } else if (orderedItems.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

@@ -38,6 +38,13 @@ interface RecordDao {
     @Query("SELECT * FROM records WHERE id = :id LIMIT 1")
     suspend fun getRecordEntityByIdIncludingDeleted(id: Long): RecordEntity?
 
+    /**
+     * 监听 records 表的变更。使用更新时间聚合值避免为分页刷新加载整张账单表，
+     * 但仍会在新增、编辑和软删除后触发 Room Flow 重新发射。
+     */
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM records")
+    fun observeLatestRecordUpdate(): Flow<Long>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: RecordEntity): Long
 

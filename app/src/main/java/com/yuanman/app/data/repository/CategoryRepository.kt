@@ -2,6 +2,7 @@ package com.yuanman.app.data.repository
 
 import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.local.dao.CategoryDao
+import com.yuanman.app.data.local.dao.CategoryUsageCount
 import com.yuanman.app.data.local.dao.QuickEntryLearningDao
 import com.yuanman.app.data.local.dao.RecordDao
 import com.yuanman.app.data.local.dao.SyncDao
@@ -32,6 +33,9 @@ class CategoryRepository(
     fun getCategoriesByType(type: RecordType): Flow<List<CategoryEntity>> {
         return categoryDao.getCategoriesByType(type.name)
     }
+
+    fun observeCategoryUsageCounts(): Flow<List<CategoryUsageCount>> =
+        categoryDao.observeCategoryUsageCounts()
 
     suspend fun getCategoryById(id: Long): CategoryEntity? = withContext(Dispatchers.IO) {
         categoryDao.getCategoryById(id)

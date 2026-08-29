@@ -34,14 +34,17 @@ class CategoryManageViewModel(
         categoryRepository.getCategoriesByType(type)
     }
 
+    private val usageCountsFlow = categoryRepository.observeCategoryUsageCounts()
+
     val uiState: StateFlow<CategoryUiState> = combine(
         _currentType,
         categoriesFlow,
+        usageCountsFlow,
         _errorDialogMessage
-    ) { type, categories, errorMsg ->
+    ) { type, categories, usageCounts, errorMsg ->
+        val countsByCategory = usageCounts.associate { it.categoryId to it.usageCount }
         val listWithUsage = categories.map { cat ->
-            val count = categoryRepository.getCategoryUsageCount(cat.id)
-            CategoryWithUsage(cat, count)
+            CategoryWithUsage(cat, countsByCategory[cat.id] ?: 0)
         }
         CategoryUiState(
             currentType = type,

@@ -18,6 +18,24 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE UPPER(TRIM(type)) = UPPER(TRIM(:type)) AND deletedAt IS NULL ORDER BY sortOrder ASC, id ASC")
     fun getCategoriesByType(type: String): Flow<List<CategoryEntity>>
 
+    /**
+     * 一次性统计所有分类的有效账单数量。
+     *
+     * 分类管理页之前会对每个分类单独查询一次使用次数，分类较多时会在首屏
+     * 产生明显的查询抖动。改为 LEFT JOIN + GROUP BY 后，Room 只需执行一次
+     * 查询，并且 records/categories 任一表发生变化时会自动重新发射结果。
+     */
+    @Query("""
+        SELECT categories.id AS categoryId, COUNT(records.id) AS usageCount
+        FROM categories
+        LEFT JOIN records
+            ON records.categoryId = categories.id
+            AND records.deletedAt IS NULL
+        WHERE categories.deletedAt IS NULL
+        GROUP BY categories.id
+    """)
+    fun observeCategoryUsageCounts(): Flow<List<CategoryUsageCount>>
+
     @Query("SELECT * FROM categories WHERE id = :id AND deletedAt IS NULL LIMIT 1")
     suspend fun getCategoryById(id: Long): CategoryEntity?
 
@@ -54,3 +72,8 @@ interface CategoryDao {
     @Query("DELETE FROM categories")
     suspend fun deleteAllCategories()
 }
+
+data class CategoryUsageCount(
+    val categoryId: Long,
+    val usageCount: Int
+)

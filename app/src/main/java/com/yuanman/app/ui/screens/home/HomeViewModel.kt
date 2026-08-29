@@ -20,6 +20,7 @@ import com.yuanman.app.utils.WarmAffirmation
 import com.yuanman.app.utils.WarmAffirmationsHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -66,14 +67,18 @@ class HomeViewModel(
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
+    private val _refreshToken = MutableStateFlow(0)
+    private val _isRefreshing = MutableStateFlow(false)
     private val _affirmationIndex = MutableStateFlow(0)
     private val _currentAffirmation = MutableStateFlow(WarmAffirmationsHelper.getAffirmationForCurrentTime())
+
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     val defaultRecordType = preferencesRepository.defaultRecordType
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RecordType.EXPENSE)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val monthRecordsFlow = combine(_selectedYear, _selectedMonth) { year, month ->
+    private val monthRecordsFlow = combine(_selectedYear, _selectedMonth, _refreshToken) { year, month, _ ->
         Pair(year, month)
     }.flatMapLatest { (year, month) ->
         recordRepository.getRecordsByMonth(year, month)
@@ -197,6 +202,21 @@ class HomeViewModel(
     fun selectMonth(year: Int, month: Int) {
         _selectedYear.value = year
         _selectedMonth.value = month
+    }
+
+    /** 重新订阅当前月份的 Room Flow，供首页下拉刷新使用。 */
+    fun refresh() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                _refreshToken.update { it + 1 }
+                // 给 Room 重新查询和 UI 指示器留出可感知但短暂的时间，避免一闪而过。
+                delay(280)
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
     }
 
     fun previousMonth() {
