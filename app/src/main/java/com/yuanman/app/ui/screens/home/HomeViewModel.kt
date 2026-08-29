@@ -5,13 +5,20 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.local.entity.CategoryEntity
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.MonthSummaryData
+import com.yuanman.app.data.model.QuickEntryParser
+import com.yuanman.app.data.model.QuickEntryResult
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
+import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.WarmAffirmation
 import com.yuanman.app.utils.WarmAffirmationsHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -30,6 +37,9 @@ data class HomeUiState(
     val remainingBudgetCents: Long = 0L,
     val dailyAvailableCents: Long = 0L,
     val budgetUsedPercent: Float = 0f,
+    val quickEntryEnabled: Boolean = true,
+    val quickEntryCategories: List<CategoryEntity> = emptyList(),
+    val quickEntryLearningRules: List<QuickEntryLearningEntity> = emptyList(),
     val isLoading: Boolean = false
 )
 
@@ -43,12 +53,14 @@ private data class PrefsInfo(
     val budgets: Map<String, Long>,
     val legacyBudget: Long,
     val privacy: Boolean,
+    val quickEntryEnabled: Boolean,
     val affirmation: WarmAffirmation
 )
 
 class HomeViewModel(
     private val recordRepository: RecordRepository,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
@@ -75,12 +87,18 @@ class HomeViewModel(
         preferencesRepository.monthlyBudgets,
         preferencesRepository.monthlyBudget,
         preferencesRepository.privacyMode,
+        preferencesRepository.quickEntryEnabled,
         _currentAffirmation
-    ) { budgets, legacyBudget, privacy, affirmation ->
-        PrefsInfo(budgets, legacyBudget, privacy, affirmation)
+    ) { budgets, legacyBudget, privacy, quickEntryEnabled, affirmation ->
+        PrefsInfo(budgets, legacyBudget, privacy, quickEntryEnabled, affirmation)
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(monthInfoFlow, prefsInfoFlow) { monthInfo, prefsInfo ->
+    val uiState: StateFlow<HomeUiState> = combine(
+        monthInfoFlow,
+        prefsInfoFlow,
+        categoryRepository.getAllCategories(),
+        categoryRepository.observeAllQuickEntryLearning()
+    ) { monthInfo, prefsInfo, categories, learningRules ->
         val year = monthInfo.year
         val month = monthInfo.month
         val records = monthInfo.records
@@ -156,11 +174,14 @@ class HomeViewModel(
             daySummaries = daySums,
             monthlyBudget = budget,
             isPrivacyMode = privacy,
+            quickEntryEnabled = prefsInfo.quickEntryEnabled,
             affirmation = affirmation,
             remainingDays = remainingDays,
             remainingBudgetCents = remainingBudgetCents,
             dailyAvailableCents = dailyAvailable,
             budgetUsedPercent = usedPercent,
+            quickEntryCategories = categories,
+            quickEntryLearningRules = learningRules,
             isLoading = false
         )
     }.stateIn(
@@ -216,10 +237,39 @@ class HomeViewModel(
                 id = 0L,
                 recordTime = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+                updatedAt = System.currentTimeMillis(),
+                syncId = java.util.UUID.randomUUID().toString(),
+                deletedAt = null
             )
             recordRepository.insertRecord(duplicate)
         }
+    }
+
+    /**
+     * Saves a compact entry directly from Home and returns the parsed preview for immediate UI feedback.
+     */
+    fun saveQuickEntry(input: String, type: RecordType): QuickEntryResult? {
+        val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
+        val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
+        val category = parsed.category ?: categories.firstOrNull() ?: return null
+        val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
+        if (amountCents <= 0L) return null
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val paymentMethod = preferencesRepository.defaultPaymentMethod.first()
+            recordRepository.insertRecord(
+                RecordEntity(
+                    type = type.name,
+                    amount = amountCents,
+                    categoryId = category.id,
+                    recordTime = System.currentTimeMillis(),
+                    remark = parsed.remark,
+                    paymentMethod = parsed.paymentMethod ?: paymentMethod
+                )
+            )
+            categoryRepository.learnQuickEntry(type, parsed.remark, category.syncId)
+        }
+        return parsed.copy(category = category)
     }
 
     fun setMonthlyBudget(budgetCents: Long) {
@@ -240,17 +290,24 @@ class HomeViewModel(
 
     fun undoDelete(record: RecordEntity) {
         viewModelScope.launch {
-            recordRepository.insertRecord(record)
+            recordRepository.restoreRecord(record.id)
+        }
+    }
+
+    fun setQuickEntryEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setQuickEntryEnabled(enabled)
         }
     }
 
     class Factory(
         private val recordRepository: RecordRepository,
-        private val preferencesRepository: PreferencesRepository
+        private val preferencesRepository: PreferencesRepository,
+        private val categoryRepository: CategoryRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return HomeViewModel(recordRepository, preferencesRepository) as T
+            return HomeViewModel(recordRepository, preferencesRepository, categoryRepository) as T
         }
     }
 }

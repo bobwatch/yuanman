@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
@@ -31,6 +32,7 @@ data class SettingsUiState(
     val monthlyBudget: Long = 0L,
     val privacyMode: Boolean = false,
     val hapticEnabled: Boolean = true,
+    val quickEntryEnabled: Boolean = true,
     val totalRecordCount: Int = 0,
     val allRecords: List<RecordWithCategory> = emptyList(),
     val allCategories: List<CategoryEntity> = emptyList(),
@@ -47,7 +49,8 @@ private data class GeneralPrefs(
 private data class FeaturePrefs(
     val budget: Long,
     val privacy: Boolean,
-    val haptic: Boolean
+    val haptic: Boolean,
+    val quickEntryEnabled: Boolean
 )
 
 class SettingsViewModel(
@@ -72,14 +75,21 @@ class SettingsViewModel(
     private val featurePrefsFlow = combine(
         preferencesRepository.monthlyBudget,
         preferencesRepository.privacyMode,
-        preferencesRepository.hapticFeedbackEnabled
-    ) { budget, privacy, haptic -> FeaturePrefs(budget, privacy, haptic) }
+        preferencesRepository.hapticFeedbackEnabled,
+        preferencesRepository.quickEntryEnabled
+    ) { budget, privacy, haptic, quickEntryEnabled ->
+        FeaturePrefs(budget, privacy, haptic, quickEntryEnabled)
+    }
 
     val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allRecords: StateFlow<List<RecordWithCategory>> = recordRepository.getAllRecords()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val quickEntryLearningRules: StateFlow<List<QuickEntryLearningEntity>> =
+        categoryRepository.observeAllQuickEntryLearning()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val uiState: StateFlow<SettingsUiState> = combine(
         generalPrefsFlow,
@@ -95,6 +105,7 @@ class SettingsViewModel(
             monthlyBudget = feature.budget,
             privacyMode = feature.privacy,
             hapticEnabled = feature.haptic,
+            quickEntryEnabled = feature.quickEntryEnabled,
             totalRecordCount = records.size,
             allRecords = records,
             allCategories = categories,
@@ -161,6 +172,37 @@ class SettingsViewModel(
         }
     }
 
+    fun setQuickEntryEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setQuickEntryEnabled(enabled)
+        }
+    }
+
+    /** 清除快捷记账根据用户保存记录形成的个人分类习惯。 */
+    fun clearQuickEntryLearning() {
+        viewModelScope.launch {
+            categoryRepository.clearQuickEntryLearning()
+        }
+    }
+
+    fun updateQuickEntryLearning(rule: QuickEntryLearningEntity, phrase: String) {
+        viewModelScope.launch { categoryRepository.updateQuickEntryLearning(rule, phrase) }
+    }
+
+    fun addQuickEntryLearning(type: RecordType, phrase: String, categorySyncId: String) {
+        viewModelScope.launch { categoryRepository.learnQuickEntry(type, phrase, categorySyncId) }
+    }
+
+    fun updateQuickEntryLearning(rule: QuickEntryLearningEntity, phrase: String, type: RecordType, categorySyncId: String) {
+        viewModelScope.launch {
+            categoryRepository.updateQuickEntryLearning(rule, phrase, type.name, categorySyncId)
+        }
+    }
+
+    fun deleteQuickEntryLearning(rule: QuickEntryLearningEntity) {
+        viewModelScope.launch { categoryRepository.deleteQuickEntryLearning(rule) }
+    }
+
     fun exportRecordsCsv(context: Context) {
         val records = uiState.value.allRecords
         CsvExportUtils.shareCsvContent(context, records)
@@ -176,6 +218,7 @@ class SettingsViewModel(
                     recordRepository = recordRepository
                 )
                 if (result.successCount > 0) {
+                    categoryRepository.backfillQuickEntryLearning()
                     onResult(true, result.message)
                 } else {
                     onResult(false, result.message)
@@ -196,12 +239,8 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val data = JsonBackupUtils.parseFromJsonString(jsonString)
-                if (data.categories.isNotEmpty()) {
-                    categoryRepository.insertCategories(data.categories)
-                }
-                if (data.records.isNotEmpty()) {
-                    recordRepository.insertRecords(data.records)
-                }
+                categoryRepository.mergeSyncedData(data.categories, data.records)
+                recordRepository.notifyDataChanged()
                 onResult(true, "成功恢复 ${data.records.size} 笔账单与 ${data.categories.size} 个分类！")
             } catch (e: Exception) {
                 onResult(false, "备份解析失败：${e.message}")
@@ -216,6 +255,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             recordRepository.deleteAllRecords()
             categoryRepository.resetDefaultCategories()
+            categoryRepository.clearQuickEntryLearning()
             _isClearedSuccess.value = true
         }
     }

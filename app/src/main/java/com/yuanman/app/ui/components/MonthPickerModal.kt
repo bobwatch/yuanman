@@ -39,7 +39,7 @@ fun MonthPickerModal(
 
     val (currentYear, currentMonth) = remember { DateTimeUtils.getCurrentYearMonth() }
 
-    ModalBottomSheet(
+    YuanmanModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState
     ) {

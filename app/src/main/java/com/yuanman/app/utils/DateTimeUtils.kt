@@ -91,6 +91,7 @@ object DateTimeUtils {
 
     fun getMonthStartTimestamp(year: Int, month: Int): Long {
         val cal = Calendar.getInstance().apply {
+            clear()
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
             set(Calendar.DAY_OF_MONTH, 1)
@@ -104,6 +105,7 @@ object DateTimeUtils {
 
     fun getMonthEndTimestamp(year: Int, month: Int): Long {
         val cal = Calendar.getInstance().apply {
+            clear()
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
             val maxDay = getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -244,8 +246,10 @@ object DateTimeUtils {
 
     fun getDaysInMonth(year: Int, month: Int): Int {
         val cal = Calendar.getInstance().apply {
+            clear()
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, 1)
         }
         return cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     }

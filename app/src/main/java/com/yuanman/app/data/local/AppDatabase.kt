@@ -7,23 +7,29 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.yuanman.app.data.local.dao.CategoryDao
 import com.yuanman.app.data.local.dao.RecordDao
+import com.yuanman.app.data.local.dao.SyncDao
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
+import com.yuanman.app.data.local.dao.QuickEntryLearningDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 import androidx.room.migration.Migration
 
 @Database(
-    entities = [CategoryEntity::class, RecordEntity::class],
-    version = 3,
+    entities = [CategoryEntity::class, RecordEntity::class, QuickEntryLearningEntity::class],
+    version = 5,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun categoryDao(): CategoryDao
     abstract fun recordDao(): RecordDao
+    abstract fun syncDao(): SyncDao
+    abstract fun quickEntryLearningDao(): QuickEntryLearningDao
 
     companion object {
         @Volatile
@@ -41,6 +47,40 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE records ADD COLUMN splitIndex INTEGER")
                 db.execSQL("ALTER TABLE records ADD COLUMN splitTotal INTEGER")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_records_splitGroupId ON records(splitGroupId)")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE categories ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE categories ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE categories ADD COLUMN deletedAt INTEGER")
+                db.execSQL("UPDATE categories SET type = upper(trim(type)), name = trim(name), syncId = 'category:' || lower(hex(randomblob(16))), updatedAt = createdAt")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_categories_syncId ON categories(syncId)")
+
+                db.execSQL("ALTER TABLE records ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE records ADD COLUMN deletedAt INTEGER")
+                db.execSQL("UPDATE records SET type = upper(trim(type)), syncId = 'record:' || lower(hex(randomblob(16)))")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_records_syncId ON records(syncId)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS quick_entry_learning (
+                        type TEXT NOT NULL,
+                        phrase TEXT NOT NULL,
+                        categorySyncId TEXT NOT NULL,
+                        sampleCount INTEGER NOT NULL DEFAULT 1,
+                        lastUsedAt INTEGER NOT NULL,
+                        PRIMARY KEY(type, phrase, categorySyncId)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_quick_entry_learning_type_phrase ON quick_entry_learning(type, phrase)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_quick_entry_learning_categorySyncId ON quick_entry_learning(categorySyncId)")
             }
         }
 
@@ -96,6 +136,8 @@ abstract class AppDatabase : RoomDatabase() {
             )
                 .addMigrations(MIGRATION_1_2)
                 .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_3_4)
+                .addMigrations(MIGRATION_4_5)
                 .addCallback(DatabaseCallback())
                 .build()
         }
@@ -131,8 +173,13 @@ abstract class AppDatabase : RoomDatabase() {
                 CategoryEntity(name = "其他", type = "INCOME", iconName = "other", colorHex = 0xFF607D8BL, tags = "其他收入,中奖收入,意外所得,补贴津贴", isDefault = true, sortOrder = 6)
             )
 
-            return expenseCategories + incomeCategories
+            return (expenseCategories + incomeCategories).map { category ->
+                category.copy(syncId = stableCategorySyncId(category.type, category.name))
+            }
         }
+
+        fun stableCategorySyncId(type: String, name: String): String =
+            "category:${type.trim().uppercase(Locale.ROOT)}:${name.trim()}"
 
         private class DatabaseCallback : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {

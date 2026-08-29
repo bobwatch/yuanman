@@ -17,10 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,6 +56,7 @@ fun CategoryManageScreen(
     val haptic = LocalHapticFeedback.current
 
     var categoryToDelete by remember { mutableStateOf<CategoryEntity?>(null) }
+    var showResetConfirm by remember { mutableStateOf(false) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -77,25 +80,68 @@ fun CategoryManageScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = { Text("分类管理", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            // 标题与收支 Tab 作为一个连续的页面头部，避免二次分割造成样式断层。
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Column {
+                    TopAppBar(
+                        title = { Text("分类管理", fontWeight = FontWeight.Bold) },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent
+                        ),
+                        navigationIcon = {
+                            if (onNavigateBack != null) {
+                                IconButton(onClick = onNavigateBack) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                                }
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { showResetConfirm = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.SettingsBackupRestore,
+                                    contentDescription = "重置分类",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { onNavigateToAddCategory(uiState.currentType) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "新增分类",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onNavigateToAddCategory(uiState.currentType) }) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "新增分类",
-                            tint = MaterialTheme.colorScheme.primary
+                    )
+
+                    TabRow(
+                        selectedTabIndex = if (uiState.currentType == RecordType.EXPENSE) 0 else 1,
+                        containerColor = Color.Transparent
+                    ) {
+                        Tab(
+                            selected = uiState.currentType == RecordType.EXPENSE,
+                            onClick = { viewModel.switchType(RecordType.EXPENSE) },
+                            text = {
+                                Text(
+                                    text = "支出分类",
+                                    fontWeight = if (uiState.currentType == RecordType.EXPENSE) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.5.sp
+                                )
+                            }
+                        )
+                        Tab(
+                            selected = uiState.currentType == RecordType.INCOME,
+                            onClick = { viewModel.switchType(RecordType.INCOME) },
+                            text = {
+                                Text(
+                                    text = "收入分类",
+                                    fontWeight = if (uiState.currentType == RecordType.INCOME) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.5.sp
+                                )
+                            }
                         )
                     }
                 }
-            )
+            }
         }
     ) { innerPadding ->
         Column(
@@ -103,37 +149,6 @@ fun CategoryManageScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 🌟 支出 / 收入 2 Tab 切换
-            TabRow(
-                selectedTabIndex = if (uiState.currentType == RecordType.EXPENSE) 0 else 1,
-                containerColor = MaterialTheme.colorScheme.surface
-            ) {
-                Tab(
-                    selected = uiState.currentType == RecordType.EXPENSE,
-                    onClick = { viewModel.switchType(RecordType.EXPENSE) },
-                    text = {
-                        Text(
-                            text = "支出分类",
-                            fontWeight = if (uiState.currentType == RecordType.EXPENSE) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 14.5.sp
-                        )
-                    }
-                )
-                Tab(
-                    selected = uiState.currentType == RecordType.INCOME,
-                    onClick = { viewModel.switchType(RecordType.INCOME) },
-                    text = {
-                        Text(
-                            text = "收入分类",
-                            fontWeight = if (uiState.currentType == RecordType.INCOME) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 14.5.sp
-                        )
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
             // 🌟 分类及其专属子标签列表
             if (orderedItems.isEmpty()) {
                 Box(
@@ -427,6 +442,22 @@ fun CategoryManageScreen(
             categoryToDelete = null
         },
         onDismiss = { categoryToDelete = null }
+    )
+
+    ConfirmDeleteDialog(
+        visible = showResetConfirm,
+        title = "重置分类",
+        message = "将恢复系统默认分类，并隐藏当前自定义分类。已有账单记录会保留，确定继续吗？",
+        icon = Icons.Default.SettingsBackupRestore,
+        confirmButtonText = "确认重置",
+        confirmButtonColor = MaterialTheme.colorScheme.primary,
+        onConfirm = {
+            viewModel.resetCategories {
+                toast.success("已恢复默认分类")
+            }
+            showResetConfirm = false
+        },
+        onDismiss = { showResetConfirm = false }
     )
 
     // 分类已被使用时的阻断警告弹窗

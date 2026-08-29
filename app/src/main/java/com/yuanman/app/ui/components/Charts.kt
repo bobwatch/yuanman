@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,13 +48,24 @@ import com.yuanman.app.data.model.CategoryStatItem
 import com.yuanman.app.data.model.DailyTrendItem
 import com.yuanman.app.utils.MoneyUtils
 import kotlin.math.atan2
+import kotlin.math.ceil
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
  * 支出/收入分类占比高阶交互环形图
  */
+private data class DonutSegment(
+    val item: CategoryStatItem?,
+    val label: String,
+    val color: Color,
+    val percentage: Float,
+    val totalAmount: Long
+)
+
 @Composable
 fun DonutChart(
     items: List<CategoryStatItem>,
@@ -59,7 +75,7 @@ fun DonutChart(
     onSelectCategory: (CategoryStatItem?) -> Unit = {},
     modifier: Modifier = Modifier,
     strokeWidth: Dp = 18.dp,
-    chartSize: Dp = 220.dp
+    chartSize: Dp = 176.dp
 ) {
     val animatedProgress = remember { Animatable(0f) }
 
@@ -71,11 +87,23 @@ fun DonutChart(
         )
     }
 
-    Box(
+    // 环形图保留全部分类，右侧明细列表负责承载大量分类的可读信息。
+    val chartSegments = items.map { item ->
+        DonutSegment(
+            item = item,
+            label = item.category.name,
+            color = Color(item.category.colorHex),
+            percentage = item.percentage,
+            totalAmount = item.totalAmount
+        )
+    }
+
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        contentAlignment = Alignment.Center
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
     ) {
         Box(
             modifier = Modifier.size(chartSize),
@@ -86,9 +114,9 @@ fun DonutChart(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(items, totalAmount) {
+                    .pointerInput(chartSegments, totalAmount) {
                         detectTapGestures { offset ->
-                            if (items.isEmpty() || totalAmount <= 0L) return@detectTapGestures
+                            if (chartSegments.isEmpty() || totalAmount <= 0L) return@detectTapGestures
 
                             val widthF = size.width.toFloat()
                             val heightF = size.height.toFloat()
@@ -118,10 +146,13 @@ fun DonutChart(
                                 }
 
                                 var currentAngle = 0f
-                                for (item in items) {
-                                    val sweep = item.percentage * 360f
+                                for (segment in chartSegments) {
+                                    val sweep = segment.percentage * 360f
                                     if (angle >= currentAngle && angle <= currentAngle + sweep) {
-                                        if (selectedCategory?.category?.id == item.category.id) {
+                                        val item = segment.item
+                                        if (item == null) {
+                                            onSelectCategory(null)
+                                        } else if (selectedCategory?.category?.id == item.category.id) {
                                             onSelectCategory(null)
                                         } else {
                                             onSelectCategory(item)
@@ -140,7 +171,7 @@ fun DonutChart(
                 val arcSize = Size(diameter, diameter)
                 val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
 
-                if (items.isEmpty() || totalAmount <= 0L) {
+                if (chartSegments.isEmpty() || totalAmount <= 0L) {
                     drawArc(
                         color = emptyColor,
                         startAngle = 0f,
@@ -152,19 +183,18 @@ fun DonutChart(
                     )
                 } else {
                     var startAngle = -90f
-                    val gapAngle = if (items.size > 1) 2.5f else 0f
+                    val gapAngle = if (chartSegments.size > 1) 1.5f else 0f
 
-                    items.forEach { item ->
-                        val isSelected = selectedCategory?.category?.id == item.category.id
+                    chartSegments.forEach { segment ->
+                        val isSelected = selectedCategory?.category?.id == segment.item?.category?.id
                         val currentStroke = if (isSelected) strokeWidthPx + 5f else strokeWidthPx
-                        val sweepAngle = (item.percentage * 360f * animatedProgress.value) - gapAngle
+                        val sweepAngle = (segment.percentage * 360f * animatedProgress.value) - gapAngle
 
                         if (sweepAngle > 0f) {
-                            val baseColor = Color(item.category.colorHex)
                             val drawColor = if (selectedCategory != null && !isSelected) {
-                                baseColor.copy(alpha = 0.35f)
+                                segment.color.copy(alpha = 0.35f)
                             } else {
-                                baseColor
+                                segment.color
                             }
 
                             drawArc(
@@ -177,7 +207,7 @@ fun DonutChart(
                                 style = Stroke(width = currentStroke, cap = StrokeCap.Round)
                             )
                         }
-                        startAngle += item.percentage * 360f * animatedProgress.value
+                        startAngle += segment.percentage * 360f * animatedProgress.value
                     }
                 }
             }
@@ -238,8 +268,107 @@ fun DonutChart(
                 )
             }
         }
+
+        }
+
+        if (chartSegments.isNotEmpty()) {
+            DonutLegend(
+                segments = chartSegments,
+                selectedCategory = selectedCategory,
+                onSelectCategory = onSelectCategory,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(chartSize)
+            )
+        } else {
+            Text(
+                text = "暂无分类数据",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.weight(1f).padding(top = 12.dp)
+            )
+        }
     }
 }
+
+@Composable
+private fun DonutLegend(
+    segments: List<DonutSegment>,
+    selectedCategory: CategoryStatItem?,
+    onSelectCategory: (CategoryStatItem?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // 列表到达顶部/底部后消费剩余的拖动距离，避免外层统计页面被带着滚动。
+    val edgeScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset = Offset(0f, available.y)
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.Top
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(edgeScrollConnection),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            items(
+                items = segments,
+                key = { segment -> segment.item?.category?.id ?: segment.label }
+            ) { segment ->
+                val item = segment.item
+                val isSelected = selectedCategory?.category?.id == item?.category?.id
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(9.dp))
+                        .clickable(enabled = item != null) {
+                            if (item != null) onSelectCategory(if (isSelected) null else item)
+                        },
+                    shape = RoundedCornerShape(9.dp),
+                    color = if (isSelected) segment.color.copy(alpha = 0.14f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(segment.color)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = segment.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) segment.color else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${(segment.percentage * 100).coerceAtLeast(0f).let { String.format(java.util.Locale.CHINA, "%.1f", it) }}% · ¥${MoneyUtils.centsToYuanString(segment.totalAmount, withGrouping = true)}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -270,7 +399,8 @@ fun BarTrendChart(
     }
 
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
-    val maxExpense = remember(items) { max(items.maxOfOrNull { it.expenseAmount } ?: 10000L, 10000L) }
+    val actualPeak = remember(items) { items.maxOfOrNull { it.expenseAmount } ?: 0L }
+    val maxExpense = remember(actualPeak) { niceChartMaximum(actualPeak) }
     val animatedProgress = remember { Animatable(0f) }
 
     LaunchedEffect(items) {
@@ -300,7 +430,7 @@ fun BarTrendChart(
                 if (selectedIndex != null && selectedIndex!! in items.indices) {
                     val selected = items[selectedIndex!!]
                     Text(
-                        text = "📅 ${selected.day}日消费明细",
+                        text = "📅 ${selected.dateFormatted}",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -313,12 +443,12 @@ fun BarTrendChart(
                     )
                 } else {
                     Text(
-                        text = "💡 单日最高支出",
+                        text = "💡 当前周期峰值",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
                     Text(
-                        text = "¥${MoneyUtils.centsToYuanString(maxExpense, withGrouping = true)}",
+                        text = "¥${MoneyUtils.centsToYuanString(actualPeak, withGrouping = true)}",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -434,23 +564,39 @@ fun BarTrendChart(
             }
         }
 
-        // X轴日期标签
+        // X轴日期标签：直接使用 ViewModel 提供的周期语义，周/月/年不再混用“日”。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 48.dp, top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            val keyDays = listOf(1, 5, 10, 15, 20, 25, items.size)
-            keyDays.distinct().filter { it <= items.size }.forEach { day ->
+            val keyIndexes = when {
+                items.size <= 7 -> items.indices.toList()
+                else -> listOf(0, items.lastIndex / 4, items.lastIndex / 2, items.lastIndex * 3 / 4, items.lastIndex).distinct()
+            }
+            keyIndexes.forEach { index ->
                 Text(
-                    text = "${day}日",
+                    text = items[index].dateFormatted,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
             }
         }
     }
+}
+
+private fun niceChartMaximum(value: Long): Long {
+    if (value <= 0L) return 100L
+    val magnitude = 10.0.pow(kotlin.math.floor(log10(value.toDouble())))
+    val normalized = value / magnitude
+    val step = when {
+        normalized <= 1.0 -> 1.0
+        normalized <= 2.0 -> 2.0
+        normalized <= 5.0 -> 5.0
+        else -> 10.0
+    }
+    return ceil(step * magnitude).toLong().coerceAtLeast(value)
 }
 
 /**

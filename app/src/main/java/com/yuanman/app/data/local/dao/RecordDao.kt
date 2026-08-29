@@ -8,28 +8,35 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface RecordDao {
     @Transaction
-    @Query("SELECT * FROM records ORDER BY recordTime DESC, id DESC")
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     fun getAllRecords(): Flow<List<RecordWithCategory>>
 
     @Transaction
-    @Query("SELECT * FROM records WHERE categoryId = :categoryId ORDER BY recordTime DESC, id DESC")
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
+    suspend fun getAllRecordsDirect(): List<RecordWithCategory>
+
+    @Transaction
+    @Query("SELECT * FROM records WHERE categoryId = :categoryId AND deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     fun getRecordsByCategoryId(categoryId: Long): Flow<List<RecordWithCategory>>
 
     @Transaction
-    @Query("SELECT * FROM records WHERE recordTime >= :startTime AND recordTime <= :endTime ORDER BY recordTime DESC, id DESC")
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime ORDER BY recordTime DESC, id DESC")
     fun getRecordsByDateRange(startTime: Long, endTime: Long): Flow<List<RecordWithCategory>>
 
     @Transaction
-    @Query("SELECT * FROM records ORDER BY recordTime DESC, id DESC LIMIT :limit")
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC LIMIT :limit")
     fun getRecentRecords(limit: Int = 10): Flow<List<RecordWithCategory>>
 
     @Transaction
-    @Query("SELECT * FROM records WHERE id = :id LIMIT 1")
+    @Query("SELECT * FROM records WHERE id = :id AND deletedAt IS NULL LIMIT 1")
     fun getRecordById(id: Long): Flow<RecordWithCategory?>
 
     @Transaction
-    @Query("SELECT * FROM records WHERE id = :id LIMIT 1")
+    @Query("SELECT * FROM records WHERE id = :id AND deletedAt IS NULL LIMIT 1")
     suspend fun getRecordByIdDirect(id: Long): RecordWithCategory?
+
+    @Query("SELECT * FROM records WHERE id = :id LIMIT 1")
+    suspend fun getRecordEntityByIdIncludingDeleted(id: Long): RecordEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: RecordEntity): Long
@@ -40,19 +47,19 @@ interface RecordDao {
     @Update
     suspend fun updateRecord(record: RecordEntity)
 
-    @Delete
-    suspend fun deleteRecord(record: RecordEntity)
+    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteRecordById(id: Long, deletedAt: Long)
 
-    @Query("DELETE FROM records WHERE id = :id")
-    suspend fun deleteRecordById(id: Long)
+    @Query("UPDATE records SET deletedAt = NULL, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun restoreRecordById(id: Long, updatedAt: Long)
 
-    @Query("SELECT COUNT(*) FROM records WHERE categoryId = :categoryId")
+    @Query("SELECT COUNT(*) FROM records WHERE categoryId = :categoryId AND deletedAt IS NULL")
     suspend fun countRecordsByCategoryId(categoryId: Long): Int
 
     @Query("UPDATE records SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
     suspend fun updateCategoryId(oldCategoryId: Long, newCategoryId: Long)
 
-    @Query("SELECT SUM(amount) FROM records WHERE type = :type AND recordTime >= :startTime AND recordTime <= :endTime")
+    @Query("SELECT SUM(amount) FROM records WHERE deletedAt IS NULL AND type = :type AND recordTime >= :startTime AND recordTime <= :endTime")
     fun getTotalAmountByTypeAndDateRange(type: String, startTime: Long, endTime: Long): Flow<Long?>
 
     @Query("""
@@ -61,9 +68,9 @@ interface RecordDao {
             COALESCE(SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END), 0) AS totalIncome,
             COUNT(*) AS totalCount
         FROM records
-        WHERE recordTime >= :startTime AND recordTime <= :endTime
+        WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime
           AND (:type IS NULL OR type = :type)
-          AND (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:categoryFilterEnabled = 0 OR categoryId IN (:categoryIds))
           AND (:paymentMethod IS NULL OR paymentMethod = :paymentMethod)
           AND (:searchQuery = '' OR remark LIKE '%' || :searchQuery || '%' OR paymentMethod LIKE '%' || :searchQuery || '%')
     """)
@@ -71,7 +78,8 @@ interface RecordDao {
         startTime: Long,
         endTime: Long,
         type: String?,
-        categoryId: Long?,
+        categoryIds: List<Long>,
+        categoryFilterEnabled: Int,
         paymentMethod: String?,
         searchQuery: String
     ): Flow<RecordFilterSummary>
@@ -79,9 +87,9 @@ interface RecordDao {
     @Transaction
     @Query("""
         SELECT * FROM records 
-        WHERE recordTime >= :startTime AND recordTime <= :endTime 
+        WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime
           AND (:type IS NULL OR type = :type)
-          AND (:categoryId IS NULL OR categoryId = :categoryId)
+          AND (:categoryFilterEnabled = 0 OR categoryId IN (:categoryIds))
           AND (:paymentMethod IS NULL OR paymentMethod = :paymentMethod)
           AND (:searchQuery = '' OR remark LIKE '%' || :searchQuery || '%' OR paymentMethod LIKE '%' || :searchQuery || '%')
         ORDER BY 
@@ -96,7 +104,8 @@ interface RecordDao {
         startTime: Long,
         endTime: Long,
         type: String?,
-        categoryId: Long?,
+        categoryIds: List<Long>,
+        categoryFilterEnabled: Int,
         paymentMethod: String?,
         searchQuery: String,
         sortOrder: String,
@@ -104,18 +113,35 @@ interface RecordDao {
         offset: Int
     ): List<RecordWithCategory>
 
-    @Query("SELECT COUNT(*) FROM records")
+    @Query("SELECT COUNT(*) FROM records WHERE deletedAt IS NULL")
     fun getTotalRecordCount(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM records")
+    @Query("SELECT COUNT(*) FROM records WHERE deletedAt IS NULL")
     suspend fun getTotalRecordCountDirect(): Int
 
-    @Query("DELETE FROM records")
-    suspend fun deleteAllRecords()
+    @Query("""
+        SELECT
+            COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS totalExpense,
+            COALESCE(SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END), 0) AS totalIncome,
+            COUNT(*) AS recordCount
+        FROM records
+        WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime
+    """)
+    suspend fun getWidgetMonthSummary(startTime: Long, endTime: Long): WidgetMonthSummary
+
+    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE deletedAt IS NULL")
+    suspend fun softDeleteAllRecords(deletedAt: Long)
 }
 
 data class RecordFilterSummary(
     val totalExpense: Long = 0L,
     val totalIncome: Long = 0L,
     val totalCount: Int = 0
+)
+
+
+data class WidgetMonthSummary(
+    val totalExpense: Long = 0L,
+    val totalIncome: Long = 0L,
+    val recordCount: Int = 0
 )

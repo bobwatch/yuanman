@@ -111,6 +111,13 @@ class CategoryManageViewModel(
         }
     }
 
+    fun resetCategories(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            categoryRepository.resetDefaultCategories()
+            onComplete()
+        }
+    }
+
     fun clearErrorDialog() {
         _errorDialogMessage.value = null
     }

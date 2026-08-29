@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,12 +23,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,11 +39,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.clickableDebounce
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +54,6 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToEdit: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
-    onNavigateToList: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -55,24 +62,28 @@ fun HomeScreen(
 
     var showMonthPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
-
-    // 筛选标签：全部 / 支出 / 收入
-    var filterType by remember { mutableStateOf<RecordType?>(null) }
+    var showQuickEntryCloseConfirm by remember { mutableStateOf(false) }
+    var quickEntryType by remember { mutableStateOf(RecordType.EXPENSE) }
+    var selectedFilterType by remember { mutableStateOf<RecordType?>(null) }
 
     // 长按快捷菜单状态
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
 
-    // 过滤后的分组数据
-    val filteredGroupedRecords = remember(uiState.groupedRecords, filterType) {
-        if (filterType == null) {
-            uiState.groupedRecords
-        } else {
-            uiState.groupedRecords.mapValues { (_, records) ->
-                records.filter { it.record.type == filterType?.name }
-            }.filterValues { it.isNotEmpty() }
-        }
+    // 首页默认只展示今天的账单，支持按全部/支出/收入快速筛选。
+    val today = Calendar.getInstance()
+    val todayDayTimestamp = today.apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val todayRecords = if (uiState.selectedYear == today.get(Calendar.YEAR) && uiState.selectedMonth == today.get(Calendar.MONTH) + 1) {
+        uiState.groupedRecords[todayDayTimestamp].orEmpty()
+    } else emptyList()
+    val visibleRecords = if (selectedFilterType == null) todayRecords else todayRecords.filter {
+        it.record.type == selectedFilterType?.name
     }
 
     Scaffold(
@@ -100,42 +111,61 @@ fun HomeScreen(
                 onNextMonth = { viewModel.nextMonth() },
                 onMonthClick = { showMonthPicker = true },
                 onBudgetClick = { showBudgetDialog = true },
-                onCardClick = null,
+                onCardClick = onNavigateToStatistics,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 2.dp)
             )
 
-            // 🌟 2. 分段切换 Tabs (全部 / 支出 / 收入)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BitgetFilterPill(
-                    title = "全部明细",
-                    isSelected = filterType == null,
-                    onClick = { filterType = null }
-                )
-                BitgetFilterPill(
-                    title = "支出",
-                    isSelected = filterType == RecordType.EXPENSE,
-                    onClick = { filterType = RecordType.EXPENSE }
-                )
-                BitgetFilterPill(
-                    title = "收入",
-                    isSelected = filterType == RecordType.INCOME,
-                    onClick = { filterType = RecordType.INCOME }
+            // 2. 首页直达的自然语言快捷记账（可在设置中关闭）
+            if (uiState.quickEntryEnabled) {
+                QuickEntryStrip(
+                    type = quickEntryType,
+                    categories = uiState.quickEntryCategories,
+                    learningRules = uiState.quickEntryLearningRules,
+                    onTypeChange = { quickEntryType = it },
+                    onSubmit = { input, type ->
+                        val saved = viewModel.saveQuickEntry(input, type)
+                        if (saved != null) {
+                            val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
+                            toast.success(
+                                "已记下 ${saved.category?.name ?: "账单"} · ¥${saved.amountYuan.toPlainString()}$paymentSuffix"
+                            )
+                            true
+                        } else {
+                            toast.info("请输入类似“奶茶 18”的内容")
+                            false
+                        }
+                    },
+                    onClose = { showQuickEntryCloseConfirm = true },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                 )
             }
 
-            // 🌟 3. 账单明细列表
-            if (filteredGroupedRecords.isEmpty()) {
+            // 3. 今日账单
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "今日账单",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                HomeFilterChip("全部", selectedFilterType == null) { selectedFilterType = null }
+                Spacer(modifier = Modifier.width(4.dp))
+                HomeFilterChip("支出", selectedFilterType == RecordType.EXPENSE) { selectedFilterType = RecordType.EXPENSE }
+                Spacer(modifier = Modifier.width(4.dp))
+                HomeFilterChip("收入", selectedFilterType == RecordType.INCOME) { selectedFilterType = RecordType.INCOME }
+            }
+
+            // 4. 当前时间范围账单列表
+            if (visibleRecords.isEmpty()) {
                 EmptyStateView(
-                    title = "${uiState.selectedYear}年${uiState.selectedMonth}月暂无账单",
-                    description = "点击底部「＋」记账",
+                    title = if (todayRecords.isEmpty()) "今日暂无账单" else "暂无${if (selectedFilterType == RecordType.EXPENSE) "支出" else "收入"}账单",
+                    description = null,
                     modifier = Modifier.weight(1f)
                 )
             } else {
@@ -145,35 +175,23 @@ fun HomeScreen(
                         .padding(horizontal = 16.dp),
                     contentPadding = PaddingValues(top = 2.dp, bottom = 96.dp)
                 ) {
-                    filteredGroupedRecords.forEach { (dayTimestamp, records) ->
-                        val daySum = uiState.daySummaries[dayTimestamp] ?: Pair(0L, 0L)
-
-                        item(key = "header_$dayTimestamp") {
-                            DateGroupHeader(
-                                timestamp = dayTimestamp,
-                                totalExpense = daySum.first,
-                                totalIncome = daySum.second
+                    items(
+                        items = visibleRecords,
+                        key = { "record_${it.record.id}" }
+                    ) { item ->
+                        SwipeRevealDeleteItem(
+                            itemKey = item.record.id,
+                            openKey = openSwipeItemId,
+                            onOpen = { openSwipeItemId = it },
+                            onDelete = { recordToDelete = item }
+                        ) {
+                            BitgetTransactionItem(
+                                item = item,
+                                onClick = { onNavigateToEdit(item.record.id) },
+                                onLongClick = { activeMenuRecord = item }
                             )
                         }
-
-                        items(
-                            items = records,
-                            key = { "record_${it.record.id}" }
-                        ) { item ->
-                            SwipeRevealDeleteItem(
-                                itemKey = item.record.id,
-                                openKey = openSwipeItemId,
-                                onOpen = { openSwipeItemId = it },
-                                onDelete = { recordToDelete = item }
-                            ) {
-                                BitgetTransactionItem(
-                                    item = item,
-                                    onClick = { onNavigateToEdit(item.record.id) },
-                                    onLongClick = { activeMenuRecord = item }
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(5.dp))
-                        }
+                        Spacer(modifier = Modifier.height(5.dp))
                     }
                 }
             }
@@ -268,14 +286,13 @@ fun HomeScreen(
     // 长按快捷操作底部弹层（直接展示明细）
     if (activeMenuRecord != null) {
         val target = activeMenuRecord!!
-        ModalBottomSheet(
+        YuanmanModalBottomSheet(
             onDismissRequest = { activeMenuRecord = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -302,6 +319,23 @@ fun HomeScreen(
                         }
                 )
 
+                ListItem(
+                    headlineContent = { Text("删除账单", color = MaterialTheme.colorScheme.error) },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            recordToDelete = target
+                            activeMenuRecord = null
+                        }
+                )
+
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -325,6 +359,300 @@ fun HomeScreen(
         },
         onDismiss = { recordToDelete = null }
     )
+
+    // 关闭快捷录入前明确告知用户仍可从设置中恢复，避免误触后找不到入口。
+    ConfirmDeleteDialog(
+        visible = showQuickEntryCloseConfirm,
+        title = "关闭快捷记账",
+        message = "首页快捷录入将被隐藏。你仍可在“设置 → 快捷记账”中随时重新开启。",
+        icon = Icons.Default.Bolt,
+        confirmButtonText = "关闭快捷记账",
+        confirmButtonColor = MaterialTheme.colorScheme.primary,
+        onConfirm = {
+            viewModel.setQuickEntryEnabled(false)
+            showQuickEntryCloseConfirm = false
+        },
+        onDismiss = { showQuickEntryCloseConfirm = false }
+    )
+}
+
+@Composable
+private fun HomeFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Surface(
+        modifier = Modifier.clip(shape).clickable(onClick = onClick),
+        shape = shape,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun QuickEntryStrip(
+    type: RecordType,
+    categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
+    learningRules: List<com.yuanman.app.data.local.entity.QuickEntryLearningEntity>,
+    onTypeChange: (RecordType) -> Unit,
+    onSubmit: (String, RecordType) -> Boolean,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var text by remember { mutableStateOf("") }
+    val availableCategories = remember(categories, type) {
+        categories.filter { it.type == type.name }
+    }
+    val preview = remember(text, availableCategories, learningRules) {
+        QuickEntryParser.parse(text, availableCategories, learningRules)
+    }
+    val isExpense = type == RecordType.EXPENSE
+    val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    val isReady = preview != null
+    val btnBgColor by animateColorAsState(
+        targetValue = if (isReady) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        label = "btn_bg"
+    )
+    val btnIconColor by animateColorAsState(
+        targetValue = if (isReady) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        label = "btn_icon"
+    )
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 1.5.dp, shape = RoundedCornerShape(22.dp)),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 5.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // 1. 支 / 收 极简切换胶囊
+            QuickTypeTogglePill(
+                selectedType = type,
+                onTypeChange = onTypeChange
+            )
+
+            // 2. 原生无框极简输入框
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 2.dp),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Medium
+                ),
+                cursorBrush = SolidColor(accent),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = if (isReady) ImeAction.Done else ImeAction.Default
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (isReady) {
+                            if (onSubmit(text, type)) text = ""
+                        }
+                    }
+                ),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (text.isEmpty()) {
+                            Text(
+                                text = "✨ 闪电记账 如: 咖啡15块",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f),
+                                    fontSize = 13.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+
+            // 3. 实时智能解析徽章 (单行平铺，防止折行)
+            AnimatedVisibility(
+                visible = isReady,
+                enter = fadeIn() + expandHorizontally(),
+                exit = fadeOut() + shrinkHorizontally()
+            ) {
+                if (preview != null) {
+                    val cat = preview.category
+                    val catColor = cat?.let { Color(it.colorHex) } ?: accent
+                    val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = accent.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = iconVector,
+                                contentDescription = null,
+                                tint = catColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = cat?.name ?: "账单",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = accent
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "¥${preview.amountYuan.toPlainString()}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    color = accent
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            preview.paymentMethod?.let { method ->
+                                Text(
+                                    text = "·$method",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.outline
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. 动态操作按钮 (一键保存 / 清空 / 关闭)
+            IconButton(
+                onClick = {
+                    if (isReady) {
+                        if (onSubmit(text, type)) text = ""
+                    } else if (text.isNotEmpty()) {
+                        text = ""
+                    } else {
+                        onClose()
+                    }
+                },
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(btnBgColor)
+            ) {
+                Icon(
+                    imageVector = when {
+                        isReady -> Icons.Default.Check
+                        text.isNotEmpty() -> Icons.Default.Clear
+                        else -> Icons.Default.Close
+                    },
+                    contentDescription = if (isReady) "记下" else if (text.isNotEmpty()) "清空" else "关闭快捷记账",
+                    tint = btnIconColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickTypeTogglePill(
+    selectedType: RecordType,
+    onTypeChange: (RecordType) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+        modifier = Modifier.clip(RoundedCornerShape(16.dp))
+    ) {
+        Row(
+            modifier = Modifier.padding(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            QuickTypeToggleItem(
+                label = "支",
+                selected = selectedType == RecordType.EXPENSE,
+                activeColor = MaterialTheme.colorScheme.error,
+                onClick = { onTypeChange(RecordType.EXPENSE) }
+            )
+            QuickTypeToggleItem(
+                label = "收",
+                selected = selectedType == RecordType.INCOME,
+                activeColor = MaterialTheme.colorScheme.primary,
+                onClick = { onTypeChange(RecordType.INCOME) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickTypeToggleItem(
+    label: String,
+    selected: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit
+) {
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) activeColor else Color.Transparent,
+        label = "type_item_bg"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "type_item_text"
+    )
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = textColor
+            )
+        )
+    }
 }
 
 /**
@@ -431,10 +759,7 @@ private fun FinancialOverviewCard(
                     )
                     Text(
                         text = "沅满账本",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        ),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -747,23 +1072,23 @@ fun BitgetTransactionItem(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.5.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                val subtitle = when {
-                    record.remark.isNotBlank() && record.paymentMethod.isNotBlank() -> "${record.remark} · ${record.paymentMethod}"
-                    record.remark.isNotBlank() -> record.remark
-                    record.paymentMethod.isNotBlank() -> record.paymentMethod
-                    else -> "常规收支"
-                }
-
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                val subtitle = listOf(record.remark, record.paymentMethod)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))

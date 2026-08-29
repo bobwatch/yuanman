@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.QuickEntryParser
@@ -35,6 +36,8 @@ data class AddEditUiState(
     val availableCategories: List<CategoryEntity> = emptyList(),
     val quickRemarks: List<String> = emptyList(),
     val hapticEnabled: Boolean = true,
+    val quickEntryEnabled: Boolean = true,
+    val quickEntryLearningRules: List<QuickEntryLearningEntity> = emptyList(),
     val errorMessage: String? = null,
     val savedFeedbackMessage: String? = null,
     val isSavedSuccess: Boolean = false,
@@ -69,6 +72,18 @@ class AddEditRecordViewModel(
         viewModelScope.launch {
             preferencesRepository.hapticFeedbackEnabled.collectLatest { enabled ->
                 _uiState.update { it.copy(hapticEnabled = enabled) }
+            }
+        }
+
+        viewModelScope.launch {
+            preferencesRepository.quickEntryEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(quickEntryEnabled = enabled) }
+            }
+        }
+
+        viewModelScope.launch {
+            categoryRepository.observeAllQuickEntryLearning().collectLatest { rules ->
+                _uiState.update { it.copy(quickEntryLearningRules = rules) }
             }
         }
 
@@ -265,7 +280,7 @@ class AddEditRecordViewModel(
 
     fun saveQuickEntry(input: String) {
         val state = _uiState.value
-        val parsed = QuickEntryParser.parse(input, state.availableCategories)
+        val parsed = QuickEntryParser.parse(input, state.availableCategories, state.quickEntryLearningRules)
         if (parsed == null) {
             _uiState.update { it.copy(errorMessage = "请输入类似“奶茶 18”的内容") }
             return
@@ -279,7 +294,8 @@ class AddEditRecordViewModel(
             it.copy(
                 expression = parsed.amountYuan.toPlainString(),
                 selectedCategory = category,
-                remark = parsed.remark
+                remark = parsed.remark,
+                paymentMethod = parsed.paymentMethod ?: it.paymentMethod
             )
         }
         saveRecord()
@@ -354,6 +370,10 @@ class AddEditRecordViewModel(
 
             if (state.isEditMode) recordRepository.updateRecord(records.first())
             else recordRepository.insertRecords(records)
+
+            if (state.remark.isNotBlank()) {
+                categoryRepository.learnQuickEntry(state.type, state.remark, category.syncId)
+            }
 
             if (continueNext) {
                 // 连记模式：清空金额与备注，重置时间为当前，弹出成功气泡

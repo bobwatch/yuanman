@@ -135,7 +135,8 @@ fun YuanmanNavGraph(
                 val homeViewModel: HomeViewModel = viewModel(
                     factory = HomeViewModel.Factory(
                         recordRepository = app.recordRepository,
-                        preferencesRepository = app.preferencesRepository
+                        preferencesRepository = app.preferencesRepository,
+                        categoryRepository = app.categoryRepository
                     )
                 )
                 HomeScreen(
@@ -175,7 +176,8 @@ fun YuanmanNavGraph(
                 val statsViewModel: StatisticsViewModel = viewModel(
                     factory = StatisticsViewModel.Factory(
                         recordRepository = app.recordRepository,
-                        categoryRepository = app.categoryRepository
+                        categoryRepository = app.categoryRepository,
+                        preferencesRepository = app.preferencesRepository
                     )
                 )
                 StatisticsScreen(

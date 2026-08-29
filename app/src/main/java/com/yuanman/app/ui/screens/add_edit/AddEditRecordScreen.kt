@@ -1,7 +1,5 @@
 package com.yuanman.app.ui.screens.add_edit
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,7 +37,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +54,8 @@ import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.CustomKeypad
 import com.yuanman.app.ui.components.KeypadEngine
+import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+import com.yuanman.app.ui.components.YuanmanDatePickerSheet
 import com.yuanman.app.utils.DateTimeUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,7 +71,6 @@ fun AddEditRecordScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var isRemarkFocused by remember { mutableStateOf(false) }
@@ -80,8 +78,7 @@ fun AddEditRecordScreen(
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPaymentSheet by remember { mutableStateOf(false) }
-    var showQuickEntryDialog by remember { mutableStateOf(false) }
-    var quickEntryText by remember { mutableStateOf("") }
+    var showRecordDateSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = if (uiState.type == RecordType.EXPENSE) 0 else 1) { 2 }
     val expenseGridState = rememberLazyGridState()
@@ -166,6 +163,7 @@ fun AddEditRecordScreen(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
                 title = {
                     if (uiState.isEditMode) {
                         Text(
@@ -245,19 +243,6 @@ fun AddEditRecordScreen(
                                 Icons.Default.Delete,
                                 contentDescription = "删除",
                                 tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = {
-                                quickEntryText = ""
-                                showQuickEntryDialog = true
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.Bolt,
-                                contentDescription = "快捷录入",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -539,36 +524,7 @@ fun AddEditRecordScreen(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                val cal = Calendar.getInstance().apply { timeInMillis = uiState.recordTime }
-                                val datePicker = DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        cal.set(Calendar.YEAR, year)
-                                        cal.set(Calendar.MONTH, month)
-                                        cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-                                        val timePicker = TimePickerDialog(
-                                            context,
-                                            { _, hourOfDay, minute ->
-                                                cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                cal.set(Calendar.MINUTE, minute)
-                                                viewModel.setRecordTime(cal.timeInMillis)
-                                            },
-                                            cal.get(Calendar.HOUR_OF_DAY),
-                                            cal.get(Calendar.MINUTE),
-                                            true
-                                        )
-                                        timePicker.setTitle("选择时间 (时:分)")
-                                        timePicker.show()
-                                    },
-                                    cal.get(Calendar.YEAR),
-                                    cal.get(Calendar.MONTH),
-                                    cal.get(Calendar.DAY_OF_MONTH)
-                                )
-                                datePicker.setTitle("选择日期")
-                                datePicker.show()
-                            }
+                            .clickable { showRecordDateSheet = true }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -780,113 +736,36 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 🌟 5. 快捷录入 Dialog (自动聚焦光标，即刻输入)
-    if (showQuickEntryDialog) {
-        val quickEntryFocusRequester = remember { FocusRequester() }
-        LaunchedEffect(showQuickEntryDialog) {
-            delay(120)
-            quickEntryFocusRequester.requestFocus()
-        }
-
-        val quickPreview = remember(quickEntryText, uiState.availableCategories) {
-            QuickEntryParser.parse(quickEntryText, uiState.availableCategories)
-        }
-        Dialog(onDismissRequest = { showQuickEntryDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Bolt, contentDescription = null, tint = themeActiveColor)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "快捷录入",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-                    Text(
-                        text = "输入描述和金额，系统会自动识别分类",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    OutlinedTextField(
-                        value = quickEntryText,
-                        onValueChange = { quickEntryText = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(quickEntryFocusRequester),
-                        singleLine = true,
-                        placeholder = { Text("例如：奶茶 18") },
-                        leadingIcon = { Icon(Icons.Outlined.EditNote, contentDescription = null) },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(onDone = {
-                            if (quickPreview != null) {
-                                viewModel.saveQuickEntry(quickEntryText)
-                                showQuickEntryDialog = false
-                            }
-                        })
-                    )
-                    if (quickEntryText.isNotBlank()) {
-                        if (quickPreview != null) {
-                            val previewCategory = quickPreview.category ?: uiState.selectedCategory
-                            val previewRemark = quickPreview.remark
-                                .takeIf { it.isNotBlank() }
-                                ?.let { " · $it" }
-                                .orEmpty()
-                            Text(
-                                text = "识别结果：${previewCategory?.name ?: "当前分类"} · ¥${quickPreview.amountYuan.toPlainString()}$previewRemark",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Text(
-                                text = "请输入金额，例如：奶茶 18",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showQuickEntryDialog = false }) { Text("取消") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                viewModel.saveQuickEntry(quickEntryText)
-                                showQuickEntryDialog = false
-                            },
-                            enabled = quickPreview != null
-                        ) { Text("立即记账") }
-                    }
+    if (showRecordDateSheet) {
+        val initialDate = uiState.recordTime.coerceAtMost(System.currentTimeMillis())
+        YuanmanDatePickerSheet(
+            initialDateMillis = initialDate,
+            onDateSelected = { year, month, day ->
+                val cal = Calendar.getInstance().apply {
+                    timeInMillis = uiState.recordTime.coerceAtMost(System.currentTimeMillis())
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month - 1)
+                    set(Calendar.DAY_OF_MONTH, day)
                 }
-            }
-        }
+                viewModel.setRecordTime(cal.timeInMillis.coerceAtMost(System.currentTimeMillis()))
+            },
+            onDismiss = { showRecordDateSheet = false }
+        )
     }
+
+
 
     // 🌟 6. 支付方式 / 入账账户与分摊设置 ModalBottomSheet
     if (showPaymentSheet) {
-        ModalBottomSheet(
+        YuanmanModalBottomSheet(
             onDismissRequest = { showPaymentSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp)
-                    .navigationBarsPadding()
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

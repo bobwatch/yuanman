@@ -1,6 +1,7 @@
 package com.yuanman.app
 
 import android.graphics.Color
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,8 +24,11 @@ import com.yuanman.app.ui.components.ToastHostState
 import com.yuanman.app.ui.components.TopToastHost
 import com.yuanman.app.ui.navigation.YuanmanNavGraph
 import com.yuanman.app.ui.theme.YuanmanTheme
+import com.yuanman.app.widget.WidgetNavigation
 
 class MainActivity : ComponentActivity() {
+    private var pendingWidgetRoute by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         enableEdgeToEdge(
@@ -37,6 +41,7 @@ class MainActivity : ComponentActivity() {
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        pendingWidgetRoute = intent.getStringExtra(WidgetNavigation.EXTRA_ROUTE)
 
         val app = application as YuanmanApplication
 
@@ -52,6 +57,15 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             val navController = rememberNavController()
+
+                            LaunchedEffect(pendingWidgetRoute) {
+                                pendingWidgetRoute?.let { route ->
+                                    navController.navigate(route) {
+                                        launchSingleTop = true
+                                    }
+                                    pendingWidgetRoute = null
+                                }
+                            }
 
                             // 页面导航图
                             YuanmanNavGraph(
@@ -72,5 +86,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingWidgetRoute = intent.getStringExtra(WidgetNavigation.EXTRA_ROUTE)
     }
 }

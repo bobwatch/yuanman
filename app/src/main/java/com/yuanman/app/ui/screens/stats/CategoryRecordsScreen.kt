@@ -61,6 +61,7 @@ fun CategoryRecordsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
                 title = {
                     Text(
                         text = "$categoryName · 账单明细",

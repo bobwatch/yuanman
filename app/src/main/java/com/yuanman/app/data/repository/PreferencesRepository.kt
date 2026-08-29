@@ -13,7 +13,9 @@ import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.yuanman.app.widget.WidgetUpdateManager
 import java.util.Calendar
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "yuanman_preferences")
@@ -28,6 +30,7 @@ class PreferencesRepository(private val context: Context) {
         val MONTHLY_BUDGETS = stringPreferencesKey("monthly_budgets")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
         val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
+        val QUICK_ENTRY_ENABLED = booleanPreferencesKey("quick_entry_enabled")
         val CUSTOM_TAGS = stringPreferencesKey("custom_tags")
     }
 
@@ -86,6 +89,11 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] ?: true
     }
 
+    /** Natural-language quick entry is enabled by default and can be hidden from Settings. */
+    val quickEntryEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] ?: true
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -114,12 +122,14 @@ class PreferencesRepository(private val context: Context) {
             budgets[monthKey(year, month)] = budgetCents.coerceAtLeast(0L)
             preferences[PreferencesKeys.MONTHLY_BUDGETS] = serializeMonthlyBudgets(budgets)
         }
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun setPrivacyMode(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PRIVACY_MODE] = enabled
         }
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun togglePrivacyMode() {
@@ -127,11 +137,18 @@ class PreferencesRepository(private val context: Context) {
             val current = preferences[PreferencesKeys.PRIVACY_MODE] ?: false
             preferences[PreferencesKeys.PRIVACY_MODE] = !current
         }
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun setHapticFeedbackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setQuickEntryEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] = enabled
         }
     }
 
@@ -177,6 +194,17 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences.clear()
         }
+        WidgetUpdateManager.requestUpdate(context)
+    }
+
+    suspend fun getWidgetPreferences(year: Int, month: Int): WidgetPreferences {
+        val preferences = context.dataStore.data.first()
+        val budgets = parseMonthlyBudgets(preferences[PreferencesKeys.MONTHLY_BUDGETS])
+        val legacy = preferences[PreferencesKeys.MONTHLY_BUDGET] ?: 0L
+        return WidgetPreferences(
+            monthlyBudget = budgets[monthKey(year, month)] ?: legacy,
+            privacyMode = preferences[PreferencesKeys.PRIVACY_MODE] ?: false
+        )
     }
 
     companion object {
@@ -199,3 +227,8 @@ class PreferencesRepository(private val context: Context) {
             budgets.toSortedMap().entries.joinToString(",") { "${it.key}:${it.value}" }
     }
 }
+
+data class WidgetPreferences(
+    val monthlyBudget: Long,
+    val privacyMode: Boolean
+)

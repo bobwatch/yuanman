@@ -17,11 +17,16 @@ class YuanmanApplication : Application() {
     val database: AppDatabase by lazy { AppDatabase.getDatabase(this) }
 
     val categoryRepository: CategoryRepository by lazy {
-        CategoryRepository(database.categoryDao(), database.recordDao())
+        CategoryRepository(
+            database.categoryDao(),
+            database.recordDao(),
+            database.syncDao(),
+            database.quickEntryLearningDao()
+        )
     }
 
     val recordRepository: RecordRepository by lazy {
-        RecordRepository(database.recordDao())
+        RecordRepository(database.recordDao(), this)
     }
 
     val preferencesRepository: PreferencesRepository by lazy {
@@ -33,7 +38,6 @@ class YuanmanApplication : Application() {
     val syncManager: com.yuanman.app.sync.FamilySyncManager by lazy {
         com.yuanman.app.sync.FamilySyncManager(
             context = this,
-            recordRepository = recordRepository,
             categoryRepository = categoryRepository,
             scope = appScope
         )
@@ -79,8 +83,12 @@ class YuanmanApplication : Application() {
 
             // 2. 确保默认分类与体系正常
             categoryRepository.ensureDefaultCategories()
+            // 3. 将系统预置词库同步到分类学习页（幂等，重置时仍保留）
+            categoryRepository.ensureDefaultQuickEntryLearning()
+            // 4. 为升级前已有账单补建分类学习样本（幂等，不重复累计）
+            categoryRepository.backfillQuickEntryLearning()
 
-            // 3. 运行中周期性安全快照备份
+            // 5. 运行中周期性安全快照备份
             com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(this@YuanmanApplication)
         }
     }

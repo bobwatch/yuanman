@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -16,6 +17,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
@@ -40,13 +49,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yuanman.app.data.model.ThemeMode
+import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.sync.PeerDevice
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
+import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.UpdateInfo
 import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.utils.clickableDebounce
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +71,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
     val hasUnseenUpdate by viewModel.hasUnseenUpdate.collectAsStateWithLifecycle()
+    val learningRules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
 
@@ -81,6 +95,8 @@ fun SettingsScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
+    var showResetLearningDialog by remember { mutableStateOf(false) }
+    var showQuickEntrySheet by remember { mutableStateOf(false) }
     var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
     var manualCheckRequested by remember { mutableStateOf(false) }
 
@@ -134,6 +150,7 @@ fun SettingsScreen(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
                 title = { Text("设置", fontWeight = FontWeight.Bold) }
             )
         }
@@ -180,6 +197,24 @@ fun SettingsScreen(
                         title = "分类管理",
                         subtitle = "管理支出与收入分类及专属子标签",
                         onClick = { onNavigateToCategoryManage?.invoke() }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    SettingsRowItem(
+                        icon = Icons.Outlined.Bolt,
+                        title = "快捷记账",
+                        subtitle = if (uiState.quickEntryEnabled) {
+                            if (learningRules.isEmpty()) "已开启 · 智能匹配分类"
+                            else "已开启 · 已积累 ${learningRules.size} 条习惯规则"
+                        } else {
+                            "已关闭 · 点击开启与管理规则"
+                        },
+                        subtitleHighlight = uiState.quickEntryEnabled,
+                        onClick = { showQuickEntrySheet = true }
                     )
                 }
             }
@@ -261,7 +296,7 @@ fun SettingsScreen(
                     SettingsRowItem(
                         icon = Icons.Outlined.Wifi,
                         title = "设备同步",
-                        subtitle = "同一 WiFi 自动发现与同步",
+                        subtitle = "同一 WiFi 发现设备后授权同步",
                         onClick = { showWifiSyncModal = true }
                     )
                 }
@@ -298,6 +333,7 @@ fun SettingsScreen(
                         subtitleHighlight = subtitleHighlight,
                         showBadge = hasUnseenUpdate,
                         downloadProgress = downloadProgress,
+                        isLoading = updateState is UpdateState.Checking,
                         onClick = {
                             when (val state = updateState) {
                                 is UpdateState.ReadyToInstall -> {
@@ -311,13 +347,10 @@ fun SettingsScreen(
                                 is UpdateState.Downloading -> {
                                     toast.info("正在下载新版本安装包，请稍候...")
                                 }
-                                is UpdateState.Checking -> {
-                                    toast.info("正在检查最新版本，请稍候...")
-                                }
+                                is UpdateState.Checking -> Unit
                                 else -> {
                                     manualCheckRequested = true
                                     viewModel.checkForUpdates(isManual = true)
-                                    toast.info("正在检查新版本…")
                                 }
                             }
                         }
@@ -375,10 +408,18 @@ fun SettingsScreen(
 
     // 🌟 月度预算设置弹窗
     if (showBudgetDialog) {
+        val budgetFocusRequester = remember { FocusRequester() }
+        val keyboardController = LocalSoftwareKeyboardController.current
         var budgetInput by remember {
             mutableStateOf(
                 if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
             )
+        }
+
+        LaunchedEffect(Unit) {
+            delay(120)
+            budgetFocusRequester.requestFocus()
+            keyboardController?.show()
         }
 
         Dialog(onDismissRequest = { showBudgetDialog = false }) {
@@ -412,7 +453,9 @@ fun SettingsScreen(
                         prefix = { Text("¥ ") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(budgetFocusRequester)
                     )
 
                     Row(
@@ -540,14 +583,13 @@ fun SettingsScreen(
 
     // 🌟 主题外观底部选择弹层
     if (showThemeBottomSheet) {
-        ModalBottomSheet(
+        YuanmanModalBottomSheet(
             onDismissRequest = { showThemeBottomSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -687,6 +729,28 @@ fun SettingsScreen(
         },
         onDismiss = { showSecondConfirmDialog = false }
     )
+
+    ConfirmDeleteDialog(
+        visible = showResetLearningDialog,
+        title = "重置分类学习",
+        message = "将清除快捷记账的个人分类习惯，内置分类词典不会受影响。确定继续吗？",
+        confirmButtonText = "确认重置",
+        onConfirm = {
+            viewModel.clearQuickEntryLearning()
+            showResetLearningDialog = false
+            toast.success("分类学习已重置")
+        },
+        onDismiss = { showResetLearningDialog = false }
+    )
+
+    if (showQuickEntrySheet) {
+        QuickEntryBottomSheet(
+            viewModel = viewModel,
+            uiState = uiState,
+            onReset = { showResetLearningDialog = true },
+            onDismiss = { showQuickEntrySheet = false }
+        )
+    }
 }
 
 @Composable
@@ -697,7 +761,9 @@ private fun SettingsRowItem(
     subtitleHighlight: Boolean = false,
     showBadge: Boolean = false,
     downloadProgress: Float? = null,
+    isLoading: Boolean = false,
     isDestructive: Boolean = false,
+    trailingContent: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -772,11 +838,425 @@ private fun SettingsRowItem(
             }
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-            modifier = Modifier.size(18.dp)
+        when {
+            isLoading -> CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = primaryColor
+            )
+            trailingContent != null -> trailingContent()
+            else -> Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun QuickEntryBottomSheet(
+    viewModel: SettingsViewModel,
+    uiState: SettingsUiState,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val rules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
+    val categories = viewModel.allCategories.collectAsStateWithLifecycle().value
+    var searchQuery by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    var selectedType by remember { mutableStateOf<RecordType?>(null) }
+    var editingRule by remember { mutableStateOf<QuickEntryLearningEntity?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editorPhrase by remember { mutableStateOf("") }
+    var editorType by remember { mutableStateOf(RecordType.EXPENSE) }
+    var editorCategoryId by remember { mutableStateOf<Long?>(null) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var deleteRule by remember { mutableStateOf<QuickEntryLearningEntity?>(null) }
+    val learningListState = rememberLazyListState()
+    val pageSize = 60
+
+    fun openEditor(rule: QuickEntryLearningEntity?) {
+        editingRule = rule
+        showAddDialog = rule == null
+        editorPhrase = rule?.phrase.orEmpty()
+        editorType = rule?.let { runCatching { RecordType.valueOf(it.type) }.getOrDefault(RecordType.EXPENSE) } ?: RecordType.EXPENSE
+        editorCategoryId = categories.firstOrNull { it.syncId == rule?.categorySyncId }?.id
+            ?: categories.firstOrNull { it.type == editorType.name }?.id
+    }
+
+    val visibleRules = rules.filter { rule ->
+        val categoryName = categories.firstOrNull { it.syncId == rule.categorySyncId }?.name.orEmpty()
+        (selectedType == null || rule.type == selectedType?.name) &&
+            (searchQuery.isBlank() || rule.phrase.contains(searchQuery.trim(), ignoreCase = true) || categoryName.contains(searchQuery.trim(), ignoreCase = true))
+    }
+
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) {
+            delay(100)
+            searchFocusRequester.requestFocus()
+        }
+    }
+
+    // 词云按页渲染，首屏只创建少量 chip；滚动接近底部时再无感追加下一页。
+    var loadedRuleCount by remember(searchQuery, selectedType, rules.size) { mutableIntStateOf(pageSize) }
+    var isLoadingMoreRules by remember(searchQuery, selectedType, rules.size) { mutableStateOf(false) }
+    val sortedRules = remember(visibleRules) {
+        visibleRules.sortedWith(
+            compareByDescending<QuickEntryLearningEntity> { it.sampleCount }
+                .thenBy { it.phrase.length }
+        )
+    }
+    val loadedRules = sortedRules.take(loadedRuleCount)
+    LaunchedEffect(learningListState, loadedRules.size, sortedRules.size) {
+        snapshotFlow {
+            val layoutInfo = learningListState.layoutInfo
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
+            lastVisible != null &&
+                lastVisible.index >= layoutInfo.totalItemsCount - 1 &&
+                lastVisible.offset + lastVisible.size <= layoutInfo.viewportEndOffset
+        }.collect { reachedEnd ->
+            if (reachedEnd && loadedRules.size < sortedRules.size && !isLoadingMoreRules) {
+                // 给用户一个明确的反馈，即使本地数据加载很快也短暂展示加载状态。
+                isLoadingMoreRules = true
+                delay(180)
+                loadedRuleCount = (loadedRuleCount + pageSize).coerceAtMost(sortedRules.size)
+                isLoadingMoreRules = false
+            }
+        }
+    }
+
+    YuanmanModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 1. 顶部标题
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("快捷记账", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        "自然语言智能识别与分类习惯管理",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "关闭")
+                }
+            }
+
+            // 2. 快捷记账总开关卡片
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Bolt,
+                                    contentDescription = null,
+                                    tint = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "开启快捷记账",
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (uiState.quickEntryEnabled) "首页顶部常驻闪电记账条" else "已隐藏首页快捷记账条",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = uiState.quickEntryEnabled,
+                        onCheckedChange = viewModel::setQuickEntryEnabled
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = uiState.quickEntryEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
+
+                    // 3. 分类学习管理区域
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("分类学习", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            val presetCount = rules.count { it.sampleCount == 0 }
+                            Text(
+                                "系统词库 ${presetCount} 条 · 个人习惯随记账自动积累",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            TextButton(onClick = { openEditor(null) }) { Text("新增") }
+                            TextButton(onClick = onReset, enabled = rules.isNotEmpty()) { Text("重置") }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        if (searchExpanded) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                                singleLine = true,
+                                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                                placeholder = { Text("搜索关键词或分类") },
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        searchQuery = ""
+                                        searchExpanded = false
+                                    }) { Icon(Icons.Default.Close, contentDescription = "关闭搜索") }
+                                }
+                            )
+                        } else {
+                            FilterChip(selected = selectedType == null, onClick = { selectedType = null }, label = { Text("全部") })
+                            FilterChip(selected = selectedType == RecordType.EXPENSE, onClick = { selectedType = RecordType.EXPENSE }, label = { Text("支出") })
+                            FilterChip(selected = selectedType == RecordType.INCOME, onClick = { selectedType = RecordType.INCOME }, label = { Text("收入") })
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { searchExpanded = true }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Outlined.Search, contentDescription = "展开搜索")
+                            }
+                        }
+                    }
+                    if (rules.isEmpty()) {
+                        Text(
+                            "还没有学习记录。保存几笔快捷记账后，系统会逐步记住你的分类习惯。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 20.dp)
+                        )
+                    } else if (visibleRules.isEmpty()) {
+                        Text("没有匹配的学习记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                    } else {
+                        LazyColumn(
+                            state = learningListState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(
+                                items = loadedRules.chunked(pageSize),
+                                key = { page ->
+                                    page.firstOrNull()?.let { "${it.type}_${it.categorySyncId}_${it.phrase}" } ?: "learning_page"
+                                }
+                            ) { page ->
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    page.forEach { rule ->
+                                        val category = categories.firstOrNull { it.syncId == rule.categorySyncId }
+                                        val typeColor = if (rule.type == RecordType.EXPENSE.name) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
+                                        }
+                                        val categoryColor = category?.colorHex?.let { Color(it) } ?: typeColor
+                                        Surface(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .combinedClickable(
+                                                    onClick = { openEditor(rule) },
+                                                    onLongClick = { deleteRule = rule }
+                                                ),
+                                            shape = RoundedCornerShape(50),
+                                            color = categoryColor.copy(alpha = 0.10f),
+                                            border = BorderStroke(0.7.dp, categoryColor.copy(alpha = 0.35f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(6.dp)
+                                                        .clip(CircleShape)
+                                                        .background(categoryColor)
+                                                )
+                                                Text(
+                                                    text = rule.phrase,
+                                                    fontSize = (11 + rule.sampleCount.coerceIn(0, 3)).sp,
+                                                    fontWeight = if (rule.sampleCount > 1) FontWeight.SemiBold else FontWeight.Normal,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (loadedRules.size < sortedRules.size) {
+                                item(key = "learning_loading_footer") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isLoadingMoreRules) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(18.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Text(
+                                                    text = "正在加载更多…",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                text = "继续下滑加载更多",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog || editingRule != null) {
+        val currentRule = editingRule
+        val editorCategories = categories.filter { it.type == editorType.name }
+        val selectedCategory = editorCategories.firstOrNull { it.id == editorCategoryId }
+        AlertDialog(
+            onDismissRequest = { editingRule = null; showAddDialog = false },
+            title = { Text(if (currentRule == null) "新增学习内容" else "编辑学习内容") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editorPhrase,
+                        onValueChange = { editorPhrase = it },
+                        label = { Text("描述关键词") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = editorType == RecordType.EXPENSE, onClick = { editorType = RecordType.EXPENSE; editorCategoryId = null }, label = { Text("支出") })
+                        FilterChip(selected = editorType == RecordType.INCOME, onClick = { editorType = RecordType.INCOME; editorCategoryId = null }, label = { Text("收入") })
+                    }
+                    Box {
+                        OutlinedButton(onClick = { categoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(selectedCategory?.name ?: "选择分类")
+                        }
+                        DropdownMenu(
+                            expanded = categoryMenuExpanded,
+                            onDismissRequest = { categoryMenuExpanded = false },
+                            modifier = Modifier.heightIn(max = 280.dp)
+                        ) {
+                            editorCategories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category.name) },
+                                    onClick = { editorCategoryId = category.id; categoryMenuExpanded = false }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val category = editorCategories.firstOrNull { it.id == editorCategoryId }
+                        if (category != null) {
+                            if (currentRule == null) viewModel.addQuickEntryLearning(editorType, editorPhrase, category.syncId)
+                            else viewModel.updateQuickEntryLearning(currentRule, editorPhrase, editorType, category.syncId)
+                        }
+                        editingRule = null
+                        showAddDialog = false
+                    },
+                    enabled = editorPhrase.isNotBlank() && selectedCategory != null
+                ) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { editingRule = null; showAddDialog = false }) { Text("取消") } }
+        )
+    }
+
+    deleteRule?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { deleteRule = null },
+            title = { Text("删除学习内容") },
+            text = { Text("确定删除“${rule.phrase}”这条分类学习记录吗？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteQuickEntryLearning(rule)
+                        deleteRule = null
+                    }
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteRule = null }) { Text("取消") } }
         )
     }
 }
@@ -806,7 +1286,7 @@ private fun BoxScope.UpdateBadge() {
 }
 
 /**
- * 🌟 设备同步弹层 (基于 NSD 自动发现 + 6位配对码 + AES-GCM 加密同步)
+ * 🌟 设备同步弹层 (基于 NSD 自动发现 + 6 位配对码 + AES-GCM 加密同步)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -818,24 +1298,29 @@ private fun FamilySyncBottomSheet(
     val myCode by syncManager.pairingCode.collectAsStateWithLifecycle()
     val devices by syncManager.devices.collectAsStateWithLifecycle()
     val syncing by syncManager.syncing.collectAsStateWithLifecycle()
+    val syncStatus by syncManager.status.collectAsStateWithLifecycle()
+    val pendingRequests by syncManager.pendingRequests.collectAsStateWithLifecycle()
+    val pendingOutboundDevices by syncManager.pendingOutboundDevices.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
 
     var peerCodeInput by remember { mutableStateOf("") }
     var confirmRegenerate by remember { mutableStateOf(false) }
+    var showPairingFallback by remember { mutableStateOf(false) }
     var knownDeviceNames by remember { mutableStateOf(setOf<String>()) }
 
-    LaunchedEffect(Unit) {
+    DisposableEffect(syncManager) {
         syncManager.start()
+        onDispose { syncManager.stop() }
     }
 
-    // 🌟 设备互联成功提示：发现新设备时 toast
+    // 🌟 设备发现提示：发现设备并不代表已经授权同步
     LaunchedEffect(devices) {
         val newlyFound = devices.filter { it.name !in knownDeviceNames }
         if (newlyFound.isNotEmpty()) {
             knownDeviceNames = devices.map { it.name }.toSet()
             newlyFound.forEach { device ->
-                toast.success("已与设备 ${device.name} 互联成功")
+                toast.info("发现设备 ${device.name}，点击即可发起同步")
             }
         }
     }
@@ -843,18 +1328,46 @@ private fun FamilySyncBottomSheet(
     // 🌟 同步完成提示：每次数据互通完成后 toast
     LaunchedEffect(Unit) {
         syncManager.events.collect { event ->
-            toast.success("同步完成：与 ${event.peerName} 互通 ${event.recordCount} 笔账单、${event.categoryCount} 个分类")
+            toast.success("同步完成：更新 ${event.recordCount} 笔账单、${event.categoryCount} 个分类")
         }
     }
 
-    ModalBottomSheet(
+    val pendingRequest = pendingRequests.firstOrNull()
+    if (pendingRequest != null) {
+        AlertDialog(
+            onDismissRequest = {
+                syncManager.respondToSyncRequest(pendingRequest.id, accepted = false)
+            },
+            title = { Text("设备同步请求") },
+            text = {
+                Text(
+                    "设备「${pendingRequest.deviceName}」正在请求同步账单数据。\n\n来源：${pendingRequest.hostAddress}\n\n请确认是否允许本次同步。"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        syncManager.respondToSyncRequest(pendingRequest.id, accepted = true)
+                    }
+                ) { Text("同意并同步") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        syncManager.respondToSyncRequest(pendingRequest.id, accepted = false)
+                    }
+                ) { Text("拒绝") }
+            }
+        )
+    }
+
+    YuanmanModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -868,115 +1381,149 @@ private fun FamilySyncBottomSheet(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "同一 WiFi 下自动发现并加密同步数据",
+                    text = syncStatus,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "点击在线设备发起同步，对方确认后才会传输数据。配对码仅作为备用方式。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
-            // 🌟 本机配对码展示卡片
+            // 🌟 配对码备用入口：默认收起，优先使用在线设备授权。
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { showPairingFallback = !showPairingFallback }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "本机配对码",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline
                     )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = myCode,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = primaryColor,
-                        letterSpacing = 6.sp,
-                        maxLines = 1
-                    )
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        TextButton(
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
-                                toast.success("配对码已复制")
-                            }
-                        ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("复制")
-                        }
-
-                        TextButton(onClick = { confirmRegenerate = true }) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("更换")
-                        }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "备用：使用配对码",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = "无法点击设备时再展开使用",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
+                    Icon(
+                        imageVector = if (showPairingFallback) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (showPairingFallback) "收起配对码" else "展开配对码",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
 
-            // 🌟 输入对方配对码进行手动配对
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            if (showPairingFallback) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "连接新设备",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        OutlinedTextField(
-                            value = peerCodeInput,
-                            onValueChange = {
-                                if (it.length <= 6) peerCodeInput = it.filter { ch -> ch.isDigit() }
-                            },
-                            label = { Text("对方 6 位配对码") },
-                            placeholder = { Text("如: 123456") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+                        // 本机配对码只在备用入口展开时展示。
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "本机配对码",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = myCode,
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryColor,
+                                    letterSpacing = 4.sp
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
+                                        toast.success("配对码已复制")
+                                    }
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("复制")
+                                }
+                                TextButton(onClick = { confirmRegenerate = true }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("更换")
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                        Text(
+                            text = "连接新设备",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
 
-                        Button(
-                            onClick = {
-                                if (peerCodeInput.length == 6) {
-                                    val ok = syncManager.setPairingCode(peerCodeInput)
-                                    if (ok) {
-                                        peerCodeInput = ""
-                                        toast.success("已设置对方配对码，正在尝试同步...")
-                                        syncManager.syncNow()
-                                    }
-                                }
-                            },
-                            enabled = peerCodeInput.length == 6,
-                            modifier = Modifier.height(52.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("配对")
+                            OutlinedTextField(
+                                value = peerCodeInput,
+                                onValueChange = {
+                                    if (it.length <= 6) peerCodeInput = it.filter { ch -> ch.isDigit() }
+                                },
+                                label = { Text("对方 6 位配对码") },
+                                placeholder = { Text("如: 123456") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (peerCodeInput.length == 6) {
+                                        val ok = syncManager.setPairingCode(peerCodeInput)
+                                        if (ok) {
+                                            peerCodeInput = ""
+                                            toast.success("已设置对方配对码，正在尝试同步...")
+                                            syncManager.syncNowWithPairingCode()
+                                        }
+                                    }
+                                },
+                                enabled = peerCodeInput.length == 6,
+                                modifier = Modifier.height(52.dp)
+                            ) {
+                                Text("配对")
+                            }
                         }
                     }
                 }
@@ -1014,10 +1561,15 @@ private fun FamilySyncBottomSheet(
                         )
                     } else {
                         devices.forEach { device: PeerDevice ->
+                            val isRequesting = device.name in pendingOutboundDevices
+                            val canRequest = !syncing && !device.connected && !isRequesting
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = canRequest) {
+                                        syncManager.requestSync(device)
+                                    }
                                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1046,9 +1598,13 @@ private fun FamilySyncBottomSheet(
                                 }
 
                                 Text(
-                                    text = if (device.connected) "已连接" else "在线",
+                                    text = when {
+                                        device.connected -> "已连接"
+                                        isRequesting -> "等待确认"
+                                        else -> "点击连接"
+                                    },
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                    color = primaryColor
+                                    color = if (isRequesting) MaterialTheme.colorScheme.tertiary else primaryColor
                                 )
                             }
                         }
@@ -1056,7 +1612,7 @@ private fun FamilySyncBottomSheet(
 
                     Button(
                         onClick = { syncManager.syncNow() },
-                        enabled = !syncing && devices.isNotEmpty(),
+                        enabled = !syncing && pendingOutboundDevices.isEmpty() && devices.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (syncing) {

@@ -37,7 +37,7 @@ data class RecordListUiState(
     val selectedMonth: Int = 8,
     val selectedDay: Int? = null,
     val selectedType: RecordType? = null,
-    val selectedCategoryId: Long? = null,
+    val selectedCategoryIds: Set<Long> = emptySet(),
     val selectedPaymentMethod: String? = null,
     val sortOrder: RecordSortOrder = RecordSortOrder.TIME_DESC,
     val searchQuery: String = "",
@@ -59,7 +59,7 @@ private data class FilterParams(
     val month: Int,
     val day: Int?,
     val type: RecordType?,
-    val categoryId: Long?,
+    val categoryIds: Set<Long>,
     val paymentMethod: String?,
     val sortOrder: RecordSortOrder,
     val query: String
@@ -105,7 +105,7 @@ class RecordListViewModel(
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
     private val _selectedDay = MutableStateFlow<Int?>(null)
     private val _selectedType = MutableStateFlow<RecordType?>(null)
-    private val _selectedCategoryId = MutableStateFlow<Long?>(null)
+    private val _selectedCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
     private val _selectedPaymentMethod = MutableStateFlow<String?>(null)
     private val _sortOrder = MutableStateFlow(RecordSortOrder.TIME_DESC)
     private val _searchQuery = MutableStateFlow("")
@@ -126,9 +126,9 @@ class RecordListViewModel(
         _selectedMonth,
         _selectedDay,
         _selectedType,
-        _selectedCategoryId
-    ) { year, month, day, type, categoryId ->
-        Tuple5(year, month, day, type, categoryId)
+        _selectedCategoryIds
+    ) { year, month, day, type, categoryIds ->
+        Tuple5(year, month, day, type, categoryIds)
     }.combine(
         combine(_selectedPaymentMethod, _sortOrder, _searchQuery) { pay, sort, query ->
             Triple(pay, sort, query)
@@ -139,7 +139,7 @@ class RecordListViewModel(
             month = firstPart.b,
             day = firstPart.c,
             type = firstPart.d,
-            categoryId = firstPart.e,
+            categoryIds = firstPart.e,
             paymentMethod = secondPart.first,
             sortOrder = secondPart.second,
             query = secondPart.third
@@ -153,7 +153,8 @@ class RecordListViewModel(
             startTime = start,
             endTime = end,
             type = params.type?.name,
-            categoryId = params.categoryId,
+            categoryIds = params.categoryIds.toList(),
+            categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
             paymentMethod = params.paymentMethod,
             searchQuery = params.query.trim()
         )
@@ -181,7 +182,8 @@ class RecordListViewModel(
                 startTime = start,
                 endTime = end,
                 type = params.type?.name,
-                categoryId = params.categoryId,
+                categoryIds = params.categoryIds.toList(),
+                categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
                 paymentMethod = params.paymentMethod,
                 searchQuery = params.query.trim(),
                 sortOrder = params.sortOrder.name,
@@ -208,7 +210,8 @@ class RecordListViewModel(
                 startTime = start,
                 endTime = end,
                 type = params.type?.name,
-                categoryId = params.categoryId,
+                categoryIds = params.categoryIds.toList(),
+                categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
                 paymentMethod = params.paymentMethod,
                 searchQuery = params.query.trim(),
                 sortOrder = params.sortOrder.name,
@@ -281,7 +284,7 @@ class RecordListViewModel(
             selectedMonth = filters.month,
             selectedDay = filters.day,
             selectedType = filters.type,
-            selectedCategoryId = filters.categoryId,
+            selectedCategoryIds = filters.categoryIds,
             selectedPaymentMethod = filters.paymentMethod,
             sortOrder = filters.sortOrder,
             searchQuery = filters.query,
@@ -318,6 +321,18 @@ class RecordListViewModel(
     }
 
     fun selectDate(year: Int, month: Int, day: Int?) {
+        if (day != null) {
+            val candidate = Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month - 1)
+                set(Calendar.DAY_OF_MONTH, day)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (candidate.timeInMillis > System.currentTimeMillis()) return
+        }
         _selectedYear.value = year
         _selectedMonth.value = month
         _selectedDay.value = day
@@ -345,11 +360,17 @@ class RecordListViewModel(
 
     fun selectType(type: RecordType?) {
         _selectedType.value = type
-        _selectedCategoryId.value = null
+        _selectedCategoryIds.value = emptySet()
     }
 
     fun selectCategory(categoryId: Long?) {
-        _selectedCategoryId.value = if (_selectedCategoryId.value == categoryId) null else categoryId
+        if (categoryId == null) {
+            _selectedCategoryIds.value = emptySet()
+        } else {
+            _selectedCategoryIds.value = _selectedCategoryIds.value.toMutableSet().apply {
+                if (!add(categoryId)) remove(categoryId)
+            }
+        }
     }
 
     fun selectPaymentMethod(method: String?) {
@@ -370,7 +391,9 @@ class RecordListViewModel(
                 id = 0L,
                 recordTime = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+                updatedAt = System.currentTimeMillis(),
+                syncId = java.util.UUID.randomUUID().toString(),
+                deletedAt = null
             )
             recordRepository.insertRecord(duplicate)
             currentFilterParams?.let { reloadFirstPage(it) }
@@ -409,4 +432,3 @@ class RecordListViewModel(
         }
     }
 }
-

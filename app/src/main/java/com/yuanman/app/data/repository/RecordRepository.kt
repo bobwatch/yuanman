@@ -1,5 +1,6 @@
 package com.yuanman.app.data.repository
 
+import android.content.Context
 import com.yuanman.app.data.local.dao.RecordDao
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
@@ -7,9 +8,11 @@ import com.yuanman.app.utils.DateTimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.yuanman.app.widget.WidgetUpdateManager
 
 class RecordRepository(
-    private val recordDao: RecordDao
+    private val recordDao: RecordDao,
+    private val context: Context
 ) {
     fun getAllRecords(): Flow<List<RecordWithCategory>> = recordDao.getAllRecords()
 
@@ -39,16 +42,18 @@ class RecordRepository(
         startTime: Long,
         endTime: Long,
         type: String?,
-        categoryId: Long?,
+        categoryIds: List<Long>,
+        categoryFilterEnabled: Int,
         paymentMethod: String?,
         searchQuery: String
-    ) = recordDao.getFilteredSummary(startTime, endTime, type, categoryId, paymentMethod, searchQuery)
+    ) = recordDao.getFilteredSummary(startTime, endTime, type, categoryIds, categoryFilterEnabled, paymentMethod, searchQuery)
 
     suspend fun getRecordsFilteredPaged(
         startTime: Long,
         endTime: Long,
         type: String?,
-        categoryId: Long?,
+        categoryIds: List<Long>,
+        categoryFilterEnabled: Int,
         paymentMethod: String?,
         searchQuery: String,
         sortOrder: String,
@@ -59,7 +64,8 @@ class RecordRepository(
             startTime = startTime,
             endTime = endTime,
             type = type,
-            categoryId = categoryId,
+            categoryIds = categoryIds,
+            categoryFilterEnabled = categoryFilterEnabled,
             paymentMethod = paymentMethod,
             searchQuery = searchQuery,
             sortOrder = sortOrder,
@@ -85,26 +91,50 @@ class RecordRepository(
     }
 
     suspend fun insertRecord(record: RecordEntity): Long = withContext(Dispatchers.IO) {
-        recordDao.insertRecord(record)
+        val now = System.currentTimeMillis()
+        val id = recordDao.insertRecord(record.copy(deletedAt = null, updatedAt = now))
+        WidgetUpdateManager.requestUpdate(context)
+        id
     }
 
     suspend fun insertRecords(records: List<RecordEntity>) = withContext(Dispatchers.IO) {
         recordDao.insertRecords(records)
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun updateRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
-        recordDao.updateRecord(record)
+        val existing = recordDao.getRecordEntityByIdIncludingDeleted(record.id)
+        val normalized = record.copy(
+            syncId = existing?.syncId ?: record.syncId,
+            createdAt = existing?.createdAt ?: record.createdAt,
+            updatedAt = System.currentTimeMillis(),
+            deletedAt = null
+        )
+        recordDao.updateRecord(normalized)
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun deleteRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
-        recordDao.deleteRecord(record)
+        recordDao.softDeleteRecordById(record.id, System.currentTimeMillis())
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun deleteRecordById(id: Long) = withContext(Dispatchers.IO) {
-        recordDao.deleteRecordById(id)
+        recordDao.softDeleteRecordById(id, System.currentTimeMillis())
+        WidgetUpdateManager.requestUpdate(context)
+    }
+
+    suspend fun restoreRecord(id: Long) = withContext(Dispatchers.IO) {
+        recordDao.restoreRecordById(id, System.currentTimeMillis())
+        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun deleteAllRecords() = withContext(Dispatchers.IO) {
-        recordDao.deleteAllRecords()
+        recordDao.softDeleteAllRecords(System.currentTimeMillis())
+        WidgetUpdateManager.requestUpdate(context)
+    }
+
+    fun notifyDataChanged() {
+        WidgetUpdateManager.requestUpdate(context)
     }
 }

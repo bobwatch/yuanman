@@ -6,4 +6,12 @@
     <color name="accent_color">#E65100</color>
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>
+    <color name="widget_surface">#FFFDF9F2</color>
+    <color name="widget_text">#FF17211D</color>
+    <color name="widget_muted">#FF6F7A75</color>
+    <color name="widget_green">#FF1F6B52</color>
+    <color name="widget_green_soft">#FFE0EEE8</color>
+    <color name="widget_orange">#FFC8552D</color>
+    <color name="widget_orange_soft">#FFF6E4DB</color>
+    <color name="widget_track">#FFE7E5DF</color>
 </resources>

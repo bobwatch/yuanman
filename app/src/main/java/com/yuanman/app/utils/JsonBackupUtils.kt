@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.local.AppDatabase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -16,15 +17,19 @@ import java.util.*
 object JsonBackupUtils {
 
     data class BackupData(
-        val version: String = "1.0",
+        val version: String = "2.0",
         val exportedAt: Long = System.currentTimeMillis(),
         val categories: List<CategoryEntity>,
         val records: List<RecordEntity>
     )
 
     fun exportToJsonString(categories: List<CategoryEntity>, records: List<RecordWithCategory>): String {
+        return exportEntitiesToJsonString(categories, records.map { it.record })
+    }
+
+    fun exportEntitiesToJsonString(categories: List<CategoryEntity>, records: List<RecordEntity>): String {
         val root = JSONObject()
-        root.put("version", "1.0")
+        root.put("version", "2.0")
         root.put("exportedAt", System.currentTimeMillis())
         root.put("appName", "Yuanman")
 
@@ -41,6 +46,9 @@ object JsonBackupUtils {
                 put("sortOrder", c.sortOrder)
                 put("tags", c.tags)
                 put("createdAt", c.createdAt)
+                put("syncId", c.syncId)
+                put("updatedAt", c.updatedAt)
+                c.deletedAt?.let { put("deletedAt", it) }
             }
             catArray.put(obj)
         }
@@ -48,8 +56,7 @@ object JsonBackupUtils {
 
         // 导出账单记录
         val recArray = JSONArray()
-        records.forEach { rwc ->
-            val r = rwc.record
+        records.forEach { r ->
             val obj = JSONObject().apply {
                 put("id", r.id)
                 put("type", r.type)
@@ -63,6 +70,8 @@ object JsonBackupUtils {
                 r.splitTotal?.let { put("splitTotal", it) }
                 put("createdAt", r.createdAt)
                 put("updatedAt", r.updatedAt)
+                put("syncId", r.syncId)
+                r.deletedAt?.let { put("deletedAt", it) }
             }
             recArray.put(obj)
         }
@@ -71,7 +80,7 @@ object JsonBackupUtils {
         return root.toString(2)
     }
 
-    fun parseFromJsonString(jsonString: String): BackupData {
+    fun parseFromJsonString(jsonString: String, legacySourceId: String = "backup"): BackupData {
         val root = JSONObject(jsonString)
         val categories = mutableListOf<CategoryEntity>()
         val records = mutableListOf<RecordEntity>()
@@ -80,17 +89,25 @@ object JsonBackupUtils {
             val catArray = root.getJSONArray("categories")
             for (i in 0 until catArray.length()) {
                 val obj = catArray.getJSONObject(i)
+                val name = obj.getString("name").trim()
+                val type = obj.getString("type").trim().uppercase(Locale.ROOT)
+                val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                 categories.add(
                     CategoryEntity(
                         id = obj.optLong("id", 0L),
-                        name = obj.getString("name"),
-                        type = obj.getString("type"),
+                        name = name,
+                        type = type,
                         iconName = obj.optString("iconName", "other"),
                         colorHex = obj.optLong("colorHex", 0xFF607D8BL),
                         isDefault = obj.optBoolean("isDefault", false),
                         sortOrder = obj.optInt("sortOrder", 0),
                         tags = obj.optString("tags", ""),
-                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                        createdAt = createdAt,
+                        syncId = obj.optString("syncId").ifBlank {
+                            AppDatabase.stableCategorySyncId(type, name)
+                        },
+                        updatedAt = obj.optLong("updatedAt", createdAt),
+                        deletedAt = obj.optionalLong("deletedAt")
                     )
                 )
             }
@@ -100,9 +117,15 @@ object JsonBackupUtils {
             val recArray = root.getJSONArray("records")
             for (i in 0 until recArray.length()) {
                 val obj = recArray.getJSONObject(i)
+                val legacyId = obj.optLong("id", 0L)
+                val legacySyncId = if (legacyId > 0L) {
+                    "legacy-record:$legacySourceId:$legacyId"
+                } else {
+                    "legacy-record:$legacySourceId:index:$i"
+                }
                 records.add(
                     RecordEntity(
-                        id = obj.optLong("id", 0L),
+                        id = legacyId,
                         type = obj.getString("type"),
                         amount = obj.getLong("amount"),
                         categoryId = obj.optLong("categoryId", -1L),
@@ -113,7 +136,11 @@ object JsonBackupUtils {
                         splitIndex = if (obj.has("splitIndex")) obj.optInt("splitIndex") else null,
                         splitTotal = if (obj.has("splitTotal")) obj.optInt("splitTotal") else null,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                        syncId = obj.optString("syncId").ifBlank {
+                            legacySyncId
+                        },
+                        deletedAt = obj.optionalLong("deletedAt")
                     )
                 )
             }
@@ -126,6 +153,9 @@ object JsonBackupUtils {
             records = records
         )
     }
+
+    private fun JSONObject.optionalLong(name: String): Long? =
+        if (has(name) && !isNull(name)) getLong(name) else null
 
     fun shareBackupFile(context: Context, categories: List<CategoryEntity>, records: List<RecordWithCategory>) {
         try {

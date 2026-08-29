@@ -1,6 +1,5 @@
 package com.yuanman.app.ui.screens.list
 
-import android.app.DatePickerDialog
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,7 +27,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,12 +38,14 @@ import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.MonthPickerModal
 import com.yuanman.app.ui.components.RecordDetailCard
 import com.yuanman.app.ui.components.SwipeRevealDeleteItem
+import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+import com.yuanman.app.ui.components.YuanmanDatePickerSheet
 import com.yuanman.app.ui.screens.home.BitgetTransactionItem
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RecordListScreen(
     viewModel: RecordListViewModel,
@@ -53,9 +53,9 @@ fun RecordListScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
     val listState = rememberLazyListState()
     var showMonthPicker by remember { mutableStateOf(false) }
+    var showDatePickerSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
@@ -85,10 +85,11 @@ fun RecordListScreen(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
                 title = {
                     Text(
                         text = "账单明细",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
                 actions = {
@@ -355,28 +356,9 @@ fun RecordListScreen(
                                     MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                                 }
                             ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    val pickerCal = if (uiState.selectedDay != null) {
-                                        Calendar.getInstance().apply {
-                                            set(Calendar.YEAR, uiState.selectedYear)
-                                            set(Calendar.MONTH, uiState.selectedMonth - 1)
-                                            set(Calendar.DAY_OF_MONTH, uiState.selectedDay!!)
-                                        }
-                                    } else {
-                                        Calendar.getInstance()
-                                    }
-                                    DatePickerDialog(
-                                        context,
-                                        { _, y, m, d ->
-                                            viewModel.selectDate(y, m + 1, d)
-                                        },
-                                        pickerCal.get(Calendar.YEAR),
-                                        pickerCal.get(Calendar.MONTH),
-                                        pickerCal.get(Calendar.DAY_OF_MONTH)
-                                    ).show()
-                                }
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showDatePickerSheet = true }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -427,13 +409,13 @@ fun RecordListScreen(
                         item {
                             ModernFilterPill(
                                 text = "全部分类",
-                                selected = uiState.selectedCategoryId == null,
+                                selected = uiState.selectedCategoryIds.isEmpty(),
                                 onClick = { viewModel.selectCategory(null) }
                             )
                         }
 
                         items(relevantCategories) { cat ->
-                            val isSelected = uiState.selectedCategoryId == cat.id
+                            val isSelected = cat.id in uiState.selectedCategoryIds
                             ModernFilterPill(
                                 text = cat.name,
                                 selected = isSelected,
@@ -502,12 +484,17 @@ fun RecordListScreen(
                 ) {
                     uiState.groupedRecords.forEach { (dayTimestamp, recordsInDay) ->
                         val summary = uiState.daySummaries[dayTimestamp]
-                        item(key = "header_$dayTimestamp") {
-                            DateGroupHeader(
-                                timestamp = dayTimestamp,
-                                totalExpense = summary?.totalExpense ?: 0L,
-                                totalIncome = summary?.totalIncome ?: 0L
-                            )
+                        stickyHeader(key = "header_$dayTimestamp") {
+                            Surface(
+                                color = MaterialTheme.colorScheme.background,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                DateGroupHeader(
+                                    timestamp = dayTimestamp,
+                                    totalExpense = summary?.totalExpense ?: 0L,
+                                    totalIncome = summary?.totalIncome ?: 0L
+                                )
+                            }
                         }
 
                         items(
@@ -579,10 +566,33 @@ fun RecordListScreen(
         onDismiss = { showMonthPicker = false }
     )
 
+    if (showDatePickerSheet) {
+        val initialDate = Calendar.getInstance().apply {
+            set(Calendar.YEAR, uiState.selectedYear)
+            set(Calendar.MONTH, uiState.selectedMonth - 1)
+            val now = Calendar.getInstance()
+            val defaultDay = if (uiState.selectedYear == now.get(Calendar.YEAR) && uiState.selectedMonth == now.get(Calendar.MONTH) + 1) {
+                now.get(Calendar.DAY_OF_MONTH)
+            } else {
+                1
+            }
+            set(Calendar.DAY_OF_MONTH, uiState.selectedDay ?: defaultDay)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        YuanmanDatePickerSheet(
+            initialDateMillis = initialDate.timeInMillis,
+            onDateSelected = viewModel::selectDate,
+            onDismiss = { showDatePickerSheet = false }
+        )
+    }
+
     // 长按操作 BottomSheet：直接展示账单明细
     if (activeMenuRecord != null) {
         val target = activeMenuRecord!!
-        ModalBottomSheet(
+        YuanmanModalBottomSheet(
             onDismissRequest = { activeMenuRecord = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
@@ -590,7 +600,6 @@ fun RecordListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
                 Text(
@@ -612,6 +621,23 @@ fun RecordListScreen(
                         }
                 )
 
+                ListItem(
+                    headlineContent = { Text("删除账单", color = MaterialTheme.colorScheme.error) },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            recordToDelete = target
+                            activeMenuRecord = null
+                        }
+                )
+
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -621,7 +647,7 @@ fun RecordListScreen(
     ConfirmDeleteDialog(
         visible = recordToDelete != null,
         title = "删除账单",
-        message = "确定要删除分类为「${recordToDelete?.category?.name}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
+        message = "确定要删除分类为「${recordToDelete?.category?.name ?: "未分类"}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
         onConfirm = {
             recordToDelete?.let { viewModel.deleteRecord(it) }
             recordToDelete = null

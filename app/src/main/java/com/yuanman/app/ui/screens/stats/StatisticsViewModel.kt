@@ -7,11 +7,13 @@ import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.*
 import com.yuanman.app.data.repository.CategoryRepository
+import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 enum class StatisticsPeriod(val title: String) {
@@ -37,12 +39,14 @@ data class StatisticsUiState(
     val prevPeriodIncome: Long = 0L,
     val expenseDiffPercent: Float? = null,
     val incomeDiffPercent: Float? = null,
+    val budgetReview: BudgetReviewData = BudgetReviewData(),
     val isLoading: Boolean = false
 )
 
 class StatisticsViewModel(
     private val recordRepository: RecordRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
@@ -314,6 +318,20 @@ class StatisticsViewModel(
             incomeDiffPercent = incomeDiff,
             isLoading = false
         )
+    }.combine(preferencesRepository.monthlyBudgets) { state, budgets ->
+        if (state.periodMode != StatisticsPeriod.MONTH) {
+            state.copy(budgetReview = BudgetReviewData())
+        } else {
+            val budget = budgets[PreferencesRepository.monthKey(state.selectedYear, state.selectedMonth)] ?: 0L
+            state.copy(
+                budgetReview = BudgetReviewCalculator.calculate(
+                    year = state.selectedYear,
+                    month = state.selectedMonth,
+                    budgetCents = budget,
+                    expenseCents = state.summary.totalExpense
+                )
+            )
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -407,13 +425,24 @@ class StatisticsViewModel(
         _selectedCategory.value = item
     }
 
+    fun setMonthlyBudget(budgetCents: Long) {
+        viewModelScope.launch {
+            preferencesRepository.setBudgetForMonth(
+                _selectedYear.value,
+                _selectedMonth.value,
+                budgetCents
+            )
+        }
+    }
+
     class Factory(
         private val recordRepository: RecordRepository,
-        private val categoryRepository: CategoryRepository
+        private val categoryRepository: CategoryRepository,
+        private val preferencesRepository: PreferencesRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return StatisticsViewModel(recordRepository, categoryRepository) as T
+            return StatisticsViewModel(recordRepository, categoryRepository, preferencesRepository) as T
         }
     }
 }

@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun EmptyStateView(
     title: String = "暂无账单数据",
-    description: String = "开始记录今天的第一笔收支吧",
+    description: String? = "开始记录今天的第一笔收支吧",
     icon: ImageVector = Icons.Default.ReceiptLong,
     actionButtonText: String? = null,
     onActionClick: (() -> Unit)? = null,
@@ -43,14 +43,16 @@ fun EmptyStateView(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        if (!description.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
 
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline,
-            textAlign = TextAlign.Center
-        )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline,
+                textAlign = TextAlign.Center
+            )
+        }
 
         if (actionButtonText != null && onActionClick != null) {
             Spacer(modifier = Modifier.height(20.dp))

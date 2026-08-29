@@ -1,9 +1,11 @@
 package com.yuanman.app.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 @Entity(
     tableName = "records",
@@ -19,7 +21,8 @@ import androidx.room.PrimaryKey
         Index("categoryId"),
         Index("recordTime"),
         Index("type"),
-        Index("splitGroupId")
+        Index("splitGroupId"),
+        Index(value = ["syncId"], unique = true)
     ]
 )
 data class RecordEntity(
@@ -35,5 +38,8 @@ data class RecordEntity(
     val splitIndex: Int? = null,
     val splitTotal: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''")
+    val syncId: String = UUID.randomUUID().toString(),
+    val deletedAt: Long? = null
 )

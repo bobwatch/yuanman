@@ -77,6 +77,7 @@ fun AddEditCategoryScreen(
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
                 title = {
                     Text(
                         text = if (uiState.isEditMode) "编辑分类" else "新增分类",

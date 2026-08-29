@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">沅满记账</string>
+    <string name="quick_entry_widget_name">快捷记账</string>
+    <string name="budget_review_widget_name">预算复盘</string>
+    <string name="quick_entry_widget_description">查看本月支出并快速记录支出或收入</string>
+    <string name="budget_review_widget_description">在桌面查看预算进度、每日可用和月末预计</string>
 </resources>
