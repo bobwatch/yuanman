@@ -414,6 +414,8 @@ class RecordListViewModel(
     fun selectType(type: RecordType?) {
         _selectedType.value = type
         _selectedCategoryIds.value = emptySet()
+        // 支出和收入的支付方式集合不同，切换类型时清除旧的支付方式筛选。
+        _selectedPaymentMethod.value = null
     }
 
     fun selectCategory(categoryId: Long?) {

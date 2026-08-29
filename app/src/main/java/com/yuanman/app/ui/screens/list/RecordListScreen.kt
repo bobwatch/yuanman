@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
@@ -451,6 +452,43 @@ fun RecordListScreen(
                                     onClick = { viewModel.selectCategory(cat.id) }
                                 )
                             }
+                        }
+                    }
+
+                    // 第四行：支付方式筛选
+                    val paymentMethods = when (uiState.selectedType) {
+                        RecordType.INCOME -> PaymentMethod.INCOME_ACCOUNTS
+                        RecordType.EXPENSE -> PaymentMethod.EXPENSE_METHODS
+                        null -> (PaymentMethod.EXPENSE_METHODS + PaymentMethod.INCOME_ACCOUNTS).distinct()
+                    }.distinct()
+                    Spacer(modifier = Modifier.height(2.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        item {
+                            Text(
+                                text = "支付方式",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                        item {
+                            ModernFilterPill(
+                                text = "全部方式",
+                                selected = uiState.selectedPaymentMethod == null,
+                                onClick = { viewModel.selectPaymentMethod(null) }
+                            )
+                        }
+                        items(paymentMethods) { method ->
+                            ModernFilterPill(
+                                text = method,
+                                selected = uiState.selectedPaymentMethod == method,
+                                onClick = { viewModel.selectPaymentMethod(method) }
+                            )
                         }
                     }
                 }

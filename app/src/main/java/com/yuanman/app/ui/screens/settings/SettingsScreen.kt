@@ -1035,9 +1035,8 @@ private fun QuickEntryBottomSheet(
                     ) {
                         Column {
                             Text("分类学习", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            val presetCount = rules.count { it.sampleCount == 0 }
                             Text(
-                                "系统词库 ${presetCount} 条 · 个人习惯随记账自动积累",
+                                "个人习惯随记账自动积累",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )

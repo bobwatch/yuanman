@@ -740,15 +740,7 @@ fun AddEditRecordScreen(
         val initialDate = uiState.recordTime.coerceAtMost(System.currentTimeMillis())
         YuanmanDatePickerSheet(
             initialDateMillis = initialDate,
-            onDateSelected = { year, month, day ->
-                val cal = Calendar.getInstance().apply {
-                    timeInMillis = uiState.recordTime.coerceAtMost(System.currentTimeMillis())
-                    set(Calendar.YEAR, year)
-                    set(Calendar.MONTH, month - 1)
-                    set(Calendar.DAY_OF_MONTH, day)
-                }
-                viewModel.setRecordTime(cal.timeInMillis.coerceAtMost(System.currentTimeMillis()))
-            },
+            onDateTimeSelected = viewModel::setRecordTime,
             onDismiss = { showRecordDateSheet = false }
         )
     }
