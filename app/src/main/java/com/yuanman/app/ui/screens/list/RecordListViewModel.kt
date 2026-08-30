@@ -39,7 +39,7 @@ data class RecordListUiState(
     val selectedDay: Int? = null,
     val selectedType: RecordType? = null,
     val selectedCategoryIds: Set<Long> = emptySet(),
-    val selectedPaymentMethod: String? = null,
+    val selectedPaymentMethods: Set<String> = emptySet(),
     val sortOrder: RecordSortOrder = RecordSortOrder.TIME_DESC,
     val searchQuery: String = "",
     val availableCategories: List<CategoryEntity> = emptyList(),
@@ -61,7 +61,7 @@ private data class FilterParams(
     val day: Int?,
     val type: RecordType?,
     val categoryIds: Set<Long>,
-    val paymentMethod: String?,
+    val paymentMethods: Set<String>,
     val sortOrder: RecordSortOrder,
     val query: String
 ) {
@@ -107,7 +107,7 @@ class RecordListViewModel(
     private val _selectedDay = MutableStateFlow<Int?>(null)
     private val _selectedType = MutableStateFlow<RecordType?>(null)
     private val _selectedCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
-    private val _selectedPaymentMethod = MutableStateFlow<String?>(null)
+    private val _selectedPaymentMethods = MutableStateFlow<Set<String>>(emptySet())
     private val _sortOrder = MutableStateFlow(RecordSortOrder.TIME_DESC)
     private val _searchQuery = MutableStateFlow("")
 
@@ -134,7 +134,7 @@ class RecordListViewModel(
     ) { year, month, day, type, categoryIds ->
         Tuple5(year, month, day, type, categoryIds)
     }.combine(
-        combine(_selectedPaymentMethod, _sortOrder, _searchQuery) { pay, sort, query ->
+        combine(_selectedPaymentMethods, _sortOrder, _searchQuery) { pay, sort, query ->
             Triple(pay, sort, query)
         }
     ) { firstPart, secondPart ->
@@ -144,7 +144,7 @@ class RecordListViewModel(
             day = firstPart.c,
             type = firstPart.d,
             categoryIds = firstPart.e,
-            paymentMethod = secondPart.first,
+            paymentMethods = secondPart.first,
             sortOrder = secondPart.second,
             query = secondPart.third
         )
@@ -159,7 +159,8 @@ class RecordListViewModel(
             type = params.type?.name,
             categoryIds = params.categoryIds.toList(),
             categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
-            paymentMethod = params.paymentMethod,
+            paymentMethods = params.paymentMethods.toList(),
+            paymentMethodFilterEnabled = if (params.paymentMethods.isEmpty()) 0 else 1,
             searchQuery = params.query.trim()
         )
     }
@@ -200,7 +201,8 @@ class RecordListViewModel(
                 type = params.type?.name,
                 categoryIds = params.categoryIds.toList(),
                 categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
-                paymentMethod = params.paymentMethod,
+                paymentMethods = params.paymentMethods.toList(),
+                paymentMethodFilterEnabled = if (params.paymentMethods.isEmpty()) 0 else 1,
                 searchQuery = params.query.trim(),
                 sortOrder = params.sortOrder.name,
                 limit = PAGE_SIZE,
@@ -234,7 +236,8 @@ class RecordListViewModel(
                     type = params.type?.name,
                     categoryIds = params.categoryIds.toList(),
                     categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
-                    paymentMethod = params.paymentMethod,
+                    paymentMethods = params.paymentMethods.toList(),
+                    paymentMethodFilterEnabled = if (params.paymentMethods.isEmpty()) 0 else 1,
                     searchQuery = params.query.trim(),
                     sortOrder = params.sortOrder.name,
                     limit = PAGE_SIZE,
@@ -265,7 +268,8 @@ class RecordListViewModel(
                 type = params.type?.name,
                 categoryIds = params.categoryIds.toList(),
                 categoryFilterEnabled = if (params.categoryIds.isEmpty()) 0 else 1,
-                paymentMethod = params.paymentMethod,
+                paymentMethods = params.paymentMethods.toList(),
+                paymentMethodFilterEnabled = if (params.paymentMethods.isEmpty()) 0 else 1,
                 searchQuery = params.query.trim(),
                 sortOrder = params.sortOrder.name,
                 limit = PAGE_SIZE,
@@ -338,7 +342,7 @@ class RecordListViewModel(
             selectedDay = filters.day,
             selectedType = filters.type,
             selectedCategoryIds = filters.categoryIds,
-            selectedPaymentMethod = filters.paymentMethod,
+            selectedPaymentMethods = filters.paymentMethods,
             sortOrder = filters.sortOrder,
             searchQuery = filters.query,
             availableCategories = categories,
@@ -415,7 +419,7 @@ class RecordListViewModel(
         _selectedType.value = type
         _selectedCategoryIds.value = emptySet()
         // 支出和收入的支付方式集合不同，切换类型时清除旧的支付方式筛选。
-        _selectedPaymentMethod.value = null
+        _selectedPaymentMethods.value = emptySet()
     }
 
     fun selectCategory(categoryId: Long?) {
@@ -429,7 +433,13 @@ class RecordListViewModel(
     }
 
     fun selectPaymentMethod(method: String?) {
-        _selectedPaymentMethod.value = if (_selectedPaymentMethod.value == method) null else method
+        if (method == null) {
+            _selectedPaymentMethods.value = emptySet()
+        } else {
+            _selectedPaymentMethods.value = _selectedPaymentMethods.value.toMutableSet().apply {
+                if (!add(method)) remove(method)
+            }
+        }
     }
 
     fun setSortOrder(order: RecordSortOrder) {

@@ -44,9 +44,19 @@ class RecordRepository(
         type: String?,
         categoryIds: List<Long>,
         categoryFilterEnabled: Int,
-        paymentMethod: String?,
+        paymentMethods: List<String>,
+        paymentMethodFilterEnabled: Int,
         searchQuery: String
-    ) = recordDao.getFilteredSummary(startTime, endTime, type, categoryIds, categoryFilterEnabled, paymentMethod, searchQuery)
+    ) = recordDao.getFilteredSummary(
+        startTime = startTime,
+        endTime = endTime,
+        type = type,
+        categoryIds = categoryIds,
+        categoryFilterEnabled = categoryFilterEnabled,
+        paymentMethods = paymentMethods,
+        paymentMethodFilterEnabled = paymentMethodFilterEnabled,
+        searchQuery = searchQuery
+    )
 
     suspend fun getRecordsFilteredPaged(
         startTime: Long,
@@ -54,7 +64,8 @@ class RecordRepository(
         type: String?,
         categoryIds: List<Long>,
         categoryFilterEnabled: Int,
-        paymentMethod: String?,
+        paymentMethods: List<String>,
+        paymentMethodFilterEnabled: Int,
         searchQuery: String,
         sortOrder: String,
         limit: Int,
@@ -66,7 +77,8 @@ class RecordRepository(
             type = type,
             categoryIds = categoryIds,
             categoryFilterEnabled = categoryFilterEnabled,
-            paymentMethod = paymentMethod,
+            paymentMethods = paymentMethods,
+            paymentMethodFilterEnabled = paymentMethodFilterEnabled,
             searchQuery = searchQuery,
             sortOrder = sortOrder,
             limit = limit,

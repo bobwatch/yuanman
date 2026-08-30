@@ -479,14 +479,15 @@ fun RecordListScreen(
                         item {
                             ModernFilterPill(
                                 text = "全部方式",
-                                selected = uiState.selectedPaymentMethod == null,
+                                selected = uiState.selectedPaymentMethods.isEmpty(),
                                 onClick = { viewModel.selectPaymentMethod(null) }
                             )
                         }
                         items(paymentMethods) { method ->
+                            val isSelected = method in uiState.selectedPaymentMethods
                             ModernFilterPill(
                                 text = method,
-                                selected = uiState.selectedPaymentMethod == method,
+                                selected = isSelected,
                                 onClick = { viewModel.selectPaymentMethod(method) }
                             )
                         }

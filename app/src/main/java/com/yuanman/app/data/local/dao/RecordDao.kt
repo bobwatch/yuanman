@@ -78,7 +78,7 @@ interface RecordDao {
         WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime
           AND (:type IS NULL OR type = :type)
           AND (:categoryFilterEnabled = 0 OR categoryId IN (:categoryIds))
-          AND (:paymentMethod IS NULL OR paymentMethod = :paymentMethod)
+          AND (:paymentMethodFilterEnabled = 0 OR paymentMethod IN (:paymentMethods))
           AND (:searchQuery = '' OR remark LIKE '%' || :searchQuery || '%' OR paymentMethod LIKE '%' || :searchQuery || '%')
     """)
     fun getFilteredSummary(
@@ -87,7 +87,8 @@ interface RecordDao {
         type: String?,
         categoryIds: List<Long>,
         categoryFilterEnabled: Int,
-        paymentMethod: String?,
+        paymentMethods: List<String>,
+        paymentMethodFilterEnabled: Int,
         searchQuery: String
     ): Flow<RecordFilterSummary>
 
@@ -97,7 +98,7 @@ interface RecordDao {
         WHERE deletedAt IS NULL AND recordTime >= :startTime AND recordTime <= :endTime
           AND (:type IS NULL OR type = :type)
           AND (:categoryFilterEnabled = 0 OR categoryId IN (:categoryIds))
-          AND (:paymentMethod IS NULL OR paymentMethod = :paymentMethod)
+          AND (:paymentMethodFilterEnabled = 0 OR paymentMethod IN (:paymentMethods))
           AND (:searchQuery = '' OR remark LIKE '%' || :searchQuery || '%' OR paymentMethod LIKE '%' || :searchQuery || '%')
         ORDER BY 
           CASE WHEN :sortOrder = 'TIME_DESC' THEN recordTime END DESC,
@@ -113,7 +114,8 @@ interface RecordDao {
         type: String?,
         categoryIds: List<Long>,
         categoryFilterEnabled: Int,
-        paymentMethod: String?,
+        paymentMethods: List<String>,
+        paymentMethodFilterEnabled: Int,
         searchQuery: String,
         sortOrder: String,
         limit: Int,

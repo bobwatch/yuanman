@@ -74,6 +74,7 @@ fun AddEditRecordScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var isRemarkFocused by remember { mutableStateOf(false) }
+    val remarkFocusRequester = remember { FocusRequester() }
     val isImeVisible = WindowInsets.isImeVisible
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -103,8 +104,12 @@ fun AddEditRecordScreen(
     }
 
     // 当软键盘收起时，自动去除两端空白并持久化保存备注
+    var wasImeEverVisible by remember { mutableStateOf(false) }
     LaunchedEffect(isImeVisible) {
-        if (!isImeVisible) {
+        if (isImeVisible) {
+            wasImeEverVisible = true
+        } else if (wasImeEverVisible) {
+            wasImeEverVisible = false
             if (isRemarkFocused) {
                 isRemarkFocused = false
                 focusManager.clearFocus()
@@ -118,6 +123,16 @@ fun AddEditRecordScreen(
     LaunchedEffect(uiState.isSavedSuccess) {
         if (uiState.isSavedSuccess) {
             onNavigateBack()
+        }
+    }
+
+    LaunchedEffect(isRemarkFocused) {
+        if (isRemarkFocused) {
+            try {
+                kotlinx.coroutines.delay(80)
+                remarkFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
         }
     }
 
@@ -503,136 +518,138 @@ fun AddEditRecordScreen(
                             }
                         }
                     }
+
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                    )
                 }
 
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-
-                // 一体化属性条：[日期时分] + [支付方式/入账账户(选填)] + [备注输入(选填)]
+                // 属性配置区域：
+                // 当 isRemarkFocused 为 true（进入输入态）时：吸附系统输入法的整行都替换为全宽输入框 + [完成] 按钮
+                // 当 isRemarkFocused 为 false（常态）时：紧凑单行三胶囊展示 [日期胶囊] + [支付方式胶囊] + [备注输入胶囊]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 1. 日期与时分选择胶囊
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { showRecordDateSheet = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    if (!isRemarkFocused) {
+                        // 1. 日期与时分选择胶囊
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    showRecordDateSheet = true
+                                }
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.CalendarToday,
-                                contentDescription = "选择日期时间",
-                                modifier = Modifier.size(15.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = DateTimeUtils.formatRecordDateShort(uiState.recordTime),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    // 2. 支付方式 / 入账账户胶囊 (点击调起对应弹窗，区分支出与收入)
-                    val hasPaymentMethod = uiState.paymentMethod.isNotBlank()
-                    val hasSpread = isExpense && uiState.spreadMonths > 1
-                    val isPaymentActive = hasPaymentMethod || hasSpread
-
-                    val paymentDisplayText = when {
-                        !isExpense -> if (hasPaymentMethod) uiState.paymentMethod else "入账账户"
-                        hasPaymentMethod && hasSpread -> "${uiState.paymentMethod} · 分摊${uiState.spreadMonths}月"
-                        hasPaymentMethod -> uiState.paymentMethod
-                        hasSpread -> "分摊 ${uiState.spreadMonths} 个月"
-                        else -> "支付方式"
-                    }
-
-                    val paymentIcon = if (isExpense) {
-                        if (isPaymentActive) Icons.Default.CreditCard else Icons.Outlined.CreditCard
-                    } else {
-                        if (isPaymentActive) Icons.Default.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isPaymentActive) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        },
-                        border = if (isPaymentActive) {
-                            BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                        } else null,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { showPaymentSheet = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                        ) {
-                            Icon(
-                                imageVector = paymentIcon,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                                tint = if (isPaymentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = paymentDisplayText,
-                                fontSize = 13.sp,
-                                fontWeight = if (isPaymentActive) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isPaymentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (hasPaymentMethod || hasSpread) {
-                                Spacer(modifier = Modifier.width(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "清除",
-                                    modifier = Modifier
-                                        .size(13.dp)
-                                        .clickable {
-                                            viewModel.setPaymentMethod("")
-                                            viewModel.setSpreadMonths(1)
-                                        },
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    imageVector = Icons.Outlined.CalendarToday,
+                                    contentDescription = "选择日期时间",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = DateTimeUtils.formatRecordDateShort(uiState.recordTime),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // 2. 支付方式 / 入账账户胶囊
+                        val hasPaymentMethod = uiState.paymentMethod.isNotBlank()
+                        val hasSpread = isExpense && uiState.spreadMonths > 1
+                        val isPaymentActive = hasPaymentMethod || hasSpread
+
+                        val paymentDisplayText = when {
+                            !isExpense -> if (hasPaymentMethod) uiState.paymentMethod else "入账账户"
+                            hasPaymentMethod && hasSpread -> "${uiState.paymentMethod} · 分摊${uiState.spreadMonths}月"
+                            hasPaymentMethod -> uiState.paymentMethod
+                            hasSpread -> "分摊 ${uiState.spreadMonths} 个月"
+                            else -> "支付方式"
+                        }
+
+                        val paymentIcon = if (isExpense) {
+                            if (isPaymentActive) Icons.Default.CreditCard else Icons.Outlined.CreditCard
+                        } else {
+                            if (isPaymentActive) Icons.Default.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isPaymentActive) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            },
+                            border = if (isPaymentActive) {
+                                BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            } else null,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    showPaymentSheet = true
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = paymentIcon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (isPaymentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = paymentDisplayText,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isPaymentActive) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isPaymentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (hasPaymentMethod || hasSpread) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "清除",
+                                        modifier = Modifier
+                                            .size(13.dp)
+                                            .clickable {
+                                                viewModel.setPaymentMethod("")
+                                                viewModel.setSpreadMonths(1)
+                                            },
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // 3. 备注输入框 (直接就地输入与常用标签快捷选取，免除弹窗卡顿)
+                    // 3. 备注输入框 (常态下为单行胶囊，点击或输入态下整行独占全宽)
                     val hasRemark = uiState.remark.isNotBlank()
-                    val isKeyboardActive = isImeVisible || isRemarkFocused
-
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (isRemarkFocused) {
-                            themeActiveColor.copy(alpha = 0.14f)
-                        } else if (hasRemark) {
-                            themeActiveColor.copy(alpha = 0.10f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        },
+                        color = if (isRemarkFocused) themeActiveColor.copy(alpha = 0.12f) else if (hasRemark) themeActiveColor.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         border = BorderStroke(
-                            1.dp,
-                            if (isRemarkFocused) themeActiveColor
-                            else if (hasRemark) themeActiveColor.copy(alpha = 0.45f)
-                            else Color.Transparent
+                            if (isRemarkFocused) 1.5.dp else 1.dp,
+                            if (isRemarkFocused) themeActiveColor else if (hasRemark) themeActiveColor.copy(alpha = 0.4f) else Color.Transparent
                         ),
                         modifier = Modifier
                             .weight(1f)
@@ -640,7 +657,7 @@ fun AddEditRecordScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = if (isRemarkFocused) 8.dp else 6.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.EditNote,
@@ -648,16 +665,18 @@ fun AddEditRecordScreen(
                                 modifier = Modifier.size(16.dp),
                                 tint = if (hasRemark || isRemarkFocused) themeActiveColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Box(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 if (uiState.remark.isEmpty()) {
                                     Text(
-                                        text = "写备注...",
+                                        text = if (isRemarkFocused) "添加备注（如：麦当劳、打车回家）..." else "写备注...",
                                         fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 BasicTextField(
@@ -665,8 +684,8 @@ fun AddEditRecordScreen(
                                     onValueChange = { viewModel.setRemark(it) },
                                     singleLine = true,
                                     textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                        color = if (hasRemark || isRemarkFocused) themeActiveColor else MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 13.5.sp,
                                         fontWeight = if (hasRemark || isRemarkFocused) FontWeight.Medium else FontWeight.Normal
                                     ),
                                     cursorBrush = SolidColor(themeActiveColor),
@@ -678,11 +697,14 @@ fun AddEditRecordScreen(
                                         onDone = {
                                             keyboardController?.hide()
                                             focusManager.clearFocus()
+                                            isRemarkFocused = false
                                         }
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .onFocusChanged { isRemarkFocused = it.isFocused }
+                                        .onFocusChanged {
+                                            isRemarkFocused = it.isFocused
+                                        }
                                 )
                             }
                             if (hasRemark) {
@@ -691,7 +713,8 @@ fun AddEditRecordScreen(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "清空备注",
                                     modifier = Modifier
-                                        .size(14.dp)
+                                        .size(15.dp)
+                                        .clip(CircleShape)
                                         .clickable { viewModel.setRemark("") },
                                     tint = themeActiveColor.copy(alpha = 0.8f)
                                 )
@@ -699,23 +722,24 @@ fun AddEditRecordScreen(
                         }
                     }
 
-                    // 软键盘激活时展示「完成」收起按钮
-                    if (isKeyboardActive) {
+                    // 输入态时右侧清晰的「完成」收起按钮
+                    if (isRemarkFocused) {
                         Button(
                             onClick = {
                                 keyboardController?.hide()
                                 focusManager.clearFocus()
+                                isRemarkFocused = false
                             },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                            modifier = Modifier.height(34.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = themeActiveColor)
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            modifier = Modifier.height(36.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = themeActiveColor),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("完成", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("完成", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
-
             // 🌟 4. 底部沉浸式计算器键盘 / 软键盘自适应切换
             if (isImeVisible || isRemarkFocused) {
                 Spacer(
@@ -737,9 +761,8 @@ fun AddEditRecordScreen(
     }
 
     if (showRecordDateSheet) {
-        val initialDate = uiState.recordTime.coerceAtMost(System.currentTimeMillis())
         YuanmanDatePickerSheet(
-            initialDateMillis = initialDate,
+            initialDateMillis = uiState.recordTime,
             onDateTimeSelected = viewModel::setRecordTime,
             onDismiss = { showRecordDateSheet = false }
         )
