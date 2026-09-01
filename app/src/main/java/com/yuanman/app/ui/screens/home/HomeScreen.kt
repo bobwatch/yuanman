@@ -89,8 +89,8 @@ fun HomeScreen(
         it.record.type == selectedFilterType?.name
     }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing && !pullRefreshState.isRefreshing })
     var refreshWasRunning by remember { mutableStateOf(false) }
+    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing && !refreshWasRunning })
 
     // 下拉触发刷新；刷新期间禁用再次下拉，避免状态互相覆盖导致指示器卡住。
     LaunchedEffect(pullRefreshState.isRefreshing) {
