@@ -24,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 import java.util.Calendar
 
 data class HomeUiState(
@@ -42,7 +43,17 @@ data class HomeUiState(
     val quickEntryEnabled: Boolean = true,
     val quickEntryCategories: List<CategoryEntity> = emptyList(),
     val quickEntryLearningRules: List<QuickEntryLearningEntity> = emptyList(),
+    val quickTemplates: List<QuickRecordTemplate> = emptyList(),
+    val pinnedTemplateKeys: Set<String> = emptySet(),
     val isLoading: Boolean = false
+)
+
+data class QuickRecordTemplate(
+    val key: String,
+    val source: RecordWithCategory,
+    val usageCount: Int,
+    val lastUsedAt: Long,
+    val isPinned: Boolean
 )
 
 private data class MonthInfo(
@@ -59,16 +70,16 @@ private data class PrefsInfo(
     val affirmation: WarmAffirmation
 )
 
+private data class TemplateInfo(
+    val templates: List<QuickRecordTemplate>,
+    val pinnedKeys: Set<String>
+)
+
 class HomeViewModel(
     private val recordRepository: RecordRepository,
     private val preferencesRepository: PreferencesRepository,
     private val categoryRepository: CategoryRepository
 ) : ViewModel() {
-
-    /** 下拉刷新指示器的最短展示时长：查询快时补齐到该时长，查询慢时以查询耗时为准。 */
-    private companion object {
-        const val MIN_REFRESH_MILLIS = 400L
-    }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
@@ -77,8 +88,20 @@ class HomeViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     private val _affirmationIndex = MutableStateFlow(0)
     private val _currentAffirmation = MutableStateFlow(WarmAffirmationsHelper.getAffirmationForCurrentTime())
+    private val _quickEntryDraft = MutableStateFlow("")
+    private var lastReplayKey: String? = null
+    private var lastReplayAt: Long = 0L
 
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    val quickEntryDraft: StateFlow<String> = _quickEntryDraft.asStateFlow()
+
+    fun updateQuickEntryDraft(value: String) {
+        _quickEntryDraft.value = value
+    }
+
+    fun clearQuickEntryDraft() {
+        _quickEntryDraft.value = ""
+    }
 
     val defaultRecordType = preferencesRepository.defaultRecordType
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RecordType.EXPENSE)
@@ -104,12 +127,40 @@ class HomeViewModel(
         PrefsInfo(budgets, legacyBudget, privacy, quickEntryEnabled, affirmation)
     }
 
+    private val templateInfoFlow = combine(
+        recordRepository.getAllRecords(),
+        preferencesRepository.pinnedTemplateKeys,
+        preferencesRepository.hiddenTemplateKeys
+    ) { records, pinnedKeys, hiddenKeys ->
+        val templates = records
+            .groupBy(::templateKey)
+            .mapNotNull { (key, group) ->
+                if (key in hiddenKeys || (group.size < 2 && key !in pinnedKeys)) return@mapNotNull null
+                val source = group.maxByOrNull { it.record.recordTime } ?: return@mapNotNull null
+                QuickRecordTemplate(
+                    key = key,
+                    source = source,
+                    usageCount = group.size,
+                    lastUsedAt = group.maxOf { it.record.recordTime },
+                    isPinned = key in pinnedKeys
+                )
+            }
+            .sortedWith(
+                compareByDescending<QuickRecordTemplate> { it.isPinned }
+                    .thenByDescending { it.usageCount }
+                    .thenByDescending { it.lastUsedAt }
+            )
+            .take(5)
+        TemplateInfo(templates, pinnedKeys)
+    }
+
     val uiState: StateFlow<HomeUiState> = combine(
         monthInfoFlow,
         prefsInfoFlow,
         categoryRepository.getAllCategories(),
-        categoryRepository.observeAllQuickEntryLearning()
-    ) { monthInfo, prefsInfo, categories, learningRules ->
+        categoryRepository.observeAllQuickEntryLearning(),
+        templateInfoFlow
+    ) { monthInfo, prefsInfo, categories, learningRules, templateInfo ->
         val year = monthInfo.year
         val month = monthInfo.month
         val records = monthInfo.records
@@ -193,6 +244,8 @@ class HomeViewModel(
             budgetUsedPercent = usedPercent,
             quickEntryCategories = categories,
             quickEntryLearningRules = learningRules,
+            quickTemplates = templateInfo.templates,
+            pinnedTemplateKeys = templateInfo.pinnedKeys,
             isLoading = false
         )
     }.stateIn(
@@ -267,6 +320,7 @@ class HomeViewModel(
                 recordTime = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
+                revision = 0L,
                 syncId = java.util.UUID.randomUUID().toString(),
                 deletedAt = null
             )
@@ -328,9 +382,55 @@ class HomeViewModel(
         }
     }
 
+    fun replayTemplate(template: QuickRecordTemplate): Boolean {
+        val now = System.currentTimeMillis()
+        if (lastReplayKey == template.key && now - lastReplayAt < 1_200L) return false
+        lastReplayKey = template.key
+        lastReplayAt = now
+        copyRecord(template.source.record)
+        return true
+    }
+
+    fun setTemplatePinned(item: RecordWithCategory, pinned: Boolean) {
+        viewModelScope.launch { preferencesRepository.setTemplatePinned(templateKey(item), pinned) }
+    }
+
+    fun setTemplatePinned(template: QuickRecordTemplate, pinned: Boolean) {
+        viewModelScope.launch { preferencesRepository.setTemplatePinned(template.key, pinned) }
+    }
+
+    fun hideTemplate(template: QuickRecordTemplate) {
+        viewModelScope.launch {
+            preferencesRepository.setTemplateHidden(template.key, true)
+            preferencesRepository.setTemplatePinned(template.key, false)
+        }
+    }
+
+    fun isTemplatePinned(item: RecordWithCategory): Boolean = templateKey(item) in uiState.value.pinnedTemplateKeys
+
     fun setQuickEntryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setQuickEntryEnabled(enabled)
+        }
+    }
+
+    companion object {
+        /** 给品牌化刷新动效留出可感知但不拖沓的最短展示时间。 */
+        private const val MIN_REFRESH_MILLIS = 650L
+
+        fun templateKey(item: RecordWithCategory): String {
+            val record = item.record
+            val categoryKey = item.category?.syncId ?: "category:${record.categoryId}"
+            val canonical = listOf(
+                record.type.trim().uppercase(),
+                record.amount.toString(),
+                categoryKey,
+                record.remark.trim().lowercase(),
+                record.paymentMethod.trim()
+            ).joinToString("\u0001")
+            return MessageDigest.getInstance("SHA-256")
+                .digest(canonical.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
         }
     }
 

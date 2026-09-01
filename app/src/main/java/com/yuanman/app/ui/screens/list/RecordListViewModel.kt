@@ -101,7 +101,7 @@ class RecordListViewModel(
     companion object {
         const val PAGE_SIZE = 25
         /** 下拉刷新指示器的最短展示时长：查询快时补齐到该时长，查询慢时以查询耗时为准。 */
-        const val MIN_REFRESH_MILLIS = 400L
+        const val MIN_REFRESH_MILLIS = 650L
     }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()

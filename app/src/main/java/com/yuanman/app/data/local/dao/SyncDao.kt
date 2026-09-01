@@ -33,7 +33,7 @@ abstract class SyncDao {
     @Query("UPDATE records SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
     protected abstract suspend fun updateRecordCategory(oldCategoryId: Long, newCategoryId: Long)
 
-    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :categoryId")
+    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE id = :categoryId")
     protected abstract suspend fun softDeleteCategory(categoryId: Long, deletedAt: Long)
 
     @Query("SELECT COUNT(*) FROM records WHERE categoryId = :categoryId AND deletedAt IS NULL")
@@ -226,7 +226,9 @@ abstract class SyncDao {
             // a deterministic tie-break. This avoids silently discarding a
             // newer icon/name/tag change while cleaning legacy duplicates.
             val primary = group.sortedWith(
-                compareByDescending<CategoryEntity> { it.updatedAt }.thenBy { it.id }
+                compareByDescending<CategoryEntity> { it.revision }
+                    .thenByDescending { it.updatedAt }
+                    .thenBy { it.id }
             ).first()
             for (category in group) {
                 if (primary.id != category.id) {
@@ -235,7 +237,11 @@ abstract class SyncDao {
                     softDeleteCategory(category.id, deletedAt)
                     val index = categories.indexOfFirst { it.id == category.id }
                     if (index >= 0) {
-                        categories[index] = category.copy(updatedAt = deletedAt, deletedAt = deletedAt)
+                        categories[index] = category.copy(
+                            updatedAt = deletedAt,
+                            revision = category.revision + 1L,
+                            deletedAt = deletedAt
+                        )
                     }
                     changed += 1
                 }
@@ -261,23 +267,25 @@ abstract class SyncDao {
     )
 
     private fun CategoryEntity.winsAgainst(local: CategoryEntity): Boolean = when {
+        revision != local.revision -> revision > local.revision
         updatedAt != local.updatedAt -> updatedAt > local.updatedAt
         (deletedAt != null) != (local.deletedAt != null) -> deletedAt != null
         else -> deterministicValue() > local.deterministicValue()
     }
 
     private fun RecordEntity.winsAgainst(local: RecordEntity): Boolean = when {
+        revision != local.revision -> revision > local.revision
         updatedAt != local.updatedAt -> updatedAt > local.updatedAt
         (deletedAt != null) != (local.deletedAt != null) -> deletedAt != null
         else -> deterministicValue() > local.deterministicValue()
     }
 
     private fun CategoryEntity.deterministicValue(): String =
-        listOf(type, name, iconName, colorHex, isDefault, sortOrder, tags, deletedAt).joinToString("\u0001")
+        listOf(type, name, iconName, colorHex, isDefault, sortOrder, tags, revision, deletedAt).joinToString("\u0001")
 
     private fun RecordEntity.deterministicValue(): String =
         listOf(type, amount, categoryId, recordTime, remark, paymentMethod, splitGroupId,
-            splitIndex, splitTotal, createdAt, deletedAt).joinToString("\u0001")
+            splitIndex, splitTotal, createdAt, revision, deletedAt).joinToString("\u0001")
 
     private fun RecordEntity.fingerprint(): RecordFingerprint = RecordFingerprint(
         type = type,

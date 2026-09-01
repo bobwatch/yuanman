@@ -54,17 +54,17 @@ interface RecordDao {
     @Update
     suspend fun updateRecord(record: RecordEntity)
 
-    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
+    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE id = :id")
     suspend fun softDeleteRecordById(id: Long, deletedAt: Long)
 
-    @Query("UPDATE records SET deletedAt = NULL, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE records SET deletedAt = NULL, updatedAt = :updatedAt, revision = revision + 1 WHERE id = :id")
     suspend fun restoreRecordById(id: Long, updatedAt: Long)
 
     @Query("SELECT COUNT(*) FROM records WHERE categoryId = :categoryId AND deletedAt IS NULL")
     suspend fun countRecordsByCategoryId(categoryId: Long): Int
 
-    @Query("UPDATE records SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
-    suspend fun updateCategoryId(oldCategoryId: Long, newCategoryId: Long)
+    @Query("UPDATE records SET categoryId = :newCategoryId, updatedAt = :updatedAt, revision = revision + 1 WHERE categoryId = :oldCategoryId")
+    suspend fun updateCategoryId(oldCategoryId: Long, newCategoryId: Long, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT SUM(amount) FROM records WHERE deletedAt IS NULL AND type = :type AND recordTime >= :startTime AND recordTime <= :endTime")
     fun getTotalAmountByTypeAndDateRange(type: String, startTime: Long, endTime: Long): Flow<Long?>
@@ -138,7 +138,7 @@ interface RecordDao {
     """)
     suspend fun getWidgetMonthSummary(startTime: Long, endTime: Long): WidgetMonthSummary
 
-    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE deletedAt IS NULL")
+    @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE deletedAt IS NULL")
     suspend fun softDeleteAllRecords(deletedAt: Long)
 }
 

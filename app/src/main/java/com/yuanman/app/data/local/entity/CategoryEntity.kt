@@ -25,6 +25,8 @@ data class CategoryEntity(
     val syncId: String = UUID.randomUUID().toString(),
     @ColumnInfo(defaultValue = "0")
     val updatedAt: Long = createdAt,
+    @ColumnInfo(defaultValue = "0")
+    val revision: Long = 0L,
     val deletedAt: Long? = null
 ) {
     /**

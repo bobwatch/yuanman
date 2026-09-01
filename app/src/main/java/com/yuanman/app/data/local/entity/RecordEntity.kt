@@ -39,6 +39,8 @@ data class RecordEntity(
     val splitTotal: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0")
+    val revision: Long = 0L,
     @ColumnInfo(defaultValue = "''")
     val syncId: String = UUID.randomUUID().toString(),
     val deletedAt: Long? = null

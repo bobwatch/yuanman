@@ -23,6 +23,8 @@ import com.yuanman.app.utils.UpdateInfo
 import com.yuanman.app.utils.UpdateManager
 import com.yuanman.app.utils.UpdateState
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
@@ -36,6 +38,7 @@ data class SettingsUiState(
     val totalRecordCount: Int = 0,
     val allRecords: List<RecordWithCategory> = emptyList(),
     val allCategories: List<CategoryEntity> = emptyList(),
+    val lastBackupAt: Long = 0L,
     val isClearedSuccess: Boolean = false,
     val isLoading: Boolean = false
 )
@@ -51,6 +54,17 @@ private data class FeaturePrefs(
     val privacy: Boolean,
     val haptic: Boolean,
     val quickEntryEnabled: Boolean
+)
+
+private data class SettingsData(
+    val categories: List<CategoryEntity>,
+    val records: List<RecordWithCategory>,
+    val lastBackupAt: Long
+)
+
+data class PendingJsonRestore(
+    val json: String,
+    val preview: JsonBackupUtils.BackupPreview
 )
 
 class SettingsViewModel(
@@ -91,13 +105,18 @@ class SettingsViewModel(
         categoryRepository.observeAllQuickEntryLearning()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val settingsDataFlow = combine(
+        allCategories,
+        allRecords,
+        preferencesRepository.lastBackupAt
+    ) { categories, records, lastBackupAt -> SettingsData(categories, records, lastBackupAt) }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         generalPrefsFlow,
         featurePrefsFlow,
-        allCategories,
-        allRecords,
+        settingsDataFlow,
         _isClearedSuccess
-    ) { general, feature, categories, records, cleared ->
+    ) { general, feature, data, cleared ->
         SettingsUiState(
             themeMode = general.theme,
             defaultRecordType = general.defaultType,
@@ -106,9 +125,10 @@ class SettingsViewModel(
             privacyMode = feature.privacy,
             hapticEnabled = feature.haptic,
             quickEntryEnabled = feature.quickEntryEnabled,
-            totalRecordCount = records.size,
-            allRecords = records,
-            allCategories = categories,
+            totalRecordCount = data.records.size,
+            allRecords = data.records,
+            allCategories = data.categories,
+            lastBackupAt = data.lastBackupAt,
             isClearedSuccess = cleared,
             isLoading = false
         )
@@ -229,19 +249,57 @@ class SettingsViewModel(
         }
     }
 
-    fun exportJsonBackup(context: Context) {
-        val categories = uiState.value.allCategories
-        val records = uiState.value.allRecords
-        JsonBackupUtils.shareBackupFile(context, categories, records)
+    fun exportJsonBackup(context: Context, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val snapshot = preferencesRepository.createSnapshot()
+            val result = withContext(Dispatchers.IO) {
+                JsonBackupUtils.createBackupFile(
+                    context = context,
+                    categories = uiState.value.allCategories,
+                    records = uiState.value.allRecords,
+                    preferences = snapshot,
+                    quickEntryLearning = quickEntryLearningRules.value
+                )
+            }
+            result.onSuccess { file ->
+                JsonBackupUtils.shareBackupFile(context, file)
+                preferencesRepository.markBackupCreated()
+                onResult(true, "完整备份已生成，请选择保存位置")
+            }.onFailure { onResult(false, "备份失败：${it.message ?: "无法创建文件"}") }
+        }
+    }
+
+    fun previewJsonBackup(context: Context, uri: Uri, onResult: (Result<PendingJsonRestore>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val bytes = input.readBytes()
+                        require(bytes.size <= 100 * 1024 * 1024) { "备份文件超过 100MB 限制" }
+                        val json = bytes.toString(Charsets.UTF_8)
+                        PendingJsonRestore(json, JsonBackupUtils.preview(json))
+                    } ?: error("无法读取备份文件")
+                }
+            }
+            onResult(result)
+        }
     }
 
     fun restoreFromJson(jsonString: String, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val data = JsonBackupUtils.parseFromJsonString(jsonString)
+                val data = withContext(Dispatchers.IO) {
+                    JsonBackupUtils.parseFromJsonString(jsonString).also {
+                        com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(
+                            com.yuanman.app.YuanmanApplication.instance
+                        )
+                    }
+                }
                 categoryRepository.mergeSyncedData(data.categories, data.records)
+                categoryRepository.mergeQuickEntryLearning(data.quickEntryLearning)
+                data.preferences?.let { preferencesRepository.restoreSnapshot(it) }
                 recordRepository.notifyDataChanged()
-                onResult(true, "成功恢复 ${data.records.size} 笔账单与 ${data.categories.size} 个分类！")
+                onResult(true, "恢复完成：${data.records.count { it.deletedAt == null }} 笔账单、${data.categories.count { it.deletedAt == null }} 个分类")
             } catch (e: Exception) {
                 onResult(false, "备份解析失败：${e.message}")
             }

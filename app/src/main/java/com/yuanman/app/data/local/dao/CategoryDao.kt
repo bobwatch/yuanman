@@ -54,13 +54,13 @@ interface CategoryDao {
     @Update
     suspend fun updateCategory(category: CategoryEntity)
 
-    @Query("UPDATE categories SET sortOrder = :sortOrder, updatedAt = :updatedAt WHERE id = :categoryId")
+    @Query("UPDATE categories SET sortOrder = :sortOrder, updatedAt = :updatedAt, revision = revision + 1 WHERE id = :categoryId")
     suspend fun updateSortOrder(categoryId: Long, sortOrder: Int, updatedAt: Long)
 
-    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :categoryId")
+    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE id = :categoryId")
     suspend fun softDeleteCategory(categoryId: Long, deletedAt: Long)
 
-    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE isDefault = 0 AND deletedAt IS NULL")
+    @Query("UPDATE categories SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE isDefault = 0 AND deletedAt IS NULL")
     suspend fun softDeleteCustomCategories(deletedAt: Long)
 
     @Delete

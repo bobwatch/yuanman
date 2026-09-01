@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +43,7 @@ import com.yuanman.app.ui.components.LocalToastHostState
 import com.yuanman.app.ui.components.RecordDetailCard
 import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.ui.components.YuanmanDatePickerSheet
 import com.yuanman.app.ui.screens.home.BitgetTransactionItem
 import com.yuanman.app.utils.DateTimeUtils
@@ -624,17 +624,13 @@ fun RecordListScreen(
                         }
                     }
 
-                    // 下拉刷新指示器：主色圆形浅底，让 loading 更醒目且不遮挡内容
-                    if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
-                        PullToRefreshContainer(
-                            state = pullRefreshState,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 4.dp),
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    // 进度读取封装在指示器内部，避免拖动时重组整页账单。
+                    YuanmanPullRefreshIndicator(
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp)
+                    )
                 }
             }
         }

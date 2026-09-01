@@ -25,6 +25,7 @@ object DatabaseBackupManager {
     private const val SHARED_BACKUP_FILE_PREFIX = "yuanman_database_backup"
     private const val BACKUP_STATE_PREFERENCES = "database_backup_state"
     private const val DATABASE_INITIALIZED_KEY = "database_initialized"
+    private const val UNINSTALL_SAFE_BACKUP_ENABLED_KEY = "uninstall_safe_backup_enabled"
     private const val SHARED_BACKUP_TEMP_PREFIX = ".yuanman_database_backup_"
     private const val SHARED_BACKUP_DIR_NAME = "Yuanman"
     private const val SHARED_BACKUP_MIME_TYPE = "application/vnd.sqlite3"
@@ -77,9 +78,14 @@ object DatabaseBackupManager {
                     }
                 }
 
-                // 应用私有目录会随卸载删除，额外写入公共 Documents，供重装后自动恢复。
-                if (!createSharedBackup(context, dbFile)) {
-                    Log.w(TAG, "Shared uninstall-safe backup was not updated.")
+                // 公共 Documents 对其他文件管理工具可见，只在用户明确授权后写入。
+                if (isUninstallSafeBackupEnabled(context)) {
+                    if (!createSharedBackup(context, dbFile)) {
+                        Log.w(TAG, "Shared uninstall-safe backup was not updated.")
+                    }
+                } else {
+                    // v0.0.3 曾默认创建公共副本；升级后按新的默认隐私策略主动收口。
+                    removeSharedBackups(context)
                 }
 
                 Log.i(TAG, "Database auto-backup completed successfully. Size: ${dbFile.length()} bytes")
@@ -127,6 +133,28 @@ object DatabaseBackupManager {
             .edit()
             .putBoolean(DATABASE_INITIALIZED_KEY, true)
             .apply()
+    }
+
+    fun isUninstallSafeBackupEnabled(context: Context): Boolean =
+        context.applicationContext
+            .getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .getBoolean(UNINSTALL_SAFE_BACKUP_ENABLED_KEY, false)
+
+    fun setUninstallSafeBackupEnabled(context: Context, enabled: Boolean) {
+        context.applicationContext
+            .getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(UNINSTALL_SAFE_BACKUP_ENABLED_KEY, enabled)
+            .apply()
+        if (enabled) autoBackup(context) else removeSharedBackups(context)
+    }
+
+    /** Called only after the user explicitly disables public uninstall-safe backups. */
+    private fun removeSharedBackups(context: Context) {
+        runCatching {
+            querySharedBackupUris(context).forEach { context.contentResolver.delete(it, null, null) }
+            legacySharedBackupFile()?.takeIf { it.isFile }?.delete()
+        }.onFailure { Log.w(TAG, "Unable to remove shared backups: ${it.message}") }
     }
 
     private fun isDatabaseInitialized(context: Context): Boolean {

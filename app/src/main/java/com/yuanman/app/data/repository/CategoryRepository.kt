@@ -57,6 +57,7 @@ class CategoryRepository(
                         syncId = existing.syncId,
                         createdAt = existing.createdAt,
                         updatedAt = System.currentTimeMillis(),
+                        revision = existing.revision + 1L,
                         deletedAt = null
                     )
                 )
@@ -118,6 +119,14 @@ class CategoryRepository(
 
     suspend fun clearQuickEntryLearning() = withContext(Dispatchers.IO) {
         quickEntryLearningDao.deleteUserRules()
+    }
+
+    suspend fun mergeQuickEntryLearning(rules: List<QuickEntryLearningEntity>) = withContext(Dispatchers.IO) {
+        val valid = rules.filter {
+            it.type in RecordType.entries.map(RecordType::name) &&
+                it.phrase.isNotBlank() && it.categorySyncId.isNotBlank() && it.sampleCount >= 0
+        }
+        if (valid.isNotEmpty()) quickEntryLearningDao.upsertAll(valid)
     }
 
     /** 将解析器内置词库同步到分类学习页，幂等执行，不覆盖用户已经积累的权重。 */
@@ -203,6 +212,7 @@ class CategoryRepository(
                 name = category.name.trim(),
                 type = category.type.trim().uppercase(Locale.ROOT),
                 updatedAt = System.currentTimeMillis(),
+                revision = category.revision + 1L,
                 deletedAt = null
             )
         )
@@ -251,6 +261,7 @@ class CategoryRepository(
                         syncId = existing.syncId,
                         createdAt = existing.createdAt,
                         updatedAt = System.currentTimeMillis(),
+                        revision = existing.revision + 1L,
                         deletedAt = null
                     )
                 )

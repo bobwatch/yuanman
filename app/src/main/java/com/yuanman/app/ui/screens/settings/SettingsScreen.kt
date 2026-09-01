@@ -60,6 +60,9 @@ import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.utils.clickableDebounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +77,10 @@ fun SettingsScreen(
     val learningRules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
+    var pendingJsonRestore by remember { mutableStateOf<PendingJsonRestore?>(null) }
+    var uninstallSafeBackupEnabled by remember {
+        mutableStateOf(com.yuanman.app.data.local.DatabaseBackupManager.isUninstallSafeBackupEnabled(context))
+    }
 
     val csvPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -89,9 +96,22 @@ fun SettingsScreen(
         }
     }
 
+    val jsonBackupPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.previewJsonBackup(context, uri) { result ->
+                result.onSuccess { pendingJsonRestore = it }
+                    .onFailure { toast.error("无法读取备份：${it.message ?: "文件无效"}") }
+            }
+        }
+    }
+
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
     var showThemeBottomSheet by remember { mutableStateOf(false) }
+    var showSpreadsheetBottomSheet by remember { mutableStateOf(false) }
+    var showBackupBottomSheet by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
@@ -256,12 +276,12 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 导出账单表格 (高频实用)
+                    // 主页面只保留三个清晰入口，低频操作在二级面板中按任务分组。
                     SettingsRowItem(
-                        icon = Icons.Outlined.FileDownload,
-                        title = "导出账单表格",
-                        subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
-                        onClick = { viewModel.exportRecordsCsv(context) }
+                        icon = Icons.Outlined.ImportExport,
+                        title = "账单导入与导出",
+                        subtitle = "备份、分享或迁移账单 · 共 ${uiState.totalRecordCount} 笔",
+                        onClick = { showSpreadsheetBottomSheet = true }
                     )
 
                     HorizontalDivider(
@@ -269,22 +289,17 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                     )
 
-                    // 导入账单表格
+                    val lastBackupText = if (uiState.lastBackupAt > 0L) {
+                        "上次生成 ${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(uiState.lastBackupAt))}"
+                    } else {
+                        "尚未创建完整备份"
+                    }
                     SettingsRowItem(
-                        icon = Icons.Outlined.FileUpload,
-                        title = "导入账单表格",
-                        subtitle = "支持导入 CSV 账单表格并自动归类入库",
-                        onClick = {
-                            csvPickerLauncher.launch(
-                                arrayOf(
-                                    "text/comma-separated-values",
-                                    "text/csv",
-                                    "text/plain",
-                                    "application/csv",
-                                    "*/*"
-                                )
-                            )
-                        }
+                        icon = Icons.Outlined.Backup,
+                        title = "备份与恢复",
+                        subtitle = "$lastBackupText · ${if (uninstallSafeBackupEnabled) "卸载保护已开" else "卸载保护已关"}",
+                        subtitleHighlight = uninstallSafeBackupEnabled,
+                        onClick = { showBackupBottomSheet = true }
                     )
 
                     HorizontalDivider(
@@ -396,7 +411,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "版本 v${viewModel.updateManager.currentVersionName} · 纯本地离线隐私保护",
+                    text = "版本 v${viewModel.updateManager.currentVersionName} · 数据默认本地保存",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -404,6 +419,40 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(60.dp))
         }
+    }
+
+    pendingJsonRestore?.let { pending ->
+        val preview = pending.preview
+        AlertDialog(
+            onDismissRequest = { pendingJsonRestore = null },
+            icon = { Icon(Icons.Outlined.Restore, contentDescription = null) },
+            title = { Text("确认恢复完整备份") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("备份版本 ${preview.version} · ${preview.recordCount} 笔账单 · ${preview.categoryCount} 个分类")
+                    Text("快捷学习 ${preview.learningRuleCount} 条 · ${if (preview.includesPreferences) "包含预算与偏好" else "旧版备份，不含预算与偏好"}")
+                    Text(
+                        text = if (preview.checksumVerified) {
+                            "完整性校验已通过。恢复采用合并方式，现有数据会先创建安全快照。"
+                        } else {
+                            "这是旧版无校验备份。请确认文件来源可信；现有数据会先创建安全快照。"
+                        },
+                        color = if (preview.checksumVerified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.restoreFromJson(pending.json) { success, message ->
+                        if (success) toast.success(message) else toast.error(message)
+                    }
+                    pendingJsonRestore = null
+                }) { Text("确认恢复") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingJsonRestore = null }) { Text("取消") }
+            }
+        )
     }
 
     // 🌟 月度预算设置弹窗
@@ -695,6 +744,56 @@ fun SettingsScreen(
         }
     }
 
+    if (showSpreadsheetBottomSheet) {
+        SpreadsheetBottomSheet(
+            totalRecordCount = uiState.totalRecordCount,
+            onDismiss = { showSpreadsheetBottomSheet = false },
+            onExport = {
+                showSpreadsheetBottomSheet = false
+                viewModel.exportRecordsCsv(context)
+            },
+            onImport = {
+                showSpreadsheetBottomSheet = false
+                csvPickerLauncher.launch(
+                    arrayOf(
+                        "text/comma-separated-values",
+                        "text/csv",
+                        "text/plain",
+                        "application/csv",
+                        "*/*"
+                    )
+                )
+            }
+        )
+    }
+
+    if (showBackupBottomSheet) {
+        BackupAndRestoreBottomSheet(
+            lastBackupAt = uiState.lastBackupAt,
+            uninstallSafeBackupEnabled = uninstallSafeBackupEnabled,
+            onDismiss = { showBackupBottomSheet = false },
+            onCreateBackup = {
+                showBackupBottomSheet = false
+                viewModel.exportJsonBackup(context) { success, message ->
+                    if (success) toast.success(message) else toast.error(message)
+                }
+            },
+            onRestore = {
+                showBackupBottomSheet = false
+                jsonBackupPickerLauncher.launch(arrayOf("application/json", "text/json", "*/*"))
+            },
+            onUninstallSafeBackupChanged = { enabled ->
+                uninstallSafeBackupEnabled = enabled
+                com.yuanman.app.data.local.DatabaseBackupManager.setUninstallSafeBackupEnabled(context, enabled)
+                if (enabled) {
+                    toast.info("已开启卸载保护，副本会保存到公共 Documents")
+                } else {
+                    toast.success("卸载保护已关闭，公共副本已移除")
+                }
+            }
+        )
+    }
+
     // 🌟 设备同步弹层
     if (showWifiSyncModal) {
         FamilySyncBottomSheet(
@@ -750,6 +849,157 @@ fun SettingsScreen(
             onReset = { showResetLearningDialog = true },
             onDismiss = { showQuickEntrySheet = false }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpreadsheetBottomSheet(
+    totalRecordCount: Int,
+    onDismiss: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
+    YuanmanModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        SettingsTaskSheetContent(
+            title = "账单导入与导出",
+            description = "保存、分享账单，或从其他记账工具迁移数据",
+            onDismiss = onDismiss
+        ) {
+            SettingsRowItem(
+                icon = Icons.Outlined.FileDownload,
+                title = "导出账单",
+                subtitle = "导出当前 $totalRecordCount 笔账单，可保存或分享",
+                onClick = onExport
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            SettingsRowItem(
+                icon = Icons.Outlined.FileUpload,
+                title = "导入账单",
+                subtitle = "选择账单文件并自动匹配分类",
+                onClick = onImport
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackupAndRestoreBottomSheet(
+    lastBackupAt: Long,
+    uninstallSafeBackupEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onCreateBackup: () -> Unit,
+    onRestore: () -> Unit,
+    onUninstallSafeBackupChanged: (Boolean) -> Unit
+) {
+    val lastBackupText = if (lastBackupAt > 0L) {
+        "上次生成 ${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(lastBackupAt))}"
+    } else {
+        "尚未创建完整备份"
+    }
+
+    YuanmanModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        SettingsTaskSheetContent(
+            title = "备份与恢复",
+            description = lastBackupText,
+            onDismiss = onDismiss
+        ) {
+            SettingsRowItem(
+                icon = Icons.Outlined.Backup,
+                title = "创建完整备份",
+                subtitle = "账单、分类、预算、偏好与快捷学习",
+                onClick = onCreateBackup
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            SettingsRowItem(
+                icon = Icons.Outlined.Restore,
+                title = "从备份恢复",
+                subtitle = "先校验并预览，确认后再合并数据",
+                onClick = onRestore
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            SettingsRowItem(
+                icon = Icons.Outlined.FolderShared,
+                title = "卸载后自动恢复",
+                subtitle = if (uninstallSafeBackupEnabled) {
+                    "已开启 · 公共 Documents 中保留加固副本"
+                } else {
+                    "已关闭 · 财务数据仅保留在应用空间"
+                },
+                subtitleHighlight = uninstallSafeBackupEnabled,
+                trailingContent = {
+                    Switch(
+                        checked = uninstallSafeBackupEnabled,
+                        onCheckedChange = onUninstallSafeBackupChanged
+                    )
+                },
+                onClick = { onUninstallSafeBackupChanged(!uninstallSafeBackupEnabled) }
+            )
+        }
+
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+        ) {
+            Text(
+                text = "恢复前会校验备份，并为现有数据创建安全快照。卸载保护开启时，系统文件管理器可看到备份副本。",
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun SettingsTaskSheetContent(
+    title: String,
+    description: String,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "关闭")
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                content = content
+            )
+        }
     }
 }
 

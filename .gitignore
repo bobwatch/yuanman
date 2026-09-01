@@ -46,10 +46,6 @@ proguard/
 .idea/modules.xml
 .idea/workspace.xml
 
-# Keystore files
-*.jks
-*.keystore
-
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -67,3 +63,8 @@ captures/
 
 # Adb sync working dir
 .adb_sync_backup/
+
+# Local Codex/build investigation artifacts
+.codex-build-cache/
+.tmp-*
+--

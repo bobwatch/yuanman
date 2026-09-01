@@ -122,6 +122,7 @@ class RecordRepository(
             syncId = existing?.syncId ?: record.syncId,
             createdAt = existing?.createdAt ?: record.createdAt,
             updatedAt = System.currentTimeMillis(),
+            revision = (existing?.revision ?: record.revision) + 1L,
             deletedAt = null
         )
         recordDao.updateRecord(normalized)

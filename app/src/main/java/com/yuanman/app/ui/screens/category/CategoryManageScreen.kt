@@ -257,7 +257,8 @@ fun CategoryManageScreen(
                                 }
                             )
                         },
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                    // 顶部留白与卡片间距保持一致，首项不再贴着 Tab 指示线。
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(

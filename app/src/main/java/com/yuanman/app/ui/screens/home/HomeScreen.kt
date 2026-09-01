@@ -1,12 +1,14 @@
 package com.yuanman.app.ui.screens.home
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,8 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,11 +46,16 @@ import androidx.compose.ui.window.Dialog
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.QuickEntryParser
+import com.yuanman.app.data.model.QuickEntryResult
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.clickableDebounce
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,9 +154,11 @@ fun HomeScreen(
                 if (uiState.quickEntryEnabled) {
                     QuickEntryStrip(
                         type = quickEntryType,
+                        draftState = viewModel.quickEntryDraft,
                         categories = uiState.quickEntryCategories,
                         learningRules = uiState.quickEntryLearningRules,
                         onTypeChange = { quickEntryType = it },
+                        onDraftChange = viewModel::updateQuickEntryDraft,
                         onSubmit = { input, type, overrideCategory ->
                             val saved = viewModel.saveQuickEntry(input, type, overrideCategory)
                             if (saved != null) {
@@ -165,6 +174,21 @@ fun HomeScreen(
                         },
                         onClose = { showQuickEntryCloseConfirm = true },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+
+                if (uiState.quickTemplates.isNotEmpty()) {
+                    QuickTemplatesRow(
+                        templates = uiState.quickTemplates,
+                        onReplay = { template ->
+                            if (viewModel.replayTemplate(template)) {
+                                toast.success("已复记 ${template.source.category?.name ?: "账单"} · ¥${MoneyUtils.centsToYuanString(template.source.record.amount)}")
+                            } else {
+                                toast.info("操作太快，已避免重复记账")
+                            }
+                        },
+                        onTogglePin = { template -> viewModel.setTemplatePinned(template, !template.isPinned) },
+                        onHide = viewModel::hideTemplate
                     )
                 }
 
@@ -235,17 +259,13 @@ fun HomeScreen(
                         }
                     }
 
-                    // 下拉刷新指示器：主色圆形浅底，让 loading 更醒目且不遮挡内容
-                    if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
-                        PullToRefreshContainer(
-                            state = pullRefreshState,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 4.dp),
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    // 进度读取封装在指示器内部，避免拖动时重组整页账单。
+                    YuanmanPullRefreshIndicator(
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp)
+                    )
                 }
             }
         }
@@ -372,6 +392,26 @@ fun HomeScreen(
                         }
                 )
 
+                val templatePinned = viewModel.isTemplatePinned(target)
+                ListItem(
+                    headlineContent = { Text(if (templatePinned) "取消常用" else "固定到常用") },
+                    supportingContent = { Text(if (templatePinned) "仍会根据使用频率自动推荐" else "固定后会优先显示在首页") },
+                    leadingContent = {
+                        Icon(
+                            if (templatePinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            viewModel.setTemplatePinned(target, !templatePinned)
+                            activeMenuRecord = null
+                            toast.success(if (templatePinned) "已取消固定" else "已固定到常用账单")
+                        }
+                )
+
                 ListItem(
                     headlineContent = { Text("删除账单", color = MaterialTheme.colorScheme.error) },
                     leadingContent = {
@@ -430,6 +470,98 @@ fun HomeScreen(
 }
 
 @Composable
+private fun QuickTemplatesRow(
+    templates: List<QuickRecordTemplate>,
+    onReplay: (QuickRecordTemplate) -> Unit,
+    onTogglePin: (QuickRecordTemplate) -> Unit,
+    onHide: (QuickRecordTemplate) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp, bottom = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.Bolt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "常用账单 · 点按复记",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(templates, key = QuickRecordTemplate::key) { template ->
+                var menuExpanded by remember(template.key) { mutableStateOf(false) }
+                val item = template.source
+                Card(
+                    modifier = Modifier
+                        .widthIn(min = 150.dp, max = 190.dp)
+                        .clickableDebounce(debounceTimeMs = 500L) { onReplay(template) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CategoryIconView(
+                            iconName = item.category?.iconName ?: "other",
+                            colorHex = item.category?.colorHex ?: 0xFF607D8BL,
+                            size = 28.dp,
+                            iconSize = 14.dp
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                item.record.remark.ifBlank { item.category?.name ?: "账单" },
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "¥${MoneyUtils.centsToYuanString(item.record.amount)} · ${template.usageCount}次",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(30.dp)) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "常用账单选项", modifier = Modifier.size(17.dp))
+                            }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (template.isPinned) "取消固定" else "固定到最前") },
+                                    leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
+                                    onClick = { menuExpanded = false; onTogglePin(template) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("不再推荐") },
+                                    leadingIcon = { Icon(Icons.Outlined.VisibilityOff, contentDescription = null) },
+                                    onClick = { menuExpanded = false; onHide(template) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HomeFilterChip(
     text: String,
     selected: Boolean,
@@ -454,32 +586,52 @@ private fun HomeFilterChip(
 @Composable
 private fun QuickEntryStrip(
     type: RecordType,
+    draftState: StateFlow<String>,
     categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
     learningRules: List<com.yuanman.app.data.local.entity.QuickEntryLearningEntity>,
     onTypeChange: (RecordType) -> Unit,
+    onDraftChange: (String) -> Unit,
     onSubmit: (String, RecordType, com.yuanman.app.data.local.entity.CategoryEntity?) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var text by remember { mutableStateOf("") }
+    val text by draftState.collectAsState()
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
     }
     // 分类快捷修改：点击解析出的分类徽章弹出选择，覆盖只对同一备注文本生效
     var showCategoryPicker by remember { mutableStateOf(false) }
     var categoryOverride by remember { mutableStateOf<Pair<String, com.yuanman.app.data.local.entity.CategoryEntity>?>(null) }
-    val preview = remember(text, availableCategories, learningRules, categoryOverride) {
-        val parsed = QuickEntryParser.parse(text, availableCategories, learningRules)
-        if (parsed != null && categoryOverride != null && categoryOverride!!.first == parsed.remark) {
-            parsed.copy(category = categoryOverride!!.second)
+    // 解析包含大量分类词典匹配。输入线程只更新文字，解析在短暂防抖后移到后台，
+    // 避免“文字 + 数字”刚形成有效账单时阻塞键盘与光标。
+    val preview by produceState<QuickEntryResult?>(
+        initialValue = null,
+        text,
+        availableCategories,
+        learningRules,
+        categoryOverride
+    ) {
+        if (text.isBlank()) {
+            value = null
         } else {
-            parsed
+            delay(120L)
+            val overrideSnapshot = categoryOverride
+            value = withContext(Dispatchers.Default) {
+                val parsed = QuickEntryParser.parse(text, availableCategories, learningRules)
+                if (parsed != null && overrideSnapshot != null && overrideSnapshot.first == parsed.remark) {
+                    parsed.copy(category = overrideSnapshot.second)
+                } else {
+                    parsed
+                }
+            }
         }
     }
+    // 固定本次重组读取的结果，避免异步 State 的自定义 getter 在同一帧内被重复读取。
+    val stablePreview = preview
     val isExpense = type == RecordType.EXPENSE
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
-    if (showCategoryPicker && preview != null) {
+    if (showCategoryPicker && stablePreview != null) {
         val pickerCategories = availableCategories
         AlertDialog(
             onDismissRequest = { showCategoryPicker = false },
@@ -490,13 +642,13 @@ private fun QuickEntryStrip(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items(pickerCategories, key = { it.id }) { cat ->
-                        val isCurrent = cat.id == preview.category?.id
+                        val isCurrent = cat.id == stablePreview.category?.id
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
-                                    categoryOverride = preview.remark to cat
+                                    categoryOverride = stablePreview.remark to cat
                                     showCategoryPicker = false
                                 }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -537,7 +689,7 @@ private fun QuickEntryStrip(
         )
     }
 
-    val isReady = preview != null
+    val isReady = stablePreview != null
     val btnBgColor by animateColorAsState(
         targetValue = if (isReady) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
         label = "btn_bg"
@@ -575,7 +727,7 @@ private fun QuickEntryStrip(
             // 2. 原生无框极简输入框
             BasicTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = onDraftChange,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 2.dp),
@@ -594,7 +746,7 @@ private fun QuickEntryStrip(
                     onDone = {
                         if (isReady) {
                             if (onSubmit(text, type, categoryOverride?.second)) {
-                                text = ""
+                                onDraftChange("")
                                 categoryOverride = null
                             }
                         }
@@ -607,7 +759,7 @@ private fun QuickEntryStrip(
                     ) {
                         if (text.isEmpty()) {
                             Text(
-                                text = "✨ 闪电记账 如: 咖啡15块",
+                                text = "✨ 闪电记账 如: 支付宝咖啡36",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f),
                                     fontSize = 13.sp
@@ -624,11 +776,11 @@ private fun QuickEntryStrip(
             // 3. 实时智能解析徽章 (单行平铺，防止折行)
             AnimatedVisibility(
                 visible = isReady,
-                enter = fadeIn() + expandHorizontally(),
-                exit = fadeOut() + shrinkHorizontally()
+                enter = fadeIn(animationSpec = tween(durationMillis = 90)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 60))
             ) {
-                if (preview != null) {
-                    val cat = preview.category
+                if (stablePreview != null) {
+                    val cat = stablePreview.category
                     val catColor = cat?.let { Color(it.colorHex) } ?: accent
                     val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
 
@@ -641,7 +793,7 @@ private fun QuickEntryStrip(
                             .padding(horizontal = 2.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
-                                categoryOverride = preview.remark to (preview.category ?: return@clickable)
+                                categoryOverride = stablePreview.remark to (stablePreview.category ?: return@clickable)
                                 showCategoryPicker = true
                             }
                     ) {
@@ -673,7 +825,7 @@ private fun QuickEntryStrip(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                text = "¥${preview.amountYuan.toPlainString()}",
+                                text = "¥${stablePreview.amountYuan.toPlainString()}",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 11.sp,
@@ -682,7 +834,7 @@ private fun QuickEntryStrip(
                                 maxLines = 1,
                                 softWrap = false
                             )
-                            preview.paymentMethod?.let { method ->
+                            stablePreview.paymentMethod?.let { method ->
                                 Text(
                                     text = "·$method",
                                     style = MaterialTheme.typography.labelSmall.copy(
@@ -704,11 +856,11 @@ private fun QuickEntryStrip(
                 onClick = {
                     if (isReady) {
                         if (onSubmit(text, type, categoryOverride?.second)) {
-                            text = ""
+                            onDraftChange("")
                             categoryOverride = null
                         }
                     } else if (text.isNotEmpty()) {
-                        text = ""
+                        onDraftChange("")
                     } else {
                         onClose()
                     }
