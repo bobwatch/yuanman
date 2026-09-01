@@ -68,19 +68,18 @@ fun RecordListScreen(
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var searchFocused by remember { mutableStateOf(false) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
-    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
+    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing && !pullRefreshState.isRefreshing })
     var refreshWasRunning by remember { mutableStateOf(false) }
 
+    // 下拉触发刷新；刷新期间禁用再次下拉，避免状态互相覆盖导致指示器卡住。
     LaunchedEffect(pullRefreshState.isRefreshing) {
-        if (pullRefreshState.isRefreshing) {
+        if (pullRefreshState.isRefreshing && !refreshWasRunning) {
             refreshWasRunning = true
             viewModel.refresh()
         }
     }
     LaunchedEffect(isRefreshing) {
-        if (isRefreshing) {
-            refreshWasRunning = true
-        } else if (refreshWasRunning) {
+        if (!isRefreshing && refreshWasRunning) {
             if (pullRefreshState.isRefreshing) {
                 pullRefreshState.endRefresh()
             }
@@ -469,14 +468,6 @@ fun RecordListScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         item {
-                            Text(
-                                text = "支付方式",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                        item {
                             ModernFilterPill(
                                 text = "全部方式",
                                 selected = uiState.selectedPaymentMethods.isEmpty(),
@@ -633,14 +624,14 @@ fun RecordListScreen(
                         }
                     }
 
-                    // 拖动阶段保留进度反馈，但使用透明容器，避免短距离下拉出现深色圆块。
+                    // 下拉刷新指示器：主色圆形浅底，让 loading 更醒目且不遮挡内容
                     if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
                         PullToRefreshContainer(
                             state = pullRefreshState,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 4.dp),
-                            containerColor = Color.Transparent,
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
                             contentColor = MaterialTheme.colorScheme.primary
                         )
                     }

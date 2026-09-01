@@ -89,19 +89,18 @@ fun HomeScreen(
         it.record.type == selectedFilterType?.name
     }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
+    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing && !pullRefreshState.isRefreshing })
     var refreshWasRunning by remember { mutableStateOf(false) }
 
+    // 下拉触发刷新；刷新期间禁用再次下拉，避免状态互相覆盖导致指示器卡住。
     LaunchedEffect(pullRefreshState.isRefreshing) {
-        if (pullRefreshState.isRefreshing) {
+        if (pullRefreshState.isRefreshing && !refreshWasRunning) {
             refreshWasRunning = true
             viewModel.refresh()
         }
     }
     LaunchedEffect(isRefreshing) {
-        if (isRefreshing) {
-            refreshWasRunning = true
-        } else if (refreshWasRunning) {
+        if (!isRefreshing && refreshWasRunning) {
             if (pullRefreshState.isRefreshing) {
                 pullRefreshState.endRefresh()
             }
@@ -151,8 +150,8 @@ fun HomeScreen(
                         categories = uiState.quickEntryCategories,
                         learningRules = uiState.quickEntryLearningRules,
                         onTypeChange = { quickEntryType = it },
-                        onSubmit = { input, type ->
-                            val saved = viewModel.saveQuickEntry(input, type)
+                        onSubmit = { input, type, overrideCategory ->
+                            val saved = viewModel.saveQuickEntry(input, type, overrideCategory)
                             if (saved != null) {
                                 val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
                                 toast.success(
@@ -236,14 +235,14 @@ fun HomeScreen(
                         }
                     }
 
-                    // 拖动阶段保留进度反馈，但使用透明容器，避免短距离下拉出现深色圆块。
+                    // 下拉刷新指示器：主色圆形浅底，让 loading 更醒目且不遮挡内容
                     if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
                         PullToRefreshContainer(
                             state = pullRefreshState,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 4.dp),
-                            containerColor = Color.Transparent,
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
                             contentColor = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -458,7 +457,7 @@ private fun QuickEntryStrip(
     categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
     learningRules: List<com.yuanman.app.data.local.entity.QuickEntryLearningEntity>,
     onTypeChange: (RecordType) -> Unit,
-    onSubmit: (String, RecordType) -> Boolean,
+    onSubmit: (String, RecordType, com.yuanman.app.data.local.entity.CategoryEntity?) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -466,11 +465,77 @@ private fun QuickEntryStrip(
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
     }
-    val preview = remember(text, availableCategories, learningRules) {
-        QuickEntryParser.parse(text, availableCategories, learningRules)
+    // 分类快捷修改：点击解析出的分类徽章弹出选择，覆盖只对同一备注文本生效
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    var categoryOverride by remember { mutableStateOf<Pair<String, com.yuanman.app.data.local.entity.CategoryEntity>?>(null) }
+    val preview = remember(text, availableCategories, learningRules, categoryOverride) {
+        val parsed = QuickEntryParser.parse(text, availableCategories, learningRules)
+        if (parsed != null && categoryOverride != null && categoryOverride!!.first == parsed.remark) {
+            parsed.copy(category = categoryOverride!!.second)
+        } else {
+            parsed
+        }
     }
     val isExpense = type == RecordType.EXPENSE
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    if (showCategoryPicker && preview != null) {
+        val pickerCategories = availableCategories
+        AlertDialog(
+            onDismissRequest = { showCategoryPicker = false },
+            title = { Text("选择分类") },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    items(pickerCategories, key = { it.id }) { cat ->
+                        val isCurrent = cat.id == preview.category?.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    categoryOverride = preview.remark to cat
+                                    showCategoryPicker = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CategoryIconView(
+                                iconName = cat.iconName,
+                                colorHex = cat.colorHex,
+                                size = 26.dp,
+                                iconSize = 14.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = cat.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isCurrent) accent else MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isCurrent) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "已选中",
+                                    tint = accent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCategoryPicker = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     val isReady = preview != null
     val btnBgColor by animateColorAsState(
@@ -500,7 +565,11 @@ private fun QuickEntryStrip(
             // 1. 支 / 收 极简切换胶囊
             QuickTypeTogglePill(
                 selectedType = type,
-                onTypeChange = onTypeChange
+                onTypeChange = {
+                    // 切换支/收时清除手动分类覆盖，避免引用另一类型的分类
+                    categoryOverride = null
+                    onTypeChange(it)
+                }
             )
 
             // 2. 原生无框极简输入框
@@ -524,7 +593,10 @@ private fun QuickEntryStrip(
                 keyboardActions = KeyboardActions(
                     onDone = {
                         if (isReady) {
-                            if (onSubmit(text, type)) text = ""
+                            if (onSubmit(text, type, categoryOverride?.second)) {
+                                text = ""
+                                categoryOverride = null
+                            }
                         }
                     }
                 ),
@@ -560,11 +632,18 @@ private fun QuickEntryStrip(
                     val catColor = cat?.let { Color(it.colorHex) } ?: accent
                     val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
 
+                    // 点击分类徽章可快速修改分类
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = accent.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
-                        modifier = Modifier.padding(horizontal = 2.dp)
+                        modifier = Modifier
+                            .padding(horizontal = 2.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                categoryOverride = preview.remark to (preview.category ?: return@clickable)
+                                showCategoryPicker = true
+                            }
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
@@ -586,6 +665,12 @@ private fun QuickEntryStrip(
                                 ),
                                 maxLines = 1,
                                 softWrap = false
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "修改分类",
+                                tint = accent.copy(alpha = 0.7f),
+                                modifier = Modifier.size(10.dp)
                             )
                             Text(
                                 text = "¥${preview.amountYuan.toPlainString()}",
@@ -618,7 +703,10 @@ private fun QuickEntryStrip(
             IconButton(
                 onClick = {
                     if (isReady) {
-                        if (onSubmit(text, type)) text = ""
+                        if (onSubmit(text, type, categoryOverride?.second)) {
+                            text = ""
+                            categoryOverride = null
+                        }
                     } else if (text.isNotEmpty()) {
                         text = ""
                     } else {

@@ -1,5 +1,6 @@
 package com.yuanman.app.ui.screens.list
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -99,6 +100,8 @@ class RecordListViewModel(
 
     companion object {
         const val PAGE_SIZE = 25
+        /** 下拉刷新指示器的最短展示时长：查询快时补齐到该时长，查询慢时以查询耗时为准。 */
+        const val MIN_REFRESH_MILLIS = 400L
     }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
@@ -228,6 +231,7 @@ class RecordListViewModel(
             _isRefreshing.value = true
             // 取消首屏加载时不能遗留 isLoading=true，否则刷新完成后会一直显示加载态。
             _isLoading.value = false
+            val startedAt = SystemClock.elapsedRealtime()
             try {
                 val (start, end) = params.calculateTimestamps()
                 val refreshedList = recordRepository.getRecordsFilteredPaged(
@@ -243,10 +247,15 @@ class RecordListViewModel(
                     limit = PAGE_SIZE,
                     offset = 0
                 )
-                _loadedRecords.value = refreshedList
-                _hasMore.value = refreshedList.size >= PAGE_SIZE
-                // 避免极快的本地查询让刷新箭头一闪而过。
-                delay(220)
+                // 数据没有变化时不重写列表引用，避免无谓重组与滚动跳动。
+                if (_loadedRecords.value != refreshedList) {
+                    _loadedRecords.value = refreshedList
+                    _hasMore.value = refreshedList.size >= PAGE_SIZE
+                }
+                // 保证刷新指示器至少展示一个可感知的时长；查询本身就慢时不再叠加等待。
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                val remaining = MIN_REFRESH_MILLIS - elapsed
+                if (remaining > 0) delay(remaining)
             } finally {
                 _isRefreshing.value = false
             }

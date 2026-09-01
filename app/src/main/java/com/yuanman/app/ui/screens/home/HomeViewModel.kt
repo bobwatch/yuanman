@@ -1,5 +1,6 @@
 package com.yuanman.app.ui.screens.home
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -63,6 +64,11 @@ class HomeViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val categoryRepository: CategoryRepository
 ) : ViewModel() {
+
+    /** 下拉刷新指示器的最短展示时长：查询快时补齐到该时长，查询慢时以查询耗时为准。 */
+    private companion object {
+        const val MIN_REFRESH_MILLIS = 400L
+    }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
@@ -209,10 +215,13 @@ class HomeViewModel(
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
+            val startedAt = SystemClock.elapsedRealtime()
             try {
                 _refreshToken.update { it + 1 }
-                // 给 Room 重新查询和 UI 指示器留出可感知但短暂的时间，避免一闪而过。
-                delay(280)
+                // 保证刷新指示器至少展示一个可感知的时长，但查询本身就慢时不再叠加等待。
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                val remaining = MIN_REFRESH_MILLIS - elapsed
+                if (remaining > 0) delay(remaining)
             } finally {
                 _isRefreshing.value = false
             }
@@ -267,11 +276,16 @@ class HomeViewModel(
 
     /**
      * Saves a compact entry directly from Home and returns the parsed preview for immediate UI feedback.
+     * @param overrideCategory 用户点击解析徽章手动选择的分类；为空时使用解析结果。
      */
-    fun saveQuickEntry(input: String, type: RecordType): QuickEntryResult? {
+    fun saveQuickEntry(
+        input: String,
+        type: RecordType,
+        overrideCategory: CategoryEntity? = null
+    ): QuickEntryResult? {
         val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
         val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
-        val category = parsed.category ?: categories.firstOrNull() ?: return null
+        val category = overrideCategory ?: parsed.category ?: categories.firstOrNull() ?: return null
         val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
         if (amountCents <= 0L) return null
 
