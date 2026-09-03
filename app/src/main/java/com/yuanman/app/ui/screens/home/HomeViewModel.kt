@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yuanman.app.data.local.entity.AccountEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.local.entity.CategoryEntity
@@ -12,6 +13,7 @@ import com.yuanman.app.data.model.MonthSummaryData
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.QuickEntryResult
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
@@ -78,8 +80,29 @@ private data class TemplateInfo(
 class HomeViewModel(
     private val recordRepository: RecordRepository,
     private val preferencesRepository: PreferencesRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val accountRepository: AccountRepository
 ) : ViewModel() {
+
+    val accounts: StateFlow<List<AccountEntity>> = accountRepository.activeAccounts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val defaultExpenseAccountId: StateFlow<Long?> = preferencesRepository.defaultExpenseAccountId
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
+    fun setDefaultExpenseAccount(accountId: Long?) {
+        viewModelScope.launch {
+            preferencesRepository.setDefaultExpenseAccountId(accountId)
+        }
+    }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val _selectedYear = MutableStateFlow(currentYearMonth.first)
@@ -335,13 +358,21 @@ class HomeViewModel(
     fun saveQuickEntry(
         input: String,
         type: RecordType,
-        overrideCategory: CategoryEntity? = null
+        overrideCategory: CategoryEntity? = null,
+        accountId: Long? = null
     ): QuickEntryResult? {
         val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
         val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
         val category = overrideCategory ?: parsed.category ?: categories.firstOrNull() ?: return null
         val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
         if (amountCents <= 0L) return null
+
+        val defaultExpenseId = if (type == RecordType.EXPENSE) defaultExpenseAccountId.value else null
+        val resolvedAccountId = if (accountId == -1L) null else accountId ?: parsed.paymentMethod?.let { method ->
+            accounts.value.firstOrNull { acc ->
+                acc.name.contains(method, ignoreCase = true) || method.contains(acc.name, ignoreCase = true)
+            }?.id
+        } ?: defaultExpenseId
 
         viewModelScope.launch(Dispatchers.IO) {
             val paymentMethod = preferencesRepository.defaultPaymentMethod.first()
@@ -352,7 +383,8 @@ class HomeViewModel(
                     categoryId = category.id,
                     recordTime = System.currentTimeMillis(),
                     remark = parsed.remark,
-                    paymentMethod = parsed.paymentMethod ?: paymentMethod
+                    paymentMethod = parsed.paymentMethod ?: paymentMethod,
+                    accountId = resolvedAccountId
                 )
             )
             categoryRepository.learnQuickEntry(type, parsed.remark, category.syncId)
@@ -437,11 +469,12 @@ class HomeViewModel(
     class Factory(
         private val recordRepository: RecordRepository,
         private val preferencesRepository: PreferencesRepository,
-        private val categoryRepository: CategoryRepository
+        private val categoryRepository: CategoryRepository,
+        private val accountRepository: AccountRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return HomeViewModel(recordRepository, preferencesRepository, categoryRepository) as T
+            return HomeViewModel(recordRepository, preferencesRepository, categoryRepository, accountRepository) as T
         }
     }
 }

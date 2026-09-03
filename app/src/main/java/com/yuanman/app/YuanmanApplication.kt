@@ -21,12 +21,29 @@ class YuanmanApplication : Application() {
             database.categoryDao(),
             database.recordDao(),
             database.syncDao(),
-            database.quickEntryLearningDao()
+            database.quickEntryLearningDao(),
+            database
         )
     }
 
     val recordRepository: RecordRepository by lazy {
-        RecordRepository(database.recordDao(), this)
+        RecordRepository(
+            recordDao = database.recordDao(),
+            context = this,
+            database = database,
+            accountDao = database.accountDao()
+        )
+    }
+
+    val accountRepository: com.yuanman.app.data.repository.AccountRepository by lazy {
+        com.yuanman.app.data.repository.AccountRepository(
+            database = database,
+            accountDao = database.accountDao(),
+            accountSnapshotDao = database.accountSnapshotDao(),
+            recordDao = database.recordDao(),
+            categoryDao = database.categoryDao(),
+            context = this
+        )
     }
 
     val preferencesRepository: PreferencesRepository by lazy {
@@ -39,6 +56,8 @@ class YuanmanApplication : Application() {
         com.yuanman.app.sync.FamilySyncManager(
             context = this,
             categoryRepository = categoryRepository,
+            accountRepository = accountRepository,
+            database = database,
             scope = appScope
         )
     }
@@ -83,12 +102,14 @@ class YuanmanApplication : Application() {
 
             // 2. 确保默认分类与体系正常
             categoryRepository.ensureDefaultCategories()
-            // 3. 将系统预置词库同步到分类学习页（幂等，重置时仍保留）
+            // 3. 确保默认账户体系正常
+            accountRepository.ensureDefaultAccounts()
+            // 4. 将系统预置词库同步到分类学习页（幂等，重置时仍保留）
             categoryRepository.ensureDefaultQuickEntryLearning()
-            // 4. 为升级前已有账单补建分类学习样本（幂等，不重复累计）
+            // 5. 为升级前已有账单补建分类学习样本（幂等，不重复累计）
             categoryRepository.backfillQuickEntryLearning()
 
-            // 5. 运行中周期性安全快照备份
+            // 6. 运行中周期性安全快照备份
             com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(this@YuanmanApplication)
         }
     }

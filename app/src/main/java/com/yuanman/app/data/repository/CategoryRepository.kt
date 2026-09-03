@@ -1,5 +1,6 @@
 package com.yuanman.app.data.repository
 
+import androidx.room.withTransaction
 import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.local.dao.CategoryDao
 import com.yuanman.app.data.local.dao.CategoryUsageCount
@@ -22,7 +23,8 @@ class CategoryRepository(
     private val categoryDao: CategoryDao,
     private val recordDao: RecordDao,
     private val syncDao: SyncDao,
-    private val quickEntryLearningDao: QuickEntryLearningDao
+    private val quickEntryLearningDao: QuickEntryLearningDao,
+    private val database: AppDatabase? = null
 ) {
     fun getAllCategories(): Flow<List<CategoryEntity>> = categoryDao.getAllCategories()
     
@@ -78,9 +80,23 @@ class CategoryRepository(
         categories: List<CategoryEntity>,
         records: List<RecordEntity>
     ): SyncMergeResult = withContext(Dispatchers.IO) {
+        database?.withTransaction {
+            mergeSyncedDataInTransaction(categories, records)
+        } ?: mergeSyncedDataInTransaction(categories, records)
+    }
+
+    /**
+     * Merges categories, records, and derived learning data in the caller's
+     * transaction. This is used with account merging so the core ledger is
+     * committed or rolled back as one unit.
+     */
+    suspend fun mergeSyncedDataInTransaction(
+        categories: List<CategoryEntity>,
+        records: List<RecordEntity>
+    ): SyncMergeResult {
         val result = syncDao.merge(categories, records)
         backfillQuickEntryLearningInternal()
-        result
+        return result
     }
 
     suspend fun getSyncSnapshot(): SyncSnapshot = withContext(Dispatchers.IO) {

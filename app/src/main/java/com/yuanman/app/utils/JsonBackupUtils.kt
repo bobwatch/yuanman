@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import com.yuanman.app.data.local.AppDatabase
+import com.yuanman.app.data.local.entity.AccountEntity
+import com.yuanman.app.data.local.entity.AccountSnapshotEntity
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordEntity
@@ -27,8 +29,11 @@ object JsonBackupUtils {
         val exportedAt: Long,
         val categories: List<CategoryEntity>,
         val records: List<RecordEntity>,
+        val accounts: List<AccountEntity> = emptyList(),
+        val accountSnapshots: List<AccountSnapshotEntity> = emptyList(),
         val preferences: PreferenceSnapshot? = null,
         val quickEntryLearning: List<QuickEntryLearningEntity> = emptyList(),
+        val includesAccounts: Boolean = false,
         val checksumVerified: Boolean = false
     )
 
@@ -37,8 +42,11 @@ object JsonBackupUtils {
         val exportedAt: Long,
         val categoryCount: Int,
         val recordCount: Int,
+        val accountCount: Int,
+        val snapshotCount: Int,
         val learningRuleCount: Int,
         val includesPreferences: Boolean,
+        val includesAccounts: Boolean,
         val checksumVerified: Boolean
     )
 
@@ -49,7 +57,9 @@ object JsonBackupUtils {
         categories: List<CategoryEntity>,
         records: List<RecordEntity>,
         preferences: PreferenceSnapshot? = null,
-        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList()
+        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList(),
+        accounts: List<AccountEntity> = emptyList(),
+        accountSnapshots: List<AccountSnapshotEntity> = emptyList()
     ): String {
         val payload = JSONObject().apply {
             put("version", CURRENT_VERSION)
@@ -57,6 +67,8 @@ object JsonBackupUtils {
             put("appName", "Yuanman")
             put("categories", categoriesToJson(categories))
             put("records", recordsToJson(records))
+            put("accounts", accountsToJson(accounts))
+            put("accountSnapshots", accountSnapshotsToJson(accountSnapshots))
             put("quickEntryLearning", learningToJson(quickEntryLearning))
             preferences?.let { put("preferences", preferencesToJson(it)) }
         }
@@ -76,8 +88,11 @@ object JsonBackupUtils {
             exportedAt = data.exportedAt,
             categoryCount = data.categories.count { it.deletedAt == null },
             recordCount = data.records.count { it.deletedAt == null },
+            accountCount = data.accounts.count { it.deletedAt == null },
+            snapshotCount = data.accountSnapshots.count { it.deletedAt == null },
             learningRuleCount = data.quickEntryLearning.size,
             includesPreferences = data.preferences != null,
+            includesAccounts = data.includesAccounts,
             checksumVerified = data.checksumVerified
         )
     }
@@ -100,6 +115,12 @@ object JsonBackupUtils {
         val categories = parseCategories(root.optJSONArray("categories") ?: JSONArray())
         val categoryIds = categories.map { it.id }.toSet()
         val records = parseRecords(root.optJSONArray("records") ?: JSONArray(), legacySourceId)
+        val includesAccounts = root.has("accounts")
+        val accounts = parseAccounts(root.optJSONArray("accounts") ?: JSONArray(), legacySourceId)
+        val accountSnapshots = parseAccountSnapshots(
+            root.optJSONArray("accountSnapshots") ?: JSONArray(),
+            legacySourceId
+        )
         require(records.all { it.amount > 0L }) { "备份中存在无效金额" }
         require(records.all { it.categoryId in categoryIds || it.categoryId == -1L }) { "备份中存在无法匹配分类的账单" }
 
@@ -108,8 +129,11 @@ object JsonBackupUtils {
             exportedAt = root.optLong("exportedAt", System.currentTimeMillis()),
             categories = categories,
             records = records,
+            accounts = accounts,
+            accountSnapshots = accountSnapshots,
             preferences = root.optJSONObject("preferences")?.let(::parsePreferences),
             quickEntryLearning = parseLearning(root.optJSONArray("quickEntryLearning") ?: JSONArray()),
+            includesAccounts = includesAccounts,
             checksumVerified = checksumVerified
         )
     }
@@ -119,8 +143,18 @@ object JsonBackupUtils {
         categories: List<CategoryEntity>,
         records: List<RecordWithCategory>,
         preferences: PreferenceSnapshot? = null,
-        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList()
-    ): Result<File> = createBackupFile(context, categories, records, preferences, quickEntryLearning)
+        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList(),
+        accounts: List<AccountEntity> = emptyList(),
+        accountSnapshots: List<AccountSnapshotEntity> = emptyList()
+    ): Result<File> = createBackupFile(
+        context,
+        categories,
+        records,
+        preferences,
+        quickEntryLearning,
+        accounts,
+        accountSnapshots
+    )
         .onSuccess { shareBackupFile(context, it) }
 
     fun createBackupFile(
@@ -128,9 +162,18 @@ object JsonBackupUtils {
         categories: List<CategoryEntity>,
         records: List<RecordWithCategory>,
         preferences: PreferenceSnapshot? = null,
-        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList()
+        quickEntryLearning: List<QuickEntryLearningEntity> = emptyList(),
+        accounts: List<AccountEntity> = emptyList(),
+        accountSnapshots: List<AccountSnapshotEntity> = emptyList()
     ): Result<File> = runCatching {
-        val jsonContent = exportEntitiesToJsonString(categories, records.map { it.record }, preferences, quickEntryLearning)
+        val jsonContent = exportEntitiesToJsonString(
+            categories = categories,
+            records = records.map { it.record },
+            preferences = preferences,
+            quickEntryLearning = quickEntryLearning,
+            accounts = accounts,
+            accountSnapshots = accountSnapshots
+        )
         val exportDir = File(context.cacheDir, "backups").apply { mkdirs() }
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val file = File(exportDir, "yuanman_backup_$timeStamp.json")
@@ -166,8 +209,54 @@ object JsonBackupUtils {
             put("id", r.id); put("type", r.type); put("amount", r.amount); put("categoryId", r.categoryId)
             put("recordTime", r.recordTime); put("remark", r.remark); put("paymentMethod", r.paymentMethod)
             r.splitGroupId?.let { put("splitGroupId", it) }; r.splitIndex?.let { put("splitIndex", it) }
-            r.splitTotal?.let { put("splitTotal", it) }; put("createdAt", r.createdAt); put("updatedAt", r.updatedAt)
+            r.splitTotal?.let { put("splitTotal", it) }
+            r.accountId?.let { put("accountId", it) }
+            r.targetAccountId?.let { put("targetAccountId", it) }
+            if (r.isAdjustment) put("isAdjustment", true)
+            put("createdAt", r.createdAt); put("updatedAt", r.updatedAt)
             put("revision", r.revision); put("syncId", r.syncId); r.deletedAt?.let { put("deletedAt", it) }
+        }) }
+    }
+
+    private fun accountsToJson(accounts: List<AccountEntity>) = JSONArray().apply {
+        accounts.forEach { account -> put(JSONObject().apply {
+            put("id", account.id)
+            put("syncId", account.syncId)
+            put("name", account.name)
+            put("type", account.type)
+            put("balanceCents", account.balanceCents)
+            put("initialBalanceCents", account.initialBalanceCents)
+            put("currency", account.currency)
+            put("includeInNetWorth", account.includeInNetWorth)
+            put("icon", account.icon)
+            put("colorHex", account.colorHex)
+            put("remark", account.remark)
+            put("sortOrder", account.sortOrder)
+            put("isArchived", account.isArchived)
+            put("createdAt", account.createdAt)
+            put("updatedAt", account.updatedAt)
+            put("revision", account.revision)
+            account.deletedAt?.let { put("deletedAt", it) }
+        }) }
+    }
+
+    private fun accountSnapshotsToJson(snapshots: List<AccountSnapshotEntity>) = JSONArray().apply {
+        snapshots.forEach { snapshot -> put(JSONObject().apply {
+            put("id", snapshot.id)
+            put("syncId", snapshot.syncId)
+            put("periodKey", snapshot.periodKey)
+            put("periodType", snapshot.periodType)
+            put("periodStartTimestamp", snapshot.periodStartTimestamp)
+            put("periodEndTimestamp", snapshot.periodEndTimestamp)
+            put("totalAssetCents", snapshot.totalAssetCents)
+            put("totalDebtCents", snapshot.totalDebtCents)
+            put("netWorthCents", snapshot.netWorthCents)
+            put("snapshotDataJson", snapshot.snapshotDataJson)
+            put("reconciledAt", snapshot.reconciledAt)
+            put("createdAt", snapshot.createdAt)
+            put("updatedAt", snapshot.updatedAt)
+            put("revision", snapshot.revision)
+            snapshot.deletedAt?.let { put("deletedAt", it) }
         }) }
     }
 
@@ -211,15 +300,85 @@ object JsonBackupUtils {
             val legacyId = obj.optLong("id", 0L)
             val legacySyncId = if (legacyId > 0L) "legacy-record:$legacySourceId:$legacyId" else "legacy-record:$legacySourceId:index:$index"
             val type = obj.getString("type").trim().uppercase(Locale.ROOT)
-            require(type in setOf("EXPENSE", "INCOME")) { "账单类型无效" }
+            require(type in setOf("EXPENSE", "INCOME", "TRANSFER")) { "账单类型无效" }
             add(RecordEntity(
                 id = legacyId, type = type, amount = obj.getLong("amount"), categoryId = obj.optLong("categoryId", -1L),
                 recordTime = obj.optLong("recordTime", System.currentTimeMillis()), remark = obj.optString("remark", ""),
                 paymentMethod = obj.optString("paymentMethod", "现金"), splitGroupId = obj.optString("splitGroupId", "").ifBlank { null },
                 splitIndex = if (obj.has("splitIndex")) obj.optInt("splitIndex") else null,
                 splitTotal = if (obj.has("splitTotal")) obj.optInt("splitTotal") else null,
+                accountId = obj.optionalLong("accountId"),
+                targetAccountId = obj.optionalLong("targetAccountId"),
+                isAdjustment = obj.optBoolean("isAdjustment", false),
                 createdAt = obj.optLong("createdAt", System.currentTimeMillis()), updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
                 revision = obj.optLong("revision", 0L).coerceAtLeast(0L), syncId = obj.optString("syncId").ifBlank { legacySyncId },
+                deletedAt = obj.optionalLong("deletedAt")
+            ))
+        }
+    }
+
+    private fun parseAccounts(array: JSONArray, legacySourceId: String): List<AccountEntity> = buildList {
+        val validTypes = setOf("CHECKING", "INVESTMENT", "CREDIT", "ASSET")
+        repeat(array.length()) { index ->
+            val obj = array.getJSONObject(index)
+            val legacyId = obj.optLong("id", 0L)
+            val name = obj.optString("name", "").trim()
+            val type = obj.optString("type", "").trim().uppercase(Locale.ROOT)
+            require(name.isNotBlank() && type in validTypes) { "账户数据无效" }
+            val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+            val syncId = obj.optString("syncId").trim().ifBlank {
+                if (legacyId > 0L) "legacy-account:$legacySourceId:$legacyId"
+                else "legacy-account:$legacySourceId:index:$index"
+            }
+            add(AccountEntity(
+                id = legacyId,
+                syncId = syncId,
+                name = name,
+                type = type,
+                balanceCents = obj.optLong("balanceCents", 0L),
+                initialBalanceCents = obj.optLong("initialBalanceCents", 0L),
+                currency = obj.optString("currency", "CNY").ifBlank { "CNY" },
+                includeInNetWorth = obj.optBoolean("includeInNetWorth", true),
+                icon = obj.optString("icon", ""),
+                colorHex = obj.optString("colorHex", ""),
+                remark = obj.optString("remark", ""),
+                sortOrder = obj.optInt("sortOrder", 0),
+                isArchived = obj.optBoolean("isArchived", false),
+                createdAt = createdAt,
+                updatedAt = obj.optLong("updatedAt", createdAt),
+                revision = obj.optLong("revision", 0L).coerceAtLeast(0L),
+                deletedAt = obj.optionalLong("deletedAt")
+            ))
+        }
+    }
+
+    private fun parseAccountSnapshots(array: JSONArray, legacySourceId: String): List<AccountSnapshotEntity> = buildList {
+        repeat(array.length()) { index ->
+            val obj = array.getJSONObject(index)
+            val legacyId = obj.optLong("id", 0L)
+            val periodKey = obj.optString("periodKey", "").trim()
+            val periodType = obj.optString("periodType", "").trim().uppercase(Locale.ROOT)
+            require(periodKey.isNotBlank() && periodType.isNotBlank()) { "账户快照数据无效" }
+            val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+            val syncId = obj.optString("syncId").trim().ifBlank {
+                if (legacyId > 0L) "legacy-account-snapshot:$legacySourceId:$legacyId"
+                else "legacy-account-snapshot:$legacySourceId:index:$index"
+            }
+            add(AccountSnapshotEntity(
+                id = legacyId,
+                syncId = syncId,
+                periodKey = periodKey,
+                periodType = periodType,
+                periodStartTimestamp = obj.optLong("periodStartTimestamp", 0L),
+                periodEndTimestamp = obj.optLong("periodEndTimestamp", 0L),
+                totalAssetCents = obj.optLong("totalAssetCents", 0L),
+                totalDebtCents = obj.optLong("totalDebtCents", 0L),
+                netWorthCents = obj.optLong("netWorthCents", 0L),
+                snapshotDataJson = obj.optString("snapshotDataJson", "{}"),
+                reconciledAt = obj.optLong("reconciledAt", createdAt),
+                createdAt = createdAt,
+                updatedAt = obj.optLong("updatedAt", createdAt),
+                revision = obj.optLong("revision", 0L).coerceAtLeast(0L),
                 deletedAt = obj.optionalLong("deletedAt")
             ))
         }

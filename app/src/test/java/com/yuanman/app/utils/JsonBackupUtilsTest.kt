@@ -1,6 +1,8 @@
 package com.yuanman.app.utils
 
 import com.yuanman.app.data.local.entity.CategoryEntity
+import com.yuanman.app.data.local.entity.AccountEntity
+import com.yuanman.app.data.local.entity.AccountSnapshotEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.repository.PreferenceSnapshot
@@ -29,6 +31,25 @@ class JsonBackupUtilsTest {
         syncId = "record-a",
         revision = 4L
     )
+    private val account = AccountEntity(
+        id = 10L,
+        syncId = "account-a",
+        name = "微信零钱",
+        type = "CHECKING",
+        balanceCents = 98_200L,
+        initialBalanceCents = 100_000L,
+        revision = 5L
+    )
+    private val snapshot = AccountSnapshotEntity(
+        id = 11L,
+        syncId = "snapshot-a",
+        periodKey = "2026-08",
+        periodType = "MONTH",
+        totalAssetCents = 98_200L,
+        netWorthCents = 98_200L,
+        snapshotDataJson = "[{\"accountId\":10,\"actualBalanceCents\":98200}]",
+        revision = 2L
+    )
 
     @Test
     fun `version 3 backup round trips all data and verifies checksum`() {
@@ -46,14 +67,29 @@ class JsonBackupUtilsTest {
         )
         val learning = listOf(QuickEntryLearningEntity("EXPENSE", "奶茶", category.syncId, 2, 100L))
 
-        val json = JsonBackupUtils.exportEntitiesToJsonString(listOf(category), listOf(record), preferences, learning)
+        val json = JsonBackupUtils.exportEntitiesToJsonString(
+            categories = listOf(category),
+            records = listOf(record.copy(accountId = account.id, targetAccountId = 99L, isAdjustment = true)),
+            preferences = preferences,
+            quickEntryLearning = learning,
+            accounts = listOf(account),
+            accountSnapshots = listOf(snapshot)
+        )
         val restored = JsonBackupUtils.parseFromJsonString(json)
 
         assertTrue(restored.checksumVerified)
         assertEquals(3L, restored.categories.single().revision)
         assertEquals(4L, restored.records.single().revision)
+        assertEquals(account.id, restored.records.single().accountId)
+        assertEquals(99L, restored.records.single().targetAccountId)
+        assertTrue(restored.records.single().isAdjustment)
         assertEquals(300_000L, restored.preferences?.monthlyBudgets?.get("2026-08"))
         assertEquals("奶茶", restored.quickEntryLearning.single().phrase)
+        assertEquals(account, restored.accounts.single())
+        assertEquals(snapshot, restored.accountSnapshots.single())
+        assertTrue(restored.includesAccounts)
+        assertEquals(1, JsonBackupUtils.preview(json).accountCount)
+        assertEquals(1, JsonBackupUtils.preview(json).snapshotCount)
     }
 
     @Test(expected = IllegalArgumentException::class)

@@ -5,12 +5,15 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
+import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
@@ -71,6 +74,8 @@ class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
+    private val accountRepository: AccountRepository,
+    private val database: AppDatabase,
     val syncManager: FamilySyncManager,
     val updateManager: UpdateManager
 ) : ViewModel() {
@@ -258,7 +263,9 @@ class SettingsViewModel(
                     categories = uiState.value.allCategories,
                     records = uiState.value.allRecords,
                     preferences = snapshot,
-                    quickEntryLearning = quickEntryLearningRules.value
+                    quickEntryLearning = quickEntryLearningRules.value,
+                    accounts = accountRepository.getAllAccountsForBackup(),
+                    accountSnapshots = accountRepository.getAllAccountSnapshotsForBackup()
                 )
             }
             result.onSuccess { file ->
@@ -295,11 +302,31 @@ class SettingsViewModel(
                         )
                     }
                 }
-                categoryRepository.mergeSyncedData(data.categories, data.records)
+                withContext(Dispatchers.IO) {
+                    database.withTransaction {
+                        val balanceBaselines = accountRepository.captureBalanceBaselinesInTransaction()
+                        val accountMerge = accountRepository.mergeSyncedAccountsInTransaction(
+                            remoteAccounts = data.accounts,
+                            remoteSnapshots = data.accountSnapshots
+                        )
+                        val remappedRecords = accountRepository.remapRecordAccountIds(
+                            records = data.records,
+                            remoteToLocalAccountIds = accountMerge.remoteToLocalAccountIds,
+                            includesAccounts = data.includesAccounts
+                        )
+                        categoryRepository.mergeSyncedDataInTransaction(data.categories, remappedRecords)
+                        accountRepository.recalculateBalancesInTransaction(balanceBaselines)
+                    }
+                }
                 categoryRepository.mergeQuickEntryLearning(data.quickEntryLearning)
                 data.preferences?.let { preferencesRepository.restoreSnapshot(it) }
                 recordRepository.notifyDataChanged()
-                onResult(true, "恢复完成：${data.records.count { it.deletedAt == null }} 笔账单、${data.categories.count { it.deletedAt == null }} 个分类")
+                onResult(
+                    true,
+                    "恢复完成：${data.records.count { it.deletedAt == null }} 笔账单、" +
+                        "${data.categories.count { it.deletedAt == null }} 个分类、" +
+                        "${data.accounts.count { it.deletedAt == null }} 个账户"
+                )
             } catch (e: Exception) {
                 onResult(false, "备份解析失败：${e.message}")
             }
@@ -326,6 +353,8 @@ class SettingsViewModel(
         private val preferencesRepository: PreferencesRepository,
         private val recordRepository: RecordRepository,
         private val categoryRepository: CategoryRepository,
+        private val accountRepository: AccountRepository,
+        private val database: AppDatabase,
         private val syncManager: FamilySyncManager,
         private val updateManager: UpdateManager
     ) : ViewModelProvider.Factory {
@@ -335,6 +364,8 @@ class SettingsViewModel(
                 preferencesRepository,
                 recordRepository,
                 categoryRepository,
+                accountRepository,
+                database,
                 syncManager,
                 updateManager
             ) as T

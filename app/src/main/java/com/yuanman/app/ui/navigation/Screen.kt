@@ -11,6 +11,7 @@ import com.yuanman.app.data.model.RecordType
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object RecordList : Screen("record_list")
+    object Accounts : Screen("accounts")
     object Statistics : Screen("statistics")
     object CategoryManage : Screen("category_manage")
     object Settings : Screen("settings")
@@ -56,6 +57,13 @@ sealed class BottomNavTab(
         unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong
     )
 
+    object Accounts : BottomNavTab(
+        screen = Screen.Accounts,
+        title = "账户",
+        selectedIcon = Icons.Filled.AccountBalanceWallet,
+        unselectedIcon = Icons.Outlined.AccountBalanceWallet
+    )
+
     object Statistics : BottomNavTab(
         screen = Screen.Statistics,
         title = "统计",
@@ -78,6 +86,6 @@ sealed class BottomNavTab(
     )
 
     companion object {
-        val ALL = listOf(Home, List, Statistics, Settings)
+        val ALL = listOf(Home, List, Accounts, Settings)
     }
 }

@@ -35,6 +35,10 @@ class PreferencesRepository(private val context: Context) {
         val PINNED_TEMPLATE_KEYS = stringPreferencesKey("pinned_template_keys")
         val HIDDEN_TEMPLATE_KEYS = stringPreferencesKey("hidden_template_keys")
         val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+        val ACCOUNT_PERIOD_TYPE = stringPreferencesKey("account_period_type")
+        val ACCOUNT_PERIOD_START_DAY = androidx.datastore.preferences.core.intPreferencesKey("account_period_start_day")
+        val INCOME_ALLOCATION_RULES = stringPreferencesKey("income_allocation_rules")
+        val DEFAULT_EXPENSE_ACCOUNT_ID = longPreferencesKey("default_expense_account_id")
     }
 
     val defaultPresetTags = listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "超市买菜", "地铁打车", "零食水果", "日用品", "房租水电", "聚会请客", "网购")
@@ -68,6 +72,10 @@ class PreferencesRepository(private val context: Context) {
 
     val defaultPaymentMethod: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] ?: PaymentMethod.defaultMethod()
+    }
+
+    val defaultExpenseAccountId: Flow<Long?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID]?.takeIf { it > 0L }
     }
 
     /** Legacy/default budget, kept for users who upgraded from the old single-budget version. */
@@ -109,6 +117,37 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferencesKeys.LAST_BACKUP_AT] ?: 0L
     }
 
+    val accountPeriodType: Flow<com.yuanman.app.data.model.AccountPeriodType> = context.dataStore.data.map { preferences ->
+        val raw = preferences[PreferencesKeys.ACCOUNT_PERIOD_TYPE] ?: com.yuanman.app.data.model.AccountPeriodType.MONTH.name
+        com.yuanman.app.data.model.AccountPeriodType.fromString(raw)
+    }
+
+    val accountPeriodStartDay: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ACCOUNT_PERIOD_START_DAY] ?: 1
+    }
+
+    val incomeAllocationRules: Flow<List<com.yuanman.app.data.model.IncomeAllocationRule>> = context.dataStore.data.map { preferences ->
+        com.yuanman.app.data.model.IncomeAllocationCalculator.deserializeRules(preferences[PreferencesKeys.INCOME_ALLOCATION_RULES])
+    }
+
+    suspend fun setAccountPeriodType(type: com.yuanman.app.data.model.AccountPeriodType) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACCOUNT_PERIOD_TYPE] = type.name
+        }
+    }
+
+    suspend fun setAccountPeriodStartDay(day: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACCOUNT_PERIOD_START_DAY] = day.coerceIn(1, 28)
+        }
+    }
+
+    suspend fun setIncomeAllocationRules(rules: List<com.yuanman.app.data.model.IncomeAllocationRule>) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.INCOME_ALLOCATION_RULES] = com.yuanman.app.data.model.IncomeAllocationCalculator.serializeRules(rules)
+        }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -124,6 +163,16 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setDefaultPaymentMethod(method: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] = method
+        }
+    }
+
+    suspend fun setDefaultExpenseAccountId(accountId: Long?) {
+        context.dataStore.edit { preferences ->
+            if (accountId != null && accountId > 0L) {
+                preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID] = accountId
+            } else {
+                preferences.remove(PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID)
+            }
         }
     }
 

@@ -43,4 +43,16 @@ class MoneyUtilsTest {
         assertFalse(MoneyUtils.isValidAmountInput(""))
         assertFalse(MoneyUtils.isValidAmountInput("abc"))
     }
+
+    @Test
+    fun testIsValidNonNegativeAmountInput() {
+        assertTrue(MoneyUtils.isValidNonNegativeAmountInput("0"))
+        assertTrue(MoneyUtils.isValidNonNegativeAmountInput("0.00"))
+        assertTrue(MoneyUtils.isValidNonNegativeAmountInput("12.34"))
+
+        assertFalse(MoneyUtils.isValidNonNegativeAmountInput("-1"))
+        assertFalse(MoneyUtils.isValidNonNegativeAmountInput("12.345"))
+        assertFalse(MoneyUtils.isValidNonNegativeAmountInput("999999999999999999999999"))
+        assertFalse(MoneyUtils.isValidNonNegativeAmountInput("abc"))
+    }
 }

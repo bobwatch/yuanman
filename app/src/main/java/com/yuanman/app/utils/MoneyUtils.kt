@@ -49,6 +49,23 @@ object MoneyUtils {
     }
 
     /**
+     * 校验可为 0 的非负金额输入，适用于账户余额等允许清零的场景。
+     */
+    fun isValidNonNegativeAmountInput(input: String): Boolean {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return false
+        if (!Regex("""^[0-9]+(\.[0-9]{1,2})?$""").matches(trimmed)) return false
+        return try {
+            BigDecimal(trimmed)
+                .multiply(BigDecimal(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact() >= 0L
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * 校验输入的金额是否合法且大于 0，最多两位小数
      */
     fun isValidAmountInput(input: String): Boolean {

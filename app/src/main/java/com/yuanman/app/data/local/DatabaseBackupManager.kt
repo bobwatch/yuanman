@@ -113,8 +113,8 @@ object DatabaseBackupManager {
             if (isDatabaseUsable(dbFile)) {
                 // 全新安装时 Android 可能会先恢复一个合法但为空的 Room 数据库。
                 // 只有在本应用尚未完成过初始化时，才允许公共快照覆盖这个空库；
-                // 已使用过的应用即使账单为空，也不能被旧快照“复活”。
-                if (!isDatabaseInitialized(appContext)) {
+                // 已有历史数据的升级包即使尚未写入初始化标记，也绝不能被旧快照覆盖。
+                if (!isDatabaseInitialized(appContext) && isDatabaseEmpty(dbFile)) {
                     val restored = restoreLatestBackupLocked(appContext)
                     Log.i(TAG, "Initial database recovery attempted. Restored: $restored")
                     restored
@@ -235,8 +235,12 @@ object DatabaseBackupManager {
     }
 
     private fun restoreLatestBackupLocked(context: Context): Boolean {
-        val bestBackup = findValidBackups(context)
+        val validBackups = findValidBackups(context)
+        // 优先选择仍包含用户数据的快照，避免最新一次空库快照把较早的历史快照“顶掉”。
+        val bestBackup = validBackups
+            .filterNot(::isDatabaseEmpty)
             .maxByOrNull { it.lastModified() }
+            ?: validBackups.maxByOrNull { it.lastModified() }
             ?: return false
 
         val dbFile = context.getDatabasePath(DB_NAME)
@@ -506,6 +510,74 @@ object DatabaseBackupManager {
             }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /**
+     * 只把真正的新空库视为可被旧快照替换的恢复目标。
+     *
+     * 旧版本升级时 SharedPreferences 可能没有 DATABASE_INITIALIZED_KEY；如果只看这个标记，
+     * 一个合法的、有历史流水的旧数据库就会被较旧备份覆盖，表现为“升级后历史数据清空”。
+     */
+    private fun isDatabaseEmpty(dbFile: File): Boolean {
+        return try {
+            SQLiteDatabase.openDatabase(
+                dbFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY
+            ).use { database ->
+                val hasUserCategories = if (hasTable(database, "categories")) {
+                    val categoryWhere = when {
+                        hasColumn(database, "categories", "isDefault") &&
+                            hasColumn(database, "categories", "deletedAt") ->
+                            "isDefault != 1 OR deletedAt IS NOT NULL"
+                        hasColumn(database, "categories", "isDefault") ->
+                            "isDefault != 1"
+                        else -> null
+                    }
+                    countRows(database, "categories", categoryWhere) > 0L
+                } else {
+                    false
+                }
+
+                hasUserCategories || listOf(
+                    "records",
+                    "quick_entry_learning",
+                    "accounts",
+                    "account_snapshots"
+                ).filter { hasTable(database, it) }
+                    .any { countRows(database, it) > 0L }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to inspect database contents before recovery: ${e.message}")
+            false
+        }
+    }
+
+    private fun countRows(
+        database: SQLiteDatabase,
+        tableName: String,
+        whereClause: String? = null
+    ): Long {
+        val query = buildString {
+            append("SELECT COUNT(*) FROM ")
+            append(tableName)
+            if (!whereClause.isNullOrBlank()) {
+                append(" WHERE ")
+                append(whereClause)
+            }
+        }
+        return database.rawQuery(query, null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+    }
+
+    private fun hasColumn(database: SQLiteDatabase, tableName: String, columnName: String): Boolean {
+        return database.rawQuery("PRAGMA table_info($tableName)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            nameIndex >= 0 && generateSequence {
+                if (cursor.moveToNext()) cursor.getString(nameIndex) else null
+            }.any { it == columnName }
         }
     }
 

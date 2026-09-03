@@ -29,12 +29,13 @@ import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
+import com.yuanman.app.utils.clickableDebounce
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(
     viewModel: StatisticsViewModel,
-    onNavigateBack: (() -> Unit)? = null,
+    onNavigateBack: () -> Unit = {},
     onCategoryClick: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -53,10 +54,11 @@ fun StatisticsScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     title = { Text("数据统计", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
-                        if (onNavigateBack != null) {
-                            IconButton(onClick = onNavigateBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                            }
+                        IconButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier.clickableDebounce(debounceTimeMs = 500L, onClick = onNavigateBack)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
                     },
                     actions = {

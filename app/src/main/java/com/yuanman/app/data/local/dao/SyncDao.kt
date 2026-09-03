@@ -205,6 +205,15 @@ abstract class SyncDao {
             }
         }
 
+        // A sync payload is expected to contain the categories needed by all
+        // of its records. Silently committing the other tables while dropping
+        // these records would leave account balances and the ledger divergent.
+        // Throw inside this @Transaction method so callers with an outer
+        // account transaction roll back the complete cross-table merge too.
+        check(skippedRecordCount == 0) {
+            "同步数据中有 $skippedRecordCount 笔账单无法匹配分类，已回滚本次同步"
+        }
+
         return SyncMergeResult(
             receivedCategoryCount = remoteCategories.size,
             changedCategoryCount = changedCategoryCount,

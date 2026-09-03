@@ -570,10 +570,12 @@ fun AddEditRecordScreen(
 
                         // 2. 支付方式 / 入账账户胶囊
                         val hasPaymentMethod = uiState.paymentMethod.isNotBlank()
+                        val selectedAccount = uiState.availableAccounts.firstOrNull { it.id == uiState.selectedAccountId }
                         val hasSpread = isExpense && uiState.spreadMonths > 1
-                        val isPaymentActive = hasPaymentMethod || hasSpread
+                        val isPaymentActive = hasPaymentMethod || selectedAccount != null || hasSpread
 
                         val paymentDisplayText = when {
+                            selectedAccount != null -> selectedAccount.name
                             !isExpense -> if (hasPaymentMethod) uiState.paymentMethod else "入账账户"
                             hasPaymentMethod && hasSpread -> "${uiState.paymentMethod} · 分摊${uiState.spreadMonths}月"
                             hasPaymentMethod -> uiState.paymentMethod
@@ -624,7 +626,7 @@ fun AddEditRecordScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (hasPaymentMethod || hasSpread) {
+                                if (hasPaymentMethod || selectedAccount != null || hasSpread) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(
                                         imageVector = Icons.Default.Close,
@@ -632,8 +634,7 @@ fun AddEditRecordScreen(
                                         modifier = Modifier
                                             .size(13.dp)
                                             .clickable {
-                                                viewModel.setPaymentMethod("")
-                                                viewModel.setSpreadMonths(1)
+                                                 viewModel.clearPaymentSelection()
                                             },
                                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                                     )
@@ -815,6 +816,53 @@ fun AddEditRecordScreen(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+
+                if (uiState.availableAccounts.isNotEmpty()) {
+                    Text(
+                        text = if (isExpense) "关联扣款账户（会同步余额）" else "关联入账账户（会同步余额）",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(uiState.availableAccounts) { account ->
+                            val isSelected = account.id == uiState.selectedAccountId
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = BorderStroke(
+                                    if (isSelected) 1.dp else 0.5.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.selectAccount(account.id) }
+                            ) {
+                                Text(
+                                    text = account.name,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    TextButton(
+                        onClick = { viewModel.selectAccount(null) },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                    ) {
+                        Text("不关联账户", fontSize = 12.sp)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
 
                 val methodsList = if (isExpense) PaymentMethod.EXPENSE_METHODS else PaymentMethod.INCOME_ACCOUNTS
 

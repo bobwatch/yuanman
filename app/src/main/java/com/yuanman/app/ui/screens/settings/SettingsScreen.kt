@@ -56,8 +56,6 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.ui.components.YuanmanHeaderBackground
 import com.yuanman.app.utils.MoneyUtils
-import com.yuanman.app.utils.UpdateInfo
-import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.utils.clickableDebounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -73,8 +71,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val updateState by viewModel.updateState.collectAsState()
-    val hasUnseenUpdate by viewModel.hasUnseenUpdate.collectAsStateWithLifecycle()
     val learningRules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
@@ -113,56 +109,16 @@ fun SettingsScreen(
     var showThemeBottomSheet by remember { mutableStateOf(false) }
     var showSpreadsheetBottomSheet by remember { mutableStateOf(false) }
     var showBackupBottomSheet by remember { mutableStateOf(false) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
     var showResetLearningDialog by remember { mutableStateOf(false) }
     var showQuickEntrySheet by remember { mutableStateOf(false) }
-    var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
-    var manualCheckRequested by remember { mutableStateOf(false) }
-
-    // 进入设置页后静默检查一次，避免用户必须先点击才能知道有无新版本。
-    LaunchedEffect(Unit) {
-        viewModel.checkForUpdates(isManual = false)
-    }
+    var showAboutSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
             toast.success("全部数据已成功清空并恢复默认设置")
             viewModel.resetClearedFlag()
-        }
-    }
-
-    LaunchedEffect(updateState) {
-        val prev = prevUpdateState
-        val wasManualCheck = manualCheckRequested
-        prevUpdateState = updateState
-        when (val state = updateState) {
-            is UpdateState.ReadyToInstall -> {
-                if (prev is UpdateState.Downloading) {
-                    showUpdateDialog = true
-                    toast.success("更新包已下载")
-                }
-            }
-            is UpdateState.Error -> {
-                if (wasManualCheck) {
-                    toast.error(state.message)
-                }
-            }
-            else -> {}
-        }
-        // 只有手动检查才提示，静默检查不打扰用户。
-        if (prev is UpdateState.Checking && wasManualCheck) {
-            manualCheckRequested = false
-            when (val state = updateState) {
-                is UpdateState.UpToDate -> {
-                    toast.success("当前已是最新版本")
-                }
-                is UpdateState.Available -> {
-                    toast.success("发现新版本 v${state.info.versionName}")
-                }
-                else -> {}
-            }
         }
     }
 
@@ -327,7 +283,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 🌟 卡片 4: 系统与更新（低频维护）
+            // 🌟 卡片 4: 关于应用
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -340,45 +296,12 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    val currentVer = viewModel.updateManager.currentVersionName
-                    val (updateSubtitle, subtitleHighlight, downloadProgress) = when (val state = updateState) {
-                        is UpdateState.Checking -> Triple("正在检查…", true, null)
-                        is UpdateState.Available -> Triple("发现 v${state.info.versionName} · 点此查看", true, null)
-                        is UpdateState.Downloading -> Triple("下载中 ${(state.progress * 100).toInt()}%", true, state.progress)
-                        is UpdateState.ReadyToInstall -> Triple("已下载 · 点此安装", true, null)
-                        is UpdateState.UpToDate -> Triple("v$currentVer · 已是最新", false, null)
-                        is UpdateState.Error -> Triple("检查失败 · 点此重试", false, null)
-                        else -> Triple("v$currentVer · 点此检查", false, null)
-                    }
-
+                    // 关于沅满
                     SettingsRowItem(
-                        icon = Icons.Outlined.SystemUpdate,
-                        title = "版本更新",
-                        subtitle = updateSubtitle,
-                        subtitleHighlight = subtitleHighlight,
-                        showBadge = hasUnseenUpdate,
-                        downloadProgress = downloadProgress,
-                        isLoading = updateState is UpdateState.Checking,
-                        onClick = {
-                            when (val state = updateState) {
-                                is UpdateState.ReadyToInstall -> {
-                                    viewModel.markUpdateSeen(state.info.versionName)
-                                    showUpdateDialog = true
-                                }
-                                is UpdateState.Available -> {
-                                    viewModel.markUpdateSeen(state.info.versionName)
-                                    showUpdateDialog = true
-                                }
-                                is UpdateState.Downloading -> {
-                                    toast.info("正在下载新版本安装包，请稍候...")
-                                }
-                                is UpdateState.Checking -> Unit
-                                else -> {
-                                    manualCheckRequested = true
-                                    viewModel.checkForUpdates(isManual = true)
-                                }
-                            }
-                        }
+                        icon = Icons.Outlined.Info,
+                        title = "关于沅满",
+                        subtitle = "版本信息 · 数据隐私安全承诺",
+                        onClick = { showAboutSheet = true }
                     )
                 }
             }
@@ -421,7 +344,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "版本 v${viewModel.updateManager.currentVersionName} · 数据默认本地保存",
+                    text = "版本 v${viewModel.updateManager.currentVersionName} · 沅满记账井井有条",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -439,8 +362,18 @@ fun SettingsScreen(
             title = { Text("确认恢复完整备份") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("备份版本 ${preview.version} · ${preview.recordCount} 笔账单 · ${preview.categoryCount} 个分类")
+                    Text(
+                        "备份版本 ${preview.version} · ${preview.recordCount} 笔账单 · " +
+                            "${preview.categoryCount} 个分类 · ${preview.accountCount} 个账户 · " +
+                            "${preview.snapshotCount} 个周期快照"
+                    )
                     Text("快捷学习 ${preview.learningRuleCount} 条 · ${if (preview.includesPreferences) "包含预算与偏好" else "旧版备份，不含预算与偏好"}")
+                    if (!preview.includesAccounts) {
+                        Text(
+                            "此备份未包含账户数据；如账单关联账户，恢复将被拒绝以避免产生悬空关联。",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     Text(
                         text = if (preview.checksumVerified) {
                             "完整性校验已通过。恢复采用合并方式，现有数据会先创建安全快照。"
@@ -547,96 +480,6 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
-    }
-
-    // 🌟 新版本更新详情弹窗
-    if (showUpdateDialog) {
-        val info = when (val state = updateState) {
-            is UpdateState.Available -> state.info
-            is UpdateState.ReadyToInstall -> state.info
-            else -> null
-        }
-        val readyApk = (updateState as? UpdateState.ReadyToInstall)?.apkFile
-        if (info != null) {
-            AlertDialog(
-                onDismissRequest = { showUpdateDialog = false },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (readyApk != null) {
-                                "更新已就绪 v${info.versionName}"
-                            } else {
-                                "发现新版本 v${info.versionName}"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
-                },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (info.releaseTitle.isNotBlank()) {
-                            Text(
-                                text = info.releaseTitle,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        if (info.releaseNotes.isNotBlank()) {
-                            Text(
-                                text = info.releaseNotes,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            Text(
-                                text = "本次更新包含体验优化与问题修复。",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-
-                        if (info.sizeBytes > 0L) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "安装包大小: ${"%.1f".format(info.sizeBytes / 1024.0 / 1024.0)} MB",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (readyApk != null) {
-                                viewModel.installApk(readyApk)
-                                toast.info("正在打开安装器…")
-                            } else {
-                                viewModel.startDownload(info)
-                                toast.info("开始下载更新…")
-                            }
-                            showUpdateDialog = false
-                        }
-                    ) {
-                        Text(if (readyApk != null) "立即安装" else "下载更新")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("稍后")
-                    }
-                }
-            )
         }
     }
 
@@ -860,6 +703,16 @@ fun SettingsScreen(
             onDismiss = { showQuickEntrySheet = false }
         )
     }
+
+    if (showAboutSheet) {
+        AboutYuanmanSheet(
+            updateManager = viewModel.updateManager,
+            onDismiss = { showAboutSheet = false },
+            onInstallApk = { apkFile ->
+                viewModel.updateManager.installApk(apkFile)
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -924,7 +777,7 @@ private fun BackupAndRestoreBottomSheet(
             SettingsRowItem(
                 icon = Icons.Outlined.Backup,
                 title = "创建完整备份",
-                subtitle = "账单、分类、预算、偏好与快捷学习",
+                subtitle = "账单、分类、账户、周期快照、预算与偏好",
                 onClick = onCreateBackup
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
@@ -1587,7 +1440,10 @@ private fun FamilySyncBottomSheet(
     // 🌟 同步完成提示：每次数据互通完成后 toast
     LaunchedEffect(Unit) {
         syncManager.events.collect { event ->
-            toast.success("同步完成：更新 ${event.recordCount} 笔账单、${event.categoryCount} 个分类")
+            toast.success(
+                "同步完成：更新 ${event.recordCount} 笔账单、${event.categoryCount} 个分类、" +
+                    "${event.accountCount} 个账户、${event.snapshotCount} 个快照"
+            )
         }
     }
 

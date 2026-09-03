@@ -138,6 +138,10 @@ interface RecordDao {
     """)
     suspend fun getWidgetMonthSummary(startTime: Long, endTime: Long): WidgetMonthSummary
 
+    @Transaction
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL AND (accountId = :accountId OR targetAccountId = :accountId) ORDER BY recordTime DESC, id DESC")
+    fun getRecordsByAccountId(accountId: Long): Flow<List<RecordWithCategory>>
+
     @Query("UPDATE records SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE deletedAt IS NULL")
     suspend fun softDeleteAllRecords(deletedAt: Long)
 }

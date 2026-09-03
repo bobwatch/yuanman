@@ -8,13 +8,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -26,6 +24,8 @@ import androidx.navigation.navArgument
 import com.yuanman.app.YuanmanApplication
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.BottomNavBar
+import com.yuanman.app.ui.screens.accounts.AccountsScreen
+import com.yuanman.app.ui.screens.accounts.AccountsViewModel
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordViewModel
 import com.yuanman.app.ui.screens.category.AddEditCategoryScreen
@@ -36,17 +36,17 @@ import com.yuanman.app.ui.screens.home.HomeScreen
 import com.yuanman.app.ui.screens.home.HomeViewModel
 import com.yuanman.app.ui.screens.list.RecordListScreen
 import com.yuanman.app.ui.screens.list.RecordListViewModel
+import com.yuanman.app.ui.screens.settings.SettingsScreen
+import com.yuanman.app.ui.screens.settings.SettingsViewModel
 import com.yuanman.app.ui.screens.stats.CategoryRecordsScreen
 import com.yuanman.app.ui.screens.stats.CategoryRecordsViewModel
 import com.yuanman.app.ui.screens.stats.StatisticsScreen
 import com.yuanman.app.ui.screens.stats.StatisticsViewModel
-import com.yuanman.app.ui.screens.settings.SettingsScreen
-import com.yuanman.app.ui.screens.settings.SettingsViewModel
 
 private val TAB_ROUTES = listOf(
     Screen.Home.route,
     Screen.RecordList.route,
-    Screen.Statistics.route,
+    Screen.Accounts.route,
     Screen.Settings.route
 )
 
@@ -136,7 +136,8 @@ fun YuanmanNavGraph(
                     factory = HomeViewModel.Factory(
                         recordRepository = app.recordRepository,
                         preferencesRepository = app.preferencesRepository,
-                        categoryRepository = app.categoryRepository
+                        categoryRepository = app.categoryRepository,
+                        accountRepository = app.accountRepository
                     )
                 )
                 HomeScreen(
@@ -145,11 +146,7 @@ fun YuanmanNavGraph(
                         navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
                     },
                     onNavigateToStatistics = {
-                        navController.navigate(Screen.Statistics.route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        navController.navigate(Screen.Statistics.route)
                     }
                 )
             }
@@ -171,7 +168,20 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 3. 数据统计
+            // 3. 我的账户与资产管理
+            composable(Screen.Accounts.route) {
+                val accountsViewModel: AccountsViewModel = viewModel(
+                    factory = AccountsViewModel.Factory(
+                        accountRepository = app.accountRepository,
+                        preferencesRepository = app.preferencesRepository
+                    )
+                )
+                AccountsScreen(
+                    viewModel = accountsViewModel
+                )
+            }
+
+            // 4. 数据统计
             composable(Screen.Statistics.route) {
                 val statsViewModel: StatisticsViewModel = viewModel(
                     factory = StatisticsViewModel.Factory(
@@ -182,13 +192,14 @@ fun YuanmanNavGraph(
                 )
                 StatisticsScreen(
                     viewModel = statsViewModel,
+                    onNavigateBack = { navController.popBackStack() },
                     onCategoryClick = { categoryId ->
                         navController.navigate(Screen.CategoryRecords.createRoute(categoryId))
                     }
                 )
             }
 
-            // 4. 分类管理
+            // 5. 分类管理
             composable(Screen.CategoryManage.route) {
                 val categoryViewModel: CategoryManageViewModel = viewModel(
                     factory = CategoryManageViewModel.Factory(
@@ -207,13 +218,15 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 5. 设置 / 我的
+            // 6. 设置 / 我的
             composable(Screen.Settings.route) {
                 val settingsViewModel: SettingsViewModel = viewModel(
                     factory = SettingsViewModel.Factory(
                         preferencesRepository = app.preferencesRepository,
                         recordRepository = app.recordRepository,
                         categoryRepository = app.categoryRepository,
+                        accountRepository = app.accountRepository,
+                        database = app.database,
                         syncManager = app.syncManager,
                         updateManager = app.updateManager
                     )
@@ -226,7 +239,7 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 6. 新增 / 编辑账单
+            // 7. 新增 / 编辑账单
             composable(
                 route = Screen.AddEditRecord.route,
                 arguments = listOf(
@@ -256,6 +269,7 @@ fun YuanmanNavGraph(
                         initialType = initialType,
                         initialCategoryId = categoryId,
                         recordRepository = app.recordRepository,
+                        accountRepository = app.accountRepository,
                         categoryRepository = app.categoryRepository,
                         preferencesRepository = app.preferencesRepository
                     )
@@ -270,7 +284,7 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 7. 新增 / 编辑分类及其子标签 (全屏二级页面)
+            // 8. 新增 / 编辑分类及其子标签
             composable(
                 route = Screen.AddEditCategory.route,
                 arguments = listOf(
@@ -303,7 +317,7 @@ fun YuanmanNavGraph(
                 )
             }
 
-            // 8. 分类账单详情 (统计页分类排行点击进入)
+            // 9. 分类账单详情
             composable(
                 route = Screen.CategoryRecords.route,
                 arguments = listOf(

@@ -5,13 +5,17 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.yuanman.app.data.local.dao.AccountDao
+import com.yuanman.app.data.local.dao.AccountSnapshotDao
 import com.yuanman.app.data.local.dao.CategoryDao
+import com.yuanman.app.data.local.dao.QuickEntryLearningDao
 import com.yuanman.app.data.local.dao.RecordDao
 import com.yuanman.app.data.local.dao.SyncDao
+import com.yuanman.app.data.local.entity.AccountEntity
+import com.yuanman.app.data.local.entity.AccountSnapshotEntity
 import com.yuanman.app.data.local.entity.CategoryEntity
-import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
-import com.yuanman.app.data.local.dao.QuickEntryLearningDao
+import com.yuanman.app.data.local.entity.RecordEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,8 +24,14 @@ import java.util.Locale
 import androidx.room.migration.Migration
 
 @Database(
-    entities = [CategoryEntity::class, RecordEntity::class, QuickEntryLearningEntity::class],
-    version = 6,
+    entities = [
+        CategoryEntity::class,
+        RecordEntity::class,
+        QuickEntryLearningEntity::class,
+        AccountEntity::class,
+        AccountSnapshotEntity::class
+    ],
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,6 +40,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recordDao(): RecordDao
     abstract fun syncDao(): SyncDao
     abstract fun quickEntryLearningDao(): QuickEntryLearningDao
+    abstract fun accountDao(): AccountDao
+    abstract fun accountSnapshotDao(): AccountSnapshotDao
 
     companion object {
         @Volatile
@@ -91,6 +103,70 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS accounts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        syncId TEXT NOT NULL DEFAULT '',
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        balanceCents INTEGER NOT NULL DEFAULT 0,
+                        initialBalanceCents INTEGER NOT NULL DEFAULT 0,
+                        currency TEXT NOT NULL DEFAULT 'CNY',
+                        includeInNetWorth INTEGER NOT NULL DEFAULT 1,
+                        icon TEXT NOT NULL DEFAULT '',
+                        colorHex TEXT NOT NULL DEFAULT '',
+                        remark TEXT NOT NULL DEFAULT '',
+                        sortOrder INTEGER NOT NULL DEFAULT 0,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0,
+                        revision INTEGER NOT NULL DEFAULT 0,
+                        deletedAt INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_accounts_syncId ON accounts(syncId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_accounts_type ON accounts(type)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_accounts_isArchived ON accounts(isArchived)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_accounts_deletedAt ON accounts(deletedAt)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS account_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        syncId TEXT NOT NULL DEFAULT '',
+                        periodKey TEXT NOT NULL,
+                        periodType TEXT NOT NULL,
+                        periodStartTimestamp INTEGER NOT NULL DEFAULT 0,
+                        periodEndTimestamp INTEGER NOT NULL DEFAULT 0,
+                        totalAssetCents INTEGER NOT NULL DEFAULT 0,
+                        totalDebtCents INTEGER NOT NULL DEFAULT 0,
+                        netWorthCents INTEGER NOT NULL DEFAULT 0,
+                        snapshotDataJson TEXT NOT NULL DEFAULT '{}',
+                        reconciledAt INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0,
+                        revision INTEGER NOT NULL DEFAULT 0,
+                        deletedAt INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_account_snapshots_syncId ON account_snapshots(syncId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_account_snapshots_periodKey ON account_snapshots(periodKey)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_account_snapshots_periodType ON account_snapshots(periodType)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_account_snapshots_reconciledAt ON account_snapshots(reconciledAt)")
+
+                db.execSQL("ALTER TABLE records ADD COLUMN accountId INTEGER")
+                db.execSQL("ALTER TABLE records ADD COLUMN targetAccountId INTEGER")
+                db.execSQL("ALTER TABLE records ADD COLUMN isAdjustment INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_records_accountId ON records(accountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_records_targetAccountId ON records(targetAccountId)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             val appContext = context.applicationContext
             return INSTANCE ?: synchronized(this) {
@@ -146,6 +222,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_3_4)
                 .addMigrations(MIGRATION_4_5)
                 .addMigrations(MIGRATION_5_6)
+                .addMigrations(MIGRATION_6_7)
                 .addCallback(DatabaseCallback())
                 .build()
         }
