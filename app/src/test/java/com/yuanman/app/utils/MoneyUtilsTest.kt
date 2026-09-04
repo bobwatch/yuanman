@@ -55,4 +55,40 @@ class MoneyUtilsTest {
         assertFalse(MoneyUtils.isValidNonNegativeAmountInput("999999999999999999999999"))
         assertFalse(MoneyUtils.isValidNonNegativeAmountInput("abc"))
     }
+
+    @Test
+    fun testParseSignedYuanToCents() {
+        assertEquals(1234L, MoneyUtils.parseSignedYuanToCents("12.34"))
+        assertEquals(-1234L, MoneyUtils.parseSignedYuanToCents("-12.34"))
+        assertEquals(1000L, MoneyUtils.parseSignedYuanToCents(" 10.00 "))
+        assertEquals(-50L, MoneyUtils.parseSignedYuanToCents("-0.5"))
+        assertEquals(-5L, MoneyUtils.parseSignedYuanToCents("-0.05"))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents("0"))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents("-0.00"))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents(""))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents("-"))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents("abc"))
+        assertEquals(0L, MoneyUtils.parseSignedYuanToCents("-999999999999999999999999"))
+    }
+
+    @Test
+    fun testIsValidSignedAmountInput() {
+        assertTrue(MoneyUtils.isValidSignedAmountInput("0"))
+        assertTrue(MoneyUtils.isValidSignedAmountInput("0.00"))
+        assertTrue(MoneyUtils.isValidSignedAmountInput("12.34"))
+        assertTrue(MoneyUtils.isValidSignedAmountInput("-12.34"))
+        assertTrue(MoneyUtils.isValidSignedAmountInput("-0.5"))
+        assertTrue(MoneyUtils.isValidSignedAmountInput("  -1.25  "))
+
+        assertFalse(MoneyUtils.isValidSignedAmountInput(""))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("-"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("+12"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("--12"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("12.345"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("-12.345"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("abc"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("-abc"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("999999999999999999999999"))
+        assertFalse(MoneyUtils.isValidSignedAmountInput("-999999999999999999999999"))
+    }
 }

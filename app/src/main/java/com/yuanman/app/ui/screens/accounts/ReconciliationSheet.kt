@@ -107,11 +107,11 @@ fun ReconciliationSheet(
             ) {
                 Column {
                     Text(
-                        text = "周期资产对账工作台",
+                        text = "周期对账",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     )
                     Text(
-                        text = "核对「${periodInfo.periodName}」各账户实际金额并归档快照",
+                        text = "核对「${periodInfo.periodName}」各账户实际金额",
                         style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline)
                     )
                 }
@@ -136,17 +136,17 @@ fun ReconciliationSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "系统账面净资产", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
+                            Text(text = "当前记账净资产", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
                             Text(
-                                text = if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(bookNetWorth)}",
+                                text = if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(bookNetWorth)}",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(text = "实际核对后净资产", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
+                            Text(text = "实际总净资产", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
                             Text(
-                                text = if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(actualNetWorth)}",
+                                text = if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(actualNetWorth)}",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (netWorthDiff != 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -171,11 +171,11 @@ fun ReconciliationSheet(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isPositive) "🎉 资产核对有盈余/漏记收入" else "⚠️ 实际资产少于账面/漏记支出",
+                                    text = if (isPositive) "实际金额多于记账（可能漏记了收入）" else "实际金额少于记账（可能漏记了支出）",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = color)
                                 )
                                 Text(
-                                    text = if (privacyMode) "差额 ¥***" else "$sign¥${MoneyUtils.centsToYuanString(if (netWorthDiff < 0) -netWorthDiff else netWorthDiff)}",
+                                    text = if (privacyMode) "差额 ****" else "$sign¥${MoneyUtils.centsToYuanString(if (netWorthDiff < 0) -netWorthDiff else netWorthDiff)}",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = color)
                                 )
                             }
@@ -193,7 +193,7 @@ fun ReconciliationSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "待核对账户 (${accounts.size})",
+                    text = "账户列表（${accounts.size}）",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                 )
 
@@ -206,7 +206,7 @@ fun ReconciliationSheet(
                 ) {
                     Icon(imageVector = Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("重置为账面金额", fontSize = 11.sp)
+                    Text("重置为记账金额", fontSize = 11.sp)
                 }
             }
 
@@ -234,32 +234,43 @@ fun ReconciliationSheet(
                 }
             }
 
-            // 5. 自动平账开关
-            Row(
+            // 5. 自动记账补齐差额开关（布局防变形，无缩放，间距自适应）
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .clip(RoundedCornerShape(14.dp))
                     .clickable { autoCreateAdjustment = !autoCreateAdjustment }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "自动生成差额平账收支单",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                    Text(
-                        text = "当存在实际差额时，自动在账户下生成平账记录校准账面",
-                        style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline, fontSize = 10.sp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "自动记账补齐差额",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "若实际金额与记账有出入，自动记一笔收支账单对齐余额",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = MaterialTheme.colorScheme.outline,
+                                fontSize = 11.5.sp
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = autoCreateAdjustment,
+                        onCheckedChange = { autoCreateAdjustment = it }
                     )
                 }
-                Switch(
-                    checked = autoCreateAdjustment,
-                    onCheckedChange = { autoCreateAdjustment = it },
-                    modifier = Modifier.scale(0.85f)
-                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -280,7 +291,7 @@ fun ReconciliationSheet(
                 } else {
                     Icon(imageVector = Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("完成对账并生成资产快照", fontWeight = FontWeight.Bold)
+                    Text("完成对账", fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -363,7 +374,7 @@ private fun ReconciliationAccountCard(
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "账面: ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"}",
+                        text = "记账：${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"}",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = MaterialTheme.colorScheme.outline,
                             fontSize = 11.sp
@@ -376,7 +387,7 @@ private fun ReconciliationAccountCard(
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "实际: ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(actualBalanceCents)}"}",
+                        text = "实际：${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(actualBalanceCents)}"}",
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = if (hasDiff) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -397,18 +408,18 @@ private fun ReconciliationAccountCard(
                     val sign = if (isPositive) "+" else "-"
                     val color = if (isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                     Text(
-                        text = if (privacyMode) "差额 ¥***" else "差额 $sign¥${MoneyUtils.centsToYuanString(if (diffCents < 0) -diffCents else diffCents)}",
+                        text = if (privacyMode) "差额 ****" else "差额 $sign¥${MoneyUtils.centsToYuanString(if (diffCents < 0) -diffCents else diffCents)}",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = color
                         )
                     )
                 } else {
                     Text(
-                        text = "与账面一致",
+                        text = "金额一致",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.outline
                         )
                     )
@@ -430,12 +441,13 @@ private fun AdjustBalanceDialog(
         mutableStateOf(MoneyUtils.centsToYuanString(initialBalanceCents))
     }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    val isLiability = AccountType.fromString(account.type).isLiability
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "核对「${account.name}」实际余额",
+                text = "核对「${account.name}」实际金额",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
         },
@@ -447,7 +459,7 @@ private fun AdjustBalanceDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "当前账面为 ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"}，请输入外部账户实际真实金额：",
+                    text = "当前记账金额为 ${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"}，请输入目前的实际真实金额：",
                     style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.outline)
                 )
 
@@ -479,7 +491,7 @@ private fun AdjustBalanceDialog(
                         }
                     ) {
                         Text(
-                            text = if (privacyMode) "与账面一致" else "账面 (¥${MoneyUtils.centsToYuanString(account.balanceCents)})",
+                            text = if (privacyMode) "设为记账金额" else "记账金额（¥${MoneyUtils.centsToYuanString(account.balanceCents)}）",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
@@ -492,10 +504,36 @@ private fun AdjustBalanceDialog(
                         modifier = Modifier.clickable { inputYuanStr = "0.00" }
                     ) {
                         Text(
-                            text = "清零 (¥0.00)",
+                            text = "清零（¥0.00）",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
+                    }
+
+                    // 负债账户溢缴（负余额）时切换符号，与账户编辑页行为一致
+                    if (isLiability) {
+                        val isNegative = inputYuanStr.trimStart().startsWith("-")
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                            modifier = Modifier.clickable(enabled = inputYuanStr.isNotBlank()) {
+                                inputYuanStr = if (isNegative) {
+                                    inputYuanStr.trimStart().removePrefix("-")
+                                } else {
+                                    "-" + inputYuanStr.trimStart()
+                                }
+                                errorMsg = null
+                            }
+                        ) {
+                            Text(
+                                text = if (isNegative) "转待还（正数）" else "转溢缴（负数）",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
 
@@ -508,18 +546,30 @@ private fun AdjustBalanceDialog(
             Button(
                 onClick = {
                     try {
-                        if (inputYuanStr.isNotBlank() && !MoneyUtils.isValidNonNegativeAmountInput(inputYuanStr)) {
-                            errorMsg = "请输入有效的非负金额（最多两位小数）"
+                        val valid = if (isLiability) {
+                            inputYuanStr.isBlank() || MoneyUtils.isValidSignedAmountInput(inputYuanStr)
+                        } else {
+                            inputYuanStr.isBlank() || MoneyUtils.isValidNonNegativeAmountInput(inputYuanStr)
+                        }
+                        if (inputYuanStr.isNotBlank() && !valid) {
+                            errorMsg = if (isLiability) {
+                                "请输入有效的金额（最多两位小数，负数表示溢缴）"
+                            } else {
+                                "请输入有效的非负金额（最多两位小数）"
+                            }
                             return@Button
                         }
-                        val cents = if (inputYuanStr.isBlank()) 0L else MoneyUtils.parseYuanToCents(inputYuanStr)
+                        val cents = if (inputYuanStr.isBlank()) 0L else {
+                            if (isLiability) MoneyUtils.parseSignedYuanToCents(inputYuanStr)
+                            else MoneyUtils.parseYuanToCents(inputYuanStr)
+                        }
                         onConfirm(cents)
                     } catch (e: Exception) {
                         errorMsg = "请输入正确的金额数字"
                     }
                 }
             ) {
-                Text("确认核准")
+                Text("确认")
             }
         },
         dismissButton = {
@@ -529,5 +579,3 @@ private fun AdjustBalanceDialog(
         }
     )
 }
-
-private fun Modifier.scale(scale: Float): Modifier = this.then(Modifier.size((24 * scale).dp))

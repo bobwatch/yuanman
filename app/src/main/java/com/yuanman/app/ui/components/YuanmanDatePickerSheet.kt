@@ -699,7 +699,7 @@ private fun QuickDateCard(
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = subTitle,
-                fontSize = 10.5.sp,
+                fontSize = 11.sp,
                 color = if (isSelected) primaryColor else MaterialTheme.colorScheme.outline
             )
         }

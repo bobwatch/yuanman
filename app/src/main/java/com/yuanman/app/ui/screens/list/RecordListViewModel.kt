@@ -481,6 +481,12 @@ class RecordListViewModel(
         }
     }
 
+    fun undoDelete(record: RecordEntity) {
+        viewModelScope.launch {
+            recordRepository.restoreRecord(record.id)
+        }
+    }
+
     private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
     private data class FourCombine(
         val filters: FilterParams,

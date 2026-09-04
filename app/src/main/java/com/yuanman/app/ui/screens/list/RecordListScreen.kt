@@ -84,7 +84,6 @@ fun RecordListScreen(
             if (pullRefreshState.isRefreshing) {
                 pullRefreshState.endRefresh()
             }
-            toast.success("刷新成功")
             refreshWasRunning = false
         }
     }
@@ -136,13 +135,13 @@ fun RecordListScreen(
                             ) {
                                 IconButton(
                                     onClick = { viewModel.previousMonth() },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ChevronLeft,
                                         contentDescription = "上月",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
 
@@ -161,13 +160,13 @@ fun RecordListScreen(
 
                                 IconButton(
                                     onClick = { viewModel.nextMonth() },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ChevronRight,
                                         contentDescription = "下月",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
@@ -217,7 +216,7 @@ fun RecordListScreen(
                         ) {
                             if (uiState.searchQuery.isEmpty()) {
                                 Text(
-                                    text = "搜索备注、金额、分类或支付方式...",
+                                    text = "搜索备注、金额、分类或支付方式…",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = 13.sp,
                                         color = MaterialTheme.colorScheme.outline
@@ -242,13 +241,13 @@ fun RecordListScreen(
                         if (uiState.searchQuery.isNotEmpty()) {
                             IconButton(
                                 onClick = { viewModel.updateSearchQuery("") },
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
                                     contentDescription = "清除",
                                     tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
                         }
@@ -355,7 +354,7 @@ fun RecordListScreen(
                         if (isCurrentSelectedMonth) {
                             item {
                                 ModernFilterPill(
-                                    text = "今日 (${currentDay}日)",
+                                    text = "今日（${currentDay}日）",
                                     selected = uiState.selectedDay == currentDay,
                                     onClick = { viewModel.selectDay(currentDay) }
                                 )
@@ -364,7 +363,7 @@ fun RecordListScreen(
                             if (currentDay > 1) {
                                 item {
                                     ModernFilterPill(
-                                        text = "昨日 (${currentDay - 1}日)",
+                                        text = "昨日（${currentDay - 1}日）",
                                         selected = uiState.selectedDay == currentDay - 1,
                                         onClick = { viewModel.selectDay(currentDay - 1) }
                                     )
@@ -546,7 +545,7 @@ fun RecordListScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             EmptyStateView(
-                                title = if (uiState.searchQuery.isNotEmpty()) "未找到相关账单" else "该时间段暂无账单记录",
+                                title = if (uiState.searchQuery.isNotEmpty()) "未找到相关账单" else "该时间段暂无账单",
                                 description = if (uiState.searchQuery.isNotEmpty()) "换个关键词试试" else "点击底部「＋」记账",
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -705,6 +704,7 @@ fun RecordListScreen(
                         .clickable {
                             viewModel.copyRecord(target.record)
                             activeMenuRecord = null
+                            toast.success("已成功复制一笔账单")
                         }
                 )
 
@@ -736,7 +736,14 @@ fun RecordListScreen(
         title = "删除账单",
         message = "确定要删除分类为「${recordToDelete?.category?.name ?: "未分类"}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
         onConfirm = {
-            recordToDelete?.let { viewModel.deleteRecord(it) }
+            recordToDelete?.let { target ->
+                viewModel.deleteRecord(target)
+                toast.info(
+                    message = "账单已删除",
+                    actionLabel = "撤销",
+                    onAction = { viewModel.undoDelete(target.record) }
+                )
+            }
             recordToDelete = null
         },
         onDismiss = { recordToDelete = null }

@@ -38,7 +38,7 @@ import com.yuanman.app.utils.clickableDebounce
  * 1. 【沉浸式毛玻璃 Hero 卡片】：呈现该分类专属色调的半透明渐变底座 + 呼吸微光图标。
  * 2. 【多维数据概览】：大字号月度总金额 + 笔数 + 笔均 + 最高单笔。
  * 3. 【时序账单流】：按自然日分组，每日小计，支持点击防抖穿透进入详情。
- * 4. 【快捷记账 FAB】：一键快速为该分类记账。
+ * 4. 【闪电记账 FAB】：一键快速为该分类记账。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -272,7 +272,7 @@ fun CategoryRecordsScreen(
                             viewModel.selectMonth(cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
                         }
                     },
-                    label = { Text("${uiState.selectedYear}年${uiState.selectedMonth}月 (${uiState.records.size}笔)", fontSize = 12.sp) },
+                    label = { Text("${uiState.selectedYear}年${uiState.selectedMonth}月（${uiState.records.size}笔）", fontSize = 12.sp) },
                     leadingIcon = if (!uiState.isAllTime) {
                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(15.dp)) }
                     } else null

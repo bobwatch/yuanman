@@ -85,7 +85,7 @@ fun AddEditAccountSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isEdit) "编辑账户「${account?.name}」" else "新增资产/负债账户",
+                    text = if (isEdit) "编辑账户「${account?.name}」" else "新增账户",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
@@ -151,7 +151,7 @@ fun AddEditAccountSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 3. 当前余额
+            // 3. 当前余额（负债账户金额为负数表示溢缴/多还）
             OutlinedTextField(
                 value = balanceYuanStr,
                 onValueChange = {
@@ -160,10 +160,27 @@ fun AddEditAccountSheet(
                 },
                 label = {
                     Text(
-                        if (selectedType.isLiability) "当前待还/欠款金额 (元)" else "当前账户余额 (元)"
+                        if (selectedType.isLiability) "当前待还/欠款金额（元）" else "当前账户余额（元）"
                     )
                 },
                 prefix = { Text("¥ ", fontWeight = FontWeight.Bold) },
+                trailingIcon = {
+                    if (selectedType.isLiability) {
+                        TextButton(
+                            onClick = {
+                                balanceYuanStr = toggleBalanceSign(balanceYuanStr)
+                                errorMessage = null
+                            },
+                            enabled = balanceYuanStr.isNotBlank(),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Text(
+                                text = if (balanceYuanStr.trimStart().startsWith("-")) "转待还" else "转溢缴",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                 shape = RoundedCornerShape(14.dp),
@@ -175,7 +192,7 @@ fun AddEditAccountSheet(
                     value = balanceAdjustmentRemark,
                     onValueChange = { balanceAdjustmentRemark = it },
                     label = { Text("余额调整说明（选填）") },
-                    supportingText = { Text("修改余额会生成可撤销的调整流水") },
+                    supportingText = { Text("修改余额会生成可撤销的调整账单") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     shape = RoundedCornerShape(14.dp),
@@ -309,12 +326,27 @@ fun AddEditAccountSheet(
                         errorMessage = "请输入账户名称"
                         return@Button
                     }
-                    if (balanceYuanStr.isNotBlank() && !MoneyUtils.isValidNonNegativeAmountInput(balanceYuanStr)) {
-                        errorMessage = "请输入有效的非负金额（最多两位小数）"
+                    val balanceInputValid = if (selectedType.isLiability) {
+                        MoneyUtils.isValidSignedAmountInput(balanceYuanStr)
+                    } else {
+                        MoneyUtils.isValidNonNegativeAmountInput(balanceYuanStr)
+                    }
+                    if (balanceYuanStr.isNotBlank() && !balanceInputValid) {
+                        errorMessage = if (selectedType.isLiability) {
+                            "请输入有效的金额（最多两位小数，负数表示溢缴）"
+                        } else {
+                            "请输入有效的非负金额（最多两位小数）"
+                        }
                         return@Button
                     }
                     val balanceCents = try {
-                        if (balanceYuanStr.isBlank()) 0L else MoneyUtils.parseYuanToCents(balanceYuanStr)
+                        if (balanceYuanStr.isBlank()) {
+                            0L
+                        } else if (selectedType.isLiability) {
+                            MoneyUtils.parseSignedYuanToCents(balanceYuanStr)
+                        } else {
+                            MoneyUtils.parseYuanToCents(balanceYuanStr)
+                        }
                     } catch (e: Exception) {
                         errorMessage = "请输入有效的金额数字"
                         return@Button
@@ -342,7 +374,7 @@ fun AddEditAccountSheet(
                     Text("保存中…", fontWeight = FontWeight.Bold)
                 } else {
                     Text(
-                        text = if (isEdit) "保存修改" else "完成并创建账户",
+                        text = if (isEdit) "保存修改" else "创建",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
@@ -351,4 +383,15 @@ fun AddEditAccountSheet(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+/**
+ * 切换金额文本的正负号（负债账户余额为负表示溢缴/多还）。
+ * 空串或非数字开头的非法内容保持原样，避免产生无法解析的输入。
+ */
+private fun toggleBalanceSign(raw: String): String {
+    val trimmed = raw.trim()
+    val canFlip = trimmed.isNotEmpty() && (trimmed.startsWith("-") || trimmed[0].isDigit())
+    if (!canFlip) return raw
+    return if (trimmed.startsWith("-")) trimmed.removePrefix("-") else "-$trimmed"
 }

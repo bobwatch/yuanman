@@ -35,6 +35,10 @@ data class AddEditUiState(
     val selectedAccountId: Long? = null,
     val availableAccounts: List<AccountEntity> = emptyList(),
     val spreadMonths: Int = 1,
+    val splitGroupId: String? = null,
+    val splitIndex: Int? = null,
+    val splitTotal: Int? = null,
+    val isDirty: Boolean = false,
     val expenseCategories: List<CategoryEntity> = emptyList(),
     val incomeCategories: List<CategoryEntity> = emptyList(),
     val availableCategories: List<CategoryEntity> = emptyList(),
@@ -171,6 +175,9 @@ class AddEditRecordViewModel(
                             remark = record.remark,
                             paymentMethod = record.paymentMethod,
                             selectedAccountId = record.accountId,
+                            splitGroupId = record.splitGroupId,
+                            splitIndex = record.splitIndex,
+                            splitTotal = record.splitTotal,
                             quickRemarks = remarks
                         )
                     }
@@ -205,12 +212,15 @@ class AddEditRecordViewModel(
     }
 
     fun setRecordType(type: RecordType) {
-        if (_uiState.value.type != type) {
+        val state = _uiState.value
+        // 跨月分摊账单只允许编辑当期内容，不允许切换收支类型
+        if (state.isEditMode && state.splitGroupId != null) return
+        if (state.type != type) {
             // 记录切换前的选中分类偏好记忆
-            if (_uiState.value.type == RecordType.EXPENSE) {
-                lastSelectedExpenseCategory = _uiState.value.selectedCategory
+            if (state.type == RecordType.EXPENSE) {
+                lastSelectedExpenseCategory = state.selectedCategory
             } else {
-                lastSelectedIncomeCategory = _uiState.value.selectedCategory
+                lastSelectedIncomeCategory = state.selectedCategory
             }
 
             val targetList = if (type == RecordType.EXPENSE) cachedExpenseCategories else cachedIncomeCategories
@@ -229,18 +239,19 @@ class AddEditRecordViewModel(
                     availableCategories = targetList,
                     selectedCategory = newSelected,
                     quickRemarks = remarks,
-                    spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1
+                    spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1,
+                    isDirty = true
                 )
             }
         }
     }
 
     fun setSpreadMonths(months: Int) {
-        _uiState.update { it.copy(spreadMonths = months.coerceIn(1, 36)) }
+        _uiState.update { it.copy(spreadMonths = months.coerceIn(1, 36), isDirty = true) }
     }
 
     fun setExpression(expr: String) {
-        _uiState.update { it.copy(expression = expr, errorMessage = null) }
+        _uiState.update { it.copy(expression = expr, errorMessage = null, isDirty = true) }
     }
 
     fun selectCategory(category: CategoryEntity) {
@@ -249,17 +260,18 @@ class AddEditRecordViewModel(
             it.copy(
                 selectedCategory = category,
                 quickRemarks = remarks,
-                errorMessage = null
+                errorMessage = null,
+                isDirty = true
             )
         }
     }
 
     fun setRecordTime(timestamp: Long) {
-        _uiState.update { it.copy(recordTime = timestamp) }
+        _uiState.update { it.copy(recordTime = timestamp, isDirty = true) }
     }
 
     fun setRemark(remark: String) {
-        _uiState.update { it.copy(remark = remark) }
+        _uiState.update { it.copy(remark = remark, isDirty = true) }
     }
 
     fun selectQuickRemark(tag: String) {
@@ -275,25 +287,25 @@ class AddEditRecordViewModel(
         } else {
             "$current $tag"
         }
-        _uiState.update { it.copy(remark = updated) }
+        _uiState.update { it.copy(remark = updated, isDirty = true) }
     }
 
     fun setPaymentMethod(method: String) {
         _uiState.update {
             val newMethod = if (it.paymentMethod == method) "" else method
-            it.copy(paymentMethod = newMethod)
+            it.copy(paymentMethod = newMethod, isDirty = true)
         }
     }
 
     fun selectAccount(accountId: Long?) {
         _uiState.update { state ->
             val validId = accountId?.takeIf { id -> state.availableAccounts.any { it.id == id } }
-            state.copy(selectedAccountId = validId, errorMessage = null)
+            state.copy(selectedAccountId = validId, errorMessage = null, isDirty = true)
         }
     }
 
     fun clearPaymentSelection() {
-        _uiState.update { it.copy(paymentMethod = "", selectedAccountId = null, spreadMonths = 1) }
+        _uiState.update { it.copy(paymentMethod = "", selectedAccountId = null, spreadMonths = 1, isDirty = true) }
     }
 
     fun clearErrorMessage() {
@@ -365,46 +377,66 @@ class AddEditRecordViewModel(
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
             try {
-                val monthCount = if (!state.isEditMode && state.type == RecordType.EXPENSE) {
-                    state.spreadMonths.coerceAtLeast(1)
-                } else {
-                    1
-                }
                 val now = System.currentTimeMillis()
-                val splitGroupId = if (monthCount > 1) UUID.randomUUID().toString() else null
-                val splitAmounts = CrossMonthExpenseUtils.splitAmount(amountInCents, monthCount)
-                val records = splitAmounts.mapIndexed { index, splitAmount ->
-                    val splitRemark = if (monthCount > 1) {
-                        listOfNotNull(
-                            state.remark.trim().takeIf { it.isNotBlank() },
-                            "跨月分摊 ${index + 1}/$monthCount"
-                        ).joinToString(" · ")
-                    } else {
-                        state.remark.trim()
-                    }
-                    RecordEntity(
-                        id = if (state.isEditMode) state.recordId else 0L,
-                        type = state.type.name,
-                        amount = splitAmount,
-                        categoryId = category.id,
-                        recordTime = if (monthCount > 1) {
-                            CrossMonthExpenseUtils.addMonthsKeepingDay(state.recordTime, index)
-                        } else {
-                            state.recordTime
-                        },
-                        remark = splitRemark,
-                        paymentMethod = state.paymentMethod,
-                        accountId = state.selectedAccountId,
-                        splitGroupId = splitGroupId,
-                        splitIndex = if (monthCount > 1) index + 1 else null,
-                        splitTotal = if (monthCount > 1) monthCount else null,
-                        createdAt = now,
-                        updatedAt = now
-                    )
-                }
 
-                if (state.isEditMode) recordRepository.updateRecord(records.first())
-                else recordRepository.insertRecords(records)
+                if (state.isEditMode) {
+                    // 编辑模式：单条更新；若是跨月分摊账单，保留原分摊组信息，仅修改本期
+                    recordRepository.updateRecord(
+                        RecordEntity(
+                            id = state.recordId,
+                            type = state.type.name,
+                            amount = amountInCents,
+                            categoryId = category.id,
+                            recordTime = state.recordTime,
+                            remark = state.remark.trim(),
+                            paymentMethod = state.paymentMethod,
+                            accountId = state.selectedAccountId,
+                            splitGroupId = state.splitGroupId,
+                            splitIndex = state.splitIndex,
+                            splitTotal = state.splitTotal,
+                            createdAt = now,
+                            updatedAt = now
+                        )
+                    )
+                } else {
+                    val monthCount = if (state.type == RecordType.EXPENSE) {
+                        state.spreadMonths.coerceAtLeast(1)
+                    } else {
+                        1
+                    }
+                    val splitGroupId = if (monthCount > 1) UUID.randomUUID().toString() else null
+                    val splitAmounts = CrossMonthExpenseUtils.splitAmount(amountInCents, monthCount)
+                    val records = splitAmounts.mapIndexed { index, splitAmount ->
+                        val splitRemark = if (monthCount > 1) {
+                            listOfNotNull(
+                                state.remark.trim().takeIf { it.isNotBlank() },
+                                "跨月分摊 ${index + 1}/$monthCount"
+                            ).joinToString(" · ")
+                        } else {
+                            state.remark.trim()
+                        }
+                        RecordEntity(
+                            id = 0L,
+                            type = state.type.name,
+                            amount = splitAmount,
+                            categoryId = category.id,
+                            recordTime = if (monthCount > 1) {
+                                CrossMonthExpenseUtils.addMonthsKeepingDay(state.recordTime, index)
+                            } else {
+                                state.recordTime
+                            },
+                            remark = splitRemark,
+                            paymentMethod = state.paymentMethod,
+                            accountId = state.selectedAccountId,
+                            splitGroupId = splitGroupId,
+                            splitIndex = if (monthCount > 1) index + 1 else null,
+                            splitTotal = if (monthCount > 1) monthCount else null,
+                            createdAt = now,
+                            updatedAt = now
+                        )
+                    }
+                    recordRepository.insertRecords(records)
+                }
 
                 if (state.remark.isNotBlank()) {
                     categoryRepository.learnQuickEntry(state.type, state.remark, category.syncId)
@@ -418,11 +450,12 @@ class AddEditRecordViewModel(
                             remark = "",
                             spreadMonths = 1,
                             recordTime = System.currentTimeMillis(),
-                            savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」✨ 可继续记下一笔"
+                            savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」可继续记下一笔",
+                            isDirty = false
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(isSavedSuccess = true) }
+                    _uiState.update { it.copy(isSavedSuccess = true, isDirty = false) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.message ?: "保存失败，请稍后重试") }
@@ -436,13 +469,15 @@ class AddEditRecordViewModel(
         _uiState.update { it.copy(savedFeedbackMessage = null) }
     }
 
-    fun deleteRecord() {
-        if (_uiState.value.isEditMode && _uiState.value.recordId > 0L) {
+    fun deleteRecord(): Long {
+        val id = _uiState.value.recordId
+        if (_uiState.value.isEditMode && id > 0L) {
             viewModelScope.launch {
-                recordRepository.deleteRecordById(_uiState.value.recordId)
-                _uiState.update { it.copy(isSavedSuccess = true) }
+                recordRepository.deleteRecordById(id)
+                _uiState.update { it.copy(isSavedSuccess = true, isDirty = false) }
             }
         }
+        return id
     }
 
     class Factory(

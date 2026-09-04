@@ -111,7 +111,7 @@ fun PeriodSettingsSheet(
                         )
                     )
                     Text(
-                        text = "当前: 每月${currentStartDay}日",
+                        text = "当前：每月${currentStartDay}日",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary

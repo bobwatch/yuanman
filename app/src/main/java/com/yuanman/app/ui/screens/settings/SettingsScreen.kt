@@ -163,10 +163,10 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    // 月度预算配置 (核心开销管理目标)
+                    // 月预算配置 (核心开销管理目标)
                     SettingsRowItem(
                         icon = Icons.Outlined.AccountBalanceWallet,
-                        title = "月度预算",
+                        title = "月预算",
                         subtitle = if (uiState.monthlyBudget > 0L) "¥${MoneyUtils.centsToYuanString(uiState.monthlyBudget)}" else "未设置",
                         subtitleHighlight = uiState.monthlyBudget > 0L,
                         onClick = { showBudgetDialog = true }
@@ -181,7 +181,7 @@ fun SettingsScreen(
                     SettingsRowItem(
                         icon = Icons.Outlined.Category,
                         title = "分类管理",
-                        subtitle = "管理支出与收入分类及专属子标签",
+                        subtitle = "管理支出与收入分类及子标签",
                         onClick = { onNavigateToCategoryManage?.invoke() }
                     )
 
@@ -192,7 +192,7 @@ fun SettingsScreen(
 
                     SettingsRowItem(
                         icon = Icons.Outlined.Bolt,
-                        title = "快捷记账",
+                        title = "闪电记账",
                         subtitle = if (uiState.quickEntryEnabled) {
                             if (learningRules.isEmpty()) "已开启 · 智能匹配分类"
                             else "已开启 · 已积累 ${learningRules.size} 条习惯规则"
@@ -398,7 +398,7 @@ fun SettingsScreen(
         )
     }
 
-    // 🌟 月度预算设置弹窗
+    // 🌟 月预算设置弹窗
     if (showBudgetDialog) {
         val budgetFocusRequester = remember { FocusRequester() }
         val keyboardController = LocalSoftwareKeyboardController.current
@@ -406,6 +406,11 @@ fun SettingsScreen(
             mutableStateOf(
                 if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
             )
+        }
+        val budgetError = if (budgetInput.isNotBlank() && !MoneyUtils.isValidAmountInput(budgetInput.trim())) {
+            "请输入大于 0 的有效金额"
+        } else {
+            null
         }
 
         LaunchedEffect(Unit) {
@@ -427,12 +432,12 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "设置月度预算",
+                        text = "设置月预算",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
 
                     Text(
-                        text = "设定合理的月度预算目标，可在首页看板实时把控消费节奏。",
+                        text = "设定合理的月预算目标，可在首页看板实时把控消费节奏。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -440,9 +445,17 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = budgetInput,
                         onValueChange = { budgetInput = it },
-                        label = { Text("预算金额 (元)") },
-                        placeholder = { Text("如: 5000") },
+                        label = { Text("预算金额（元）") },
+                        placeholder = { Text("如：5000") },
                         prefix = { Text("¥ ") },
+                        isError = budgetError != null,
+                        supportingText = {
+                            if (budgetError != null) {
+                                Text(budgetError, color = MaterialTheme.colorScheme.error)
+                            } else {
+                                Text("留空不修改预算，清除预算请点下方按钮", color = MaterialTheme.colorScheme.outline)
+                            }
+                        },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         modifier = Modifier
@@ -469,10 +482,13 @@ fun SettingsScreen(
 
                         Button(
                             onClick = {
-                                val cents = MoneyUtils.parseYuanToCents(budgetInput)
-                                viewModel.setMonthlyBudget(cents)
-                                showBudgetDialog = false
-                                toast.success("月度预算已保存")
+                                if (budgetError == null) {
+                                    if (budgetInput.isNotBlank()) {
+                                        viewModel.setMonthlyBudget(MoneyUtils.parseYuanToCents(budgetInput.trim()))
+                                        toast.success("月预算已保存")
+                                    }
+                                    showBudgetDialog = false
+                                }
                             }
                         ) {
                             Text("保存")
@@ -685,7 +701,7 @@ fun SettingsScreen(
     ConfirmDeleteDialog(
         visible = showResetLearningDialog,
         title = "重置分类学习",
-        message = "将清除快捷记账的个人分类习惯，内置分类词典不会受影响。确定继续吗？",
+        message = "将清除闪电记账的个人分类习惯，内置分类词典不会受影响。确定继续吗？",
         confirmButtonText = "确认重置",
         onConfirm = {
             viewModel.clearQuickEntryLearning()
@@ -729,8 +745,7 @@ private fun SpreadsheetBottomSheet(
     ) {
         SettingsTaskSheetContent(
             title = "账单导入与导出",
-            description = "保存、分享账单，或从其他记账工具迁移数据",
-            onDismiss = onDismiss
+            description = "保存、分享账单，或从其他记账工具迁移数据"
         ) {
             SettingsRowItem(
                 icon = Icons.Outlined.FileDownload,
@@ -771,8 +786,7 @@ private fun BackupAndRestoreBottomSheet(
     ) {
         SettingsTaskSheetContent(
             title = "备份与恢复",
-            description = lastBackupText,
-            onDismiss = onDismiss
+            description = lastBackupText
         ) {
             SettingsRowItem(
                 icon = Icons.Outlined.Backup,
@@ -829,7 +843,6 @@ private fun BackupAndRestoreBottomSheet(
 private fun SettingsTaskSheetContent(
     title: String,
     description: String,
-    onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
@@ -840,15 +853,11 @@ private fun SettingsTaskSheetContent(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                 Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "关闭")
             }
         }
 
@@ -1061,7 +1070,7 @@ private fun QuickEntryBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("快捷记账", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text("闪电记账", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                     Text(
                         "自然语言智能识别与分类习惯管理",
                         style = MaterialTheme.typography.bodySmall,
@@ -1073,7 +1082,7 @@ private fun QuickEntryBottomSheet(
                 }
             }
 
-            // 2. 快捷记账总开关卡片
+            // 2. 闪电记账总开关卡片
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -1108,12 +1117,12 @@ private fun QuickEntryBottomSheet(
                         }
                         Column {
                             Text(
-                                text = "开启快捷记账",
+                                text = "开启闪电记账",
                                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (uiState.quickEntryEnabled) "首页顶部常驻闪电记账条" else "已隐藏首页快捷记账条",
+                                text = if (uiState.quickEntryEnabled) "首页顶部常驻闪电记账条" else "已隐藏首页闪电记账条",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                             )
@@ -1191,7 +1200,7 @@ private fun QuickEntryBottomSheet(
                     }
                     if (rules.isEmpty()) {
                         Text(
-                            "还没有学习记录。保存几笔快捷记账后，系统会逐步记住你的分类习惯。",
+                            "还没有学习记录。保存几笔闪电记账后，系统会逐步记住你的分类习惯。",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 20.dp)
@@ -1199,6 +1208,11 @@ private fun QuickEntryBottomSheet(
                     } else if (visibleRules.isEmpty()) {
                         Text("没有匹配的学习记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
                     } else {
+                        Text(
+                            text = "长按标签可删除",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                         LazyColumn(
                             state = learningListState,
                             modifier = Modifier
@@ -1617,7 +1631,7 @@ private fun FamilySyncBottomSheet(
                                     if (it.length <= 6) peerCodeInput = it.filter { ch -> ch.isDigit() }
                                 },
                                 label = { Text("对方 6 位配对码") },
-                                placeholder = { Text("如: 123456") },
+                                placeholder = { Text("如：123456") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f)
@@ -1629,7 +1643,7 @@ private fun FamilySyncBottomSheet(
                                         val ok = syncManager.setPairingCode(peerCodeInput)
                                         if (ok) {
                                             peerCodeInput = ""
-                                            toast.success("已设置对方配对码，正在尝试同步...")
+                                            toast.success("已设置对方配对码，正在尝试同步…")
                                             syncManager.syncNowWithPairingCode()
                                         }
                                     }
@@ -1662,7 +1676,7 @@ private fun FamilySyncBottomSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "在线设备 (${devices.size})",
+                            text = "在线设备（${devices.size}）",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -1737,7 +1751,7 @@ private fun FamilySyncBottomSheet(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("正在同步...")
+                            Text("正在同步…")
                         } else {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))

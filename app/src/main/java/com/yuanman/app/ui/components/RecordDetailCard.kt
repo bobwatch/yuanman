@@ -81,7 +81,7 @@ fun RecordDetailCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
             DetailCardRow(label = "类型", value = recordType.title)
-            DetailCardRow(label = "支付", value = record.paymentMethod.ifBlank { "未指定" })
+            DetailCardRow(label = if (recordType == RecordType.EXPENSE) "扣款账户" else "入账账户", value = record.paymentMethod.ifBlank { "未指定" })
             DetailCardRow(label = "备注", value = record.remark.ifBlank { "无备注" }, maxLines = 2)
         }
     }

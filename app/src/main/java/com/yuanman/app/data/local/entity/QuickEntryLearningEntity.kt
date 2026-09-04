@@ -3,7 +3,7 @@ package com.yuanman.app.data.local.entity
 import androidx.room.Entity
 import androidx.room.Index
 
-/** 快捷记账分类词条；sampleCount=0 表示系统预置词，>0 表示用户已使用/修正过。 */
+/** 闪电记账分类词条；sampleCount=0 表示系统预置词，>0 表示用户已使用/修正过。 */
 @Entity(
     tableName = "quick_entry_learning",
     primaryKeys = ["type", "phrase", "categorySyncId"],

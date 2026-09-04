@@ -27,6 +27,8 @@ data class AccountsUiState(
     val incomeRules: List<IncomeAllocationRule> = emptyList(),
     val selectedAccountForDetail: AccountEntity? = null,
     val selectedAccountRecords: List<RecordWithCategory> = emptyList(),
+    val recentRecords: List<RecordWithCategory> = emptyList(),
+    val periodRecords: List<RecordWithCategory> = emptyList(),
     val isAddEditOpen: Boolean = false,
     val accountToEdit: AccountEntity? = null,
     val isTransferOpen: Boolean = false,
@@ -34,12 +36,10 @@ data class AccountsUiState(
     val transferInitialToId: Long? = null,
     val isReconciliationOpen: Boolean = false,
     val isAllocationOpen: Boolean = false,
-    val isPeriodSettingsOpen: Boolean = false,
     val privacyMode: Boolean = false,
     val searchQuery: String = "",
     val isLoading: Boolean = false,
-    val feedbackMessage: String? = null,
-    val defaultExpenseAccountId: Long? = null
+    val feedbackMessage: String? = null
 )
 
 class AccountsViewModel(
@@ -57,7 +57,6 @@ class AccountsViewModel(
     private val _transferInitialToId = MutableStateFlow<Long?>(null)
     private val _isReconciliationOpen = MutableStateFlow(false)
     private val _isAllocationOpen = MutableStateFlow(false)
-    private val _isPeriodSettingsOpen = MutableStateFlow(false)
     private val _isArchivedListOpen = MutableStateFlow(false)
     private val _privacyMode = MutableStateFlow(false)
     private val _searchQuery = MutableStateFlow("")
@@ -94,6 +93,16 @@ class AccountsViewModel(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    private val periodRecordsFlow: Flow<List<RecordWithCategory>> = combine(
+        _periodType,
+        _startDay
+    ) { type, day ->
+        Pair(type, day)
+    }.flatMapLatest { (type, day) ->
+        accountRepository.observePeriodRecords(type, day)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     private val selectedAccountRecordsFlow: Flow<List<RecordWithCategory>> = _selectedAccountForDetail.flatMapLatest { account ->
         if (account == null) {
             flowOf(emptyList())
@@ -111,9 +120,10 @@ class AccountsViewModel(
         val incomeRules: List<IncomeAllocationRule>,
         val selectedAccountForDetail: AccountEntity?,
         val selectedAccountRecords: List<RecordWithCategory>,
+        val recentRecords: List<RecordWithCategory>,
+        val periodRecords: List<RecordWithCategory>,
         val privacyMode: Boolean,
-        val searchQuery: String,
-        val defaultExpenseAccountId: Long?
+        val searchQuery: String
     )
 
     private data class AccountDialogsData(
@@ -124,7 +134,6 @@ class AccountsViewModel(
         val transferInitialToId: Long?,
         val isReconciliationOpen: Boolean,
         val isAllocationOpen: Boolean,
-        val isPeriodSettingsOpen: Boolean,
         val isArchivedListOpen: Boolean,
         val feedback: String?
     )
@@ -132,8 +141,7 @@ class AccountsViewModel(
     private data class AccountExtraPrefs(
         val rules: List<IncomeAllocationRule>,
         val privacy: Boolean,
-        val query: String,
-        val defaultExpenseAccountId: Long?
+        val query: String
     )
 
     private val periodInfoFlow = combine(_periodType, _startDay) { type, day -> Pair(type, day) }
@@ -145,20 +153,23 @@ class AccountsViewModel(
     private val extraPrefsFlow = combine(
         preferencesRepository.incomeAllocationRules,
         _privacyMode,
-        _searchQuery,
-        preferencesRepository.defaultExpenseAccountId
-    ) { rules, privacy, query, defaultExpenseId ->
-        AccountExtraPrefs(rules, privacy, query, defaultExpenseId)
+        _searchQuery
+    ) { rules, privacy, query ->
+        AccountExtraPrefs(rules, privacy, query)
     }
     private val detailFlow = combine(_selectedAccountForDetail, selectedAccountRecordsFlow) { acc, records -> Pair(acc, records) }
+    private val recordsOverviewFlow = combine(accountRepository.recentRecords, periodRecordsFlow) { recent, period -> Pair(recent, period) }
 
     private val businessDataFlow: Flow<AccountBusinessData> = combine(
-        accountsPairFlow,
-        periodInfoFlow,
-        comparisonFlow,
-        extraPrefsFlow,
-        detailFlow
-    ) { accountsPair, periodInfo, comparison, extra, detail ->
+        combine(accountsPairFlow, periodInfoFlow, comparisonFlow) { a, p, c -> Triple(a, p, c) },
+        combine(extraPrefsFlow, detailFlow, recordsOverviewFlow) { e, d, r -> Triple(e, d, r) }
+    ) { firstTriple, secondTriple ->
+        val accountsPair = firstTriple.first
+        val periodInfo = firstTriple.second
+        val comparison = firstTriple.third
+        val extra = secondTriple.first
+        val detail = secondTriple.second
+        val records = secondTriple.third
         AccountBusinessData(
             accounts = accountsPair.first,
             archivedAccounts = accountsPair.second,
@@ -168,9 +179,10 @@ class AccountsViewModel(
             incomeRules = extra.rules,
             selectedAccountForDetail = detail.first,
             selectedAccountRecords = detail.second,
+            recentRecords = records.first,
+            periodRecords = records.second,
             privacyMode = extra.privacy,
-            searchQuery = extra.query,
-            defaultExpenseAccountId = extra.defaultExpenseAccountId
+            searchQuery = extra.query
         )
     }
 
@@ -179,17 +191,15 @@ class AccountsViewModel(
     private val sheetFlow = combine(
         _isReconciliationOpen,
         _isAllocationOpen,
-        _isPeriodSettingsOpen,
         _isArchivedListOpen,
         _feedbackMessage
-    ) { recon, alloc, settings, archivedOpen, msg ->
-        AccountSheetExtra(recon, alloc, settings, archivedOpen, msg)
+    ) { recon, alloc, archivedOpen, msg ->
+        AccountSheetExtra(recon, alloc, archivedOpen, msg)
     }
 
     private data class AccountSheetExtra(
         val isRecon: Boolean,
         val isAlloc: Boolean,
-        val isSettings: Boolean,
         val isArchivedOpen: Boolean,
         val msg: String?
     )
@@ -207,7 +217,6 @@ class AccountsViewModel(
             transferInitialToId = transferTriple.third,
             isReconciliationOpen = sheetExtra.isRecon,
             isAllocationOpen = sheetExtra.isAlloc,
-            isPeriodSettingsOpen = sheetExtra.isSettings,
             isArchivedListOpen = sheetExtra.isArchivedOpen,
             feedback = sheetExtra.msg
         )
@@ -238,6 +247,8 @@ class AccountsViewModel(
             incomeRules = business.incomeRules,
             selectedAccountForDetail = business.selectedAccountForDetail,
             selectedAccountRecords = business.selectedAccountRecords,
+            recentRecords = business.recentRecords,
+            periodRecords = business.periodRecords,
             isAddEditOpen = dialogs.isAddEditOpen,
             accountToEdit = dialogs.accountToEdit,
             isTransferOpen = dialogs.isTransferOpen,
@@ -245,12 +256,10 @@ class AccountsViewModel(
             transferInitialToId = dialogs.transferInitialToId,
             isReconciliationOpen = dialogs.isReconciliationOpen,
             isAllocationOpen = dialogs.isAllocationOpen,
-            isPeriodSettingsOpen = dialogs.isPeriodSettingsOpen,
             privacyMode = business.privacyMode,
             searchQuery = business.searchQuery,
             isLoading = isLoading,
-            feedbackMessage = dialogs.feedback,
-            defaultExpenseAccountId = business.defaultExpenseAccountId
+            feedbackMessage = dialogs.feedback
         )
     }.stateIn(
         scope = viewModelScope,
@@ -284,12 +293,10 @@ class AccountsViewModel(
         }
     }
 
-    fun setPeriodStartDay(day: Int) {
+    fun setStartDay(day: Int) {
         viewModelScope.launch {
             _startDay.value = day
             preferencesRepository.setAccountPeriodStartDay(day)
-            _isPeriodSettingsOpen.value = false
-            _feedbackMessage.value = "已设置周期起始日为每月 ${day} 日"
         }
     }
 
@@ -301,12 +308,17 @@ class AccountsViewModel(
         _selectedAccountForDetail.value = null
     }
 
-    fun openPeriodSettings() {
-        _isPeriodSettingsOpen.value = true
-    }
-
-    fun closePeriodSettings() {
-        _isPeriodSettingsOpen.value = false
+    /**
+     * 详情弹窗若仍停留在该账户上，则用仓库中的最新实体刷新其快照，
+     * 避免划转、对账、编辑余额等写操作成功后头部余额仍是点击瞬间的过期值。
+     * 仓库 getAccountByIdSync 已切换到 IO 线程，不会阻塞主线程。
+     */
+    private suspend fun refreshOpenDetailIfNeeded(accountId: Long) {
+        val open = _selectedAccountForDetail.value ?: return
+        if (open.id != accountId) return
+        accountRepository.getAccountByIdSync(accountId)?.let { fresh ->
+            _selectedAccountForDetail.value = fresh
+        }
     }
 
     fun openArchivedList() {
@@ -380,10 +392,8 @@ class AccountsViewModel(
                     remark = remark
                 )
                 accountRepository.updateAccount(updated, balanceAdjustmentRemark)
-                // If detail panel is open for this account, update it
-                if (_selectedAccountForDetail.value?.id == toEdit.id) {
-                    _selectedAccountForDetail.value = updated
-                }
+                // 若该账户详情仍打开着则一并刷新快照（含余额调整后的最新值）
+                refreshOpenDetailIfNeeded(toEdit.id)
                 closeAddEdit()
                 "已更新账户「$name」"
             }
@@ -418,6 +428,9 @@ class AccountsViewModel(
             val success = accountRepository.transfer(fromId, toId, amountCents, remark)
             if (success) {
                 closeTransfer()
+                // 划转会同时改变转出/转入双方余额，详情弹窗停留在其中任一方时都要刷新快照
+                refreshOpenDetailIfNeeded(fromId)
+                refreshOpenDetailIfNeeded(toId)
                 "转账成功"
             } else {
                 "转账失败，请检查账户状态"
@@ -440,8 +453,10 @@ class AccountsViewModel(
         launchWriteOperation {
             val periodInfo = uiState.value.comparison.currentPeriod
             accountRepository.executeReconciliation(periodInfo, items, createAdjustmentRecords)
+            // 对账会按 items 逐个改写账户余额；详情弹窗若停留在其中某账户，逐个刷新其快照（按账户 id 去重）
+            items.filter { it.isIncluded }.map { it.account.id }.distinct().forEach { refreshOpenDetailIfNeeded(it) }
             _isReconciliationOpen.value = false
-            "已完成「${periodInfo.periodName}」对账平账与资产快照归档"
+            "已完成「${periodInfo.periodName}」对账，资产数据已同步更新"
         }
     }
 
@@ -469,21 +484,9 @@ class AccountsViewModel(
             val success = accountRepository.executeIncomeAllocation(sourceAccountId, incomeCents, results)
             if (success) {
                 _isAllocationOpen.value = false
-                "已按规则完成收入划转分流"
+                "收入已按规则自动分配完成"
             } else {
-                "收入分配未执行：目标账户可能已归档或删除"
-            }
-        }
-    }
-
-    fun setDefaultExpenseAccount(accountId: Long?) {
-        launchWriteOperation {
-            preferencesRepository.setDefaultExpenseAccountId(accountId)
-            if (accountId != null) {
-                val acc = accountRepository.getAccountByIdSync(accountId)
-                "已将「${acc?.name ?: "账户"}」设为默认支出账户"
-            } else {
-                "已取消默认支出账户"
+                "发薪分配未执行：目标账户可能已归档或删除"
             }
         }
     }

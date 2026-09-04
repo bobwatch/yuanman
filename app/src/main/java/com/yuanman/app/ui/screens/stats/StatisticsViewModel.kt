@@ -232,61 +232,61 @@ class StatisticsViewModel(
             StatisticsPeriod.WEEK -> {
                 if (type == RecordType.EXPENSE) {
                     if (totalExp == 0L) {
-                        "本周暂无支出记录，继续保持理性消费哦～ ✨"
+                        "本周暂无支出记录，继续保持理性消费哦～"
                     } else if (topCategory != null) {
                         val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
                         val peakDayItem = trends.maxByOrNull { it.expenseAmount }
                         val peakDayStr = peakDayItem?.dateFormatted ?: ""
-                        "本周支出主要在「${topCategory.category.name}」(占 $pctStr)，周均日销 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高为 $peakDayStr 📊"
+                        "本周支出主要在「${topCategory.category.name}」（占 $pctStr），周均日销 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高为 $peakDayStr"
                     } else {
-                        "本周累计支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，合理规划每一天 🌿"
+                        "本周累计支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，合理规划每一天"
                     }
                 } else {
                     if (totalInc == 0L) {
-                        "本周暂未记录收入，每一分积累都值得期待 🌱"
+                        "本周暂未记录收入，每一分积累都值得期待"
                     } else {
-                        "本周累计进账 ¥${MoneyUtils.centsToYuanString(totalInc)}，辛勤付出收获满满 🎉"
+                        "本周累计进账 ¥${MoneyUtils.centsToYuanString(totalInc)}，辛勤付出收获满满"
                     }
                 }
             }
             StatisticsPeriod.MONTH -> {
                 if (type == RecordType.EXPENSE) {
                     if (totalExp == 0L) {
-                        "本月暂无支出记录，继续保持理性的生活节奏～ ✨"
+                        "本月暂无支出记录，继续保持理性的生活节奏～"
                     } else if (topCategory != null) {
                         val pctStr = String.format(java.util.Locale.CHINA, "%.1f%%", topCategory.percentage * 100)
                         when {
                             topCategory.category.name.contains("餐") ->
-                                "本月最大开销是「${topCategory.category.name}」(占 $pctStr)，好好吃饭是最好的投资，但也别忘了荤素搭配、适度下厨哦～ 🍲"
+                                "本月最大开销是「${topCategory.category.name}」（占 $pctStr），好好吃饭是最好的投资，但也别忘了荤素搭配、适度下厨哦～"
                             topCategory.category.name.contains("购") || topCategory.category.name.contains("买") ->
-                                "本月「${topCategory.category.name}」支出占了 $pctStr，理性拔草，给生活添置真正能带来幸福感的好物 🛍️"
+                                "本月「${topCategory.category.name}」支出占了 $pctStr，理性拔草，给生活添置真正能带来幸福感的好物 "
                             topCategory.category.name.contains("住") || topCategory.category.name.contains("房") ->
-                                "固定居住成本占了 $pctStr，守护属于自己的一方温馨天地，辛苦啦 🏡"
+                                "固定居住成本占了 $pctStr，守护属于自己的一方温馨天地，辛苦啦"
                             else ->
-                                "本月消费主要集中在「${topCategory.category.name}」(占 $pctStr)，日均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，财务结构清晰有序 📈"
+                                "本月消费主要集中在「${topCategory.category.name}」（占 $pctStr），日均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，财务结构清晰有序"
                         }
                     } else {
-                        "用心对待每一笔收支，让生活更有底气与从容 🌿"
+                        "用心对待每一笔收支，让生活更有底气与从容"
                     }
                 } else {
                     if (totalInc == 0L) {
-                        "本月暂未记录收入，期待每一份努力换来丰硕回报 🌱"
+                        "本月暂未记录收入，期待每一份努力换来丰硕回报"
                     } else {
-                        "本月累计收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一笔进账都是辛勤付出的见证，继续加油！ 🎉"
+                        "本月累计收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一笔进账都是辛勤付出的见证，继续加油！"
                     }
                 }
             }
             StatisticsPeriod.YEAR -> {
                 if (type == RecordType.EXPENSE) {
                     if (totalExp == 0L) {
-                        "${year}年暂无支出记录，时光沉淀财富，未来皆可期 🌟"
+                        "${year}年暂无支出记录，时光沉淀财富，未来皆可期"
                     } else {
                         val peakMonthItem = trends.maxByOrNull { it.expenseAmount }
                         val peakMonthStr = peakMonthItem?.let { "${it.day}月" } ?: ""
-                        "${year}年累计总支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，月均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高月份为 $peakMonthStr 🏆"
+                        "${year}年累计总支出 ¥${MoneyUtils.centsToYuanString(totalExp)}，月均支出 ¥${MoneyUtils.centsToYuanString(avgExp)}，开销最高月份为 $peakMonthStr"
                     }
                 } else {
-                    "${year}年累计总收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一份收获都值得自豪与庆祝 🎊"
+                    "${year}年累计总收入 ¥${MoneyUtils.centsToYuanString(totalInc)}，每一份收获都值得自豪与庆祝"
                 }
             }
         }
@@ -345,6 +345,11 @@ class StatisticsViewModel(
 
     fun selectPeriod(period: StatisticsPeriod) {
         _periodMode.value = period
+        _selectedCategory.value = null
+    }
+
+    fun selectYear(year: Int) {
+        _selectedYear.value = year
         _selectedCategory.value = null
     }
 

@@ -49,6 +49,22 @@ object MoneyUtils {
     }
 
     /**
+     * 将可带负号的金额字符串（如 "-12.34"）安全转换为“分”；负数正常换算为负分值，空串或非法输入返回 0。
+     */
+    fun parseSignedYuanToCents(yuanStr: String): Long {
+        val trimmed = yuanStr.trim()
+        if (trimmed.isEmpty()) return 0L
+        return try {
+            BigDecimal(trimmed)
+                .multiply(BigDecimal(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    /**
      * 校验可为 0 的非负金额输入，适用于账户余额等允许清零的场景。
      */
     fun isValidNonNegativeAmountInput(input: String): Boolean {
@@ -60,6 +76,24 @@ object MoneyUtils {
                 .multiply(BigDecimal(100))
                 .setScale(0, RoundingMode.HALF_UP)
                 .longValueExact() >= 0L
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * 校验可带负号的金额输入（负数用于表示负债账户的溢缴/多还），空串返回 false，最多两位小数。
+     */
+    fun isValidSignedAmountInput(input: String): Boolean {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return false
+        if (!Regex("""^-?[0-9]+(\.[0-9]{1,2})?$""").matches(trimmed)) return false
+        return try {
+            BigDecimal(trimmed)
+                .multiply(BigDecimal(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+            true
         } catch (e: Exception) {
             false
         }

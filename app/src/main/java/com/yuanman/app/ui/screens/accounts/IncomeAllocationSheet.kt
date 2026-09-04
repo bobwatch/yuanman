@@ -72,7 +72,7 @@ fun IncomeAllocationSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "收入分配 (信封预算法)",
+                    text = "发薪分配",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
                 IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
@@ -91,12 +91,12 @@ fun IncomeAllocationSheet(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("分流试算与执行", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("试算与分配", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("分配规则设置", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("分配规则", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) }
                 )
             }
 
@@ -117,7 +117,7 @@ fun IncomeAllocationSheet(
 
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
-                            value = "${sourceAccount?.name ?: "请选择账户"} (${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(sourceAccount?.balanceCents ?: 0L)}"})",
+                            value = "${sourceAccount?.name ?: "请选择账户"}（${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(sourceAccount?.balanceCents ?: 0L)}"}）",
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("发薪/入账源账户") },
@@ -137,7 +137,7 @@ fun IncomeAllocationSheet(
                         ) {
                             accounts.forEach { acc ->
                                 DropdownMenuItem(
-                                    text = { Text("${acc.name} (${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(acc.balanceCents)}"})") },
+                                    text = { Text("${acc.name}（${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(acc.balanceCents)}"}）") },
                                     onClick = {
                                         sourceAccountId = acc.id
                                         sourceMenuExpanded = false
@@ -151,7 +151,7 @@ fun IncomeAllocationSheet(
                     OutlinedTextField(
                         value = incomeAmountStr,
                         onValueChange = { incomeAmountStr = it },
-                        label = { Text("本次收入总额 (¥)") },
+                        label = { Text("本次收入总额（¥）") },
                         placeholder = { Text("例如 10000（请输入本次实际收入）") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
@@ -189,13 +189,13 @@ fun IncomeAllocationSheet(
                                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                                         )
                                         Text(
-                                            text = "目标账户: ${targetAcc?.name ?: "未指定"} · ${(item.actualPercentage * 100).toInt()}%",
+                                            text = "目标账户：${targetAcc?.name ?: "未指定"} · ${(item.actualPercentage * 100).toInt()}%",
                                             style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline)
                                         )
                                     }
 
                                     Text(
-                                        text = if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(item.allocatedAmountCents)}",
+                                        text = if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(item.allocatedAmountCents)}",
                                         style = MaterialTheme.typography.titleSmall.copy(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
@@ -228,7 +228,7 @@ fun IncomeAllocationSheet(
                             Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (incomeAmountStr.isBlank()) "请输入收入金额" else "一键执行分流划转",
+                                text = if (incomeAmountStr.isBlank()) "请输入收入金额" else "一键转账分配",
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -253,7 +253,7 @@ fun IncomeAllocationSheet(
                         val totalPercent = currentRules.sumOf { (it.percentage * 100).toDouble() }.toInt()
                         Column {
                             Text(
-                                text = "当前规则列表 (总计 $totalPercent%)",
+                                text = "当前规则列表（总计 $totalPercent%）",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                             )
                             if (totalPercent < 100) {
@@ -293,7 +293,7 @@ fun IncomeAllocationSheet(
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                                     )
                                     Text(
-                                        text = "划入: ${targetAcc?.name ?: "未关联"} · ${if (rule.type == AllocationRuleType.PERCENTAGE) "${(rule.percentage * 100).toInt()}%" else if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(rule.fixedAmountCents)}"}",
+                                        text = "划入：${targetAcc?.name ?: "未关联"} · ${if (rule.type == AllocationRuleType.PERCENTAGE) "${(rule.percentage * 100).toInt()}%" else if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(rule.fixedAmountCents)}"}",
                                         style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline)
                                     )
                                 }
@@ -323,7 +323,7 @@ fun IncomeAllocationSheet(
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("新增自定义分配规则")
+                        Text("新增规则")
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -362,13 +362,13 @@ private fun AddRuleDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新增分配规则") },
+        title = { Text("新增规则") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("规则名称 (如：心愿储蓄、生活备用金)") },
+                    label = { Text("规则名称（如：心愿储蓄、生活备用金）") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     shape = RoundedCornerShape(10.dp),
@@ -413,7 +413,7 @@ private fun AddRuleDialog(
                         percentageStr = it
                         errorMessage = null
                     },
-                    label = { Text("分配比例 (%)") },
+                    label = { Text("分配比例（%）") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),

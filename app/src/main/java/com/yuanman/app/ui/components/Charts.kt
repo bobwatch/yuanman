@@ -358,7 +358,7 @@ private fun DonutLegend(
                             )
                             Text(
                                 text = "${(segment.percentage * 100).coerceAtLeast(0f).let { String.format(java.util.Locale.CHINA, "%.1f", it) }}% · ¥${MoneyUtils.centsToYuanString(segment.totalAmount, withGrouping = true)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.outline,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -430,7 +430,7 @@ fun BarTrendChart(
                 if (selectedIndex != null && selectedIndex!! in items.indices) {
                     val selected = items[selectedIndex!!]
                     Text(
-                        text = "📅 ${selected.dateFormatted}",
+                        text = "${selected.dateFormatted}",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -443,7 +443,7 @@ fun BarTrendChart(
                     )
                 } else {
                     Text(
-                        text = "💡 当前周期峰值",
+                        text = "当前周期峰值",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -478,19 +478,19 @@ fun BarTrendChart(
             ) {
                 Text(
                     text = "¥${MoneyUtils.centsToYuanString(maxExpense, withGrouping = false).substringBefore(".")}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1
                 )
                 Text(
                     text = "¥${MoneyUtils.centsToYuanString(maxExpense / 2, withGrouping = false).substringBefore(".")}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                     maxLines = 1
                 )
                 Text(
                     text = "¥0",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
                     maxLines = 1
                 )
@@ -578,7 +578,7 @@ fun BarTrendChart(
             keyIndexes.forEach { index ->
                 Text(
                     text = items[index].dateFormatted,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
             }
@@ -648,7 +648,7 @@ fun CategoryRankItem(
                 text = "$rank",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp
+                    fontSize = 11.sp
                 ),
                 color = rankTextColor
             )
@@ -714,7 +714,7 @@ fun CategoryRankItem(
             ) {
                 Text(
                     text = "${item.count} 笔账单",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
 
@@ -723,7 +723,7 @@ fun CategoryRankItem(
                     text = pctText,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.Medium,
-                        fontSize = 10.sp
+                        fontSize = 11.sp
                     ),
                     color = MaterialTheme.colorScheme.outline
                 )

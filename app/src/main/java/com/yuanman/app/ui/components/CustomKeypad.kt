@@ -120,11 +120,24 @@ fun CustomKeypad(
     hapticEnabled: Boolean = true
 ) {
     val haptic = LocalHapticFeedback.current
+    val toast = LocalToastHostState.current
 
     fun performHaptic() {
         if (hapticEnabled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
+    }
+
+    // 长按退格 = 一键清空：给出提示并支持撤销，避免误清空
+    fun handleLongClear() {
+        val previous = expression
+        if (previous.isEmpty()) return
+        onExpressionChange("")
+        toast.info(
+            message = "已清空金额",
+            actionLabel = "撤销",
+            onAction = { onExpressionChange(previous) }
+        )
     }
 
     fun handleKeyPress(key: String) {
@@ -251,7 +264,7 @@ fun CustomKeypad(
                 KeypadDeleteButton(
                     modifier = Modifier.weight(1f),
                     onClick = { handleKeyPress("DELETE") },
-                    onLongClick = { handleKeyPress("CLEAR") }
+                    onLongClick = { handleLongClear() }
                 )
             }
 

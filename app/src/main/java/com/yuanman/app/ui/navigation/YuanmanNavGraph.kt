@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import com.yuanman.app.YuanmanApplication
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.BottomNavBar
 import com.yuanman.app.ui.screens.accounts.AccountsScreen
+import com.yuanman.app.ui.screens.accounts.AccountStatisticsScreen
 import com.yuanman.app.ui.screens.accounts.AccountsViewModel
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordViewModel
@@ -49,6 +51,17 @@ private val TAB_ROUTES = listOf(
     Screen.Accounts.route,
     Screen.Settings.route
 )
+
+/**
+ * 账户统计页返回时，经“账户 Tab 入口”SavedStateHandle 回传的待办动作键。
+ *
+ * 账户 Tab 与统计页各自通过 viewModel() 创建独立的 AccountsViewModel，转账/对账弹窗
+ * 开关属于 VM 内存态：在统计页自己的 VM 上置位会随页面销毁而丢失（回主页后永不弹窗）。
+ * 因此统计页的 CTA 只负责把意图写入下方账户入口的 SavedStateHandle，账户页每次进入
+ * （含从统计页返回）时消费一次并立即清除，避免下次进入重复触发。
+ */
+private const val KEY_PENDING_ACCOUNT_ACTION_TRANSFER_TO = "pending_account_action_transfer_to"
+private const val KEY_PENDING_ACCOUNT_ACTION_RECONCILE = "pending_account_action_reconcile"
 
 @Composable
 fun YuanmanNavGraph(
@@ -169,15 +182,61 @@ fun YuanmanNavGraph(
             }
 
             // 3. 我的账户与资产管理
-            composable(Screen.Accounts.route) {
+            composable(Screen.Accounts.route) { backStackEntry ->
                 val accountsViewModel: AccountsViewModel = viewModel(
                     factory = AccountsViewModel.Factory(
                         accountRepository = app.accountRepository,
                         preferencesRepository = app.preferencesRepository
                     )
                 )
+
+                // 消费统计页回传的“去还款/立即对账”待办（每次进入本页读取一次并清除，
+                // 避免残留值在后续再次进入时重复弹出弹窗）
+                LaunchedEffect(Unit) {
+                    val pendingTransferToId = backStackEntry.savedStateHandle
+                        .get<Long>(KEY_PENDING_ACCOUNT_ACTION_TRANSFER_TO)
+                    if (pendingTransferToId != null) {
+                        backStackEntry.savedStateHandle.remove<Long>(KEY_PENDING_ACCOUNT_ACTION_TRANSFER_TO)
+                        accountsViewModel.openTransfer(toId = pendingTransferToId)
+                    }
+                    val pendingReconcile = backStackEntry.savedStateHandle
+                        .get<Boolean>(KEY_PENDING_ACCOUNT_ACTION_RECONCILE)
+                    if (pendingReconcile == true) {
+                        backStackEntry.savedStateHandle.remove<Boolean>(KEY_PENDING_ACCOUNT_ACTION_RECONCILE)
+                        accountsViewModel.openReconciliation()
+                    }
+                }
+
                 AccountsScreen(
-                    viewModel = accountsViewModel
+                    viewModel = accountsViewModel,
+                    onNavigateToAccountStats = {
+                        navController.navigate(Screen.AccountStatistics.route)
+                    }
+                )
+            }
+
+            // 3.1 资产与账户统计分析大屏
+            composable(Screen.AccountStatistics.route) {
+                val accountsViewModel: AccountsViewModel = viewModel(
+                    factory = AccountsViewModel.Factory(
+                        accountRepository = app.accountRepository,
+                        preferencesRepository = app.preferencesRepository
+                    )
+                )
+                // 统计页只可能从账户 Tab 进入：CTA 先把待办动作写入其下方账户入口的
+                // SavedStateHandle，再执行返回（账户页仍在 back stack 中存活并会消费它）
+                val accountsEntry = navController.previousBackStackEntry
+                AccountStatisticsScreen(
+                    viewModel = accountsViewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onTransferToAccount = { targetId ->
+                        accountsEntry?.savedStateHandle?.set(KEY_PENDING_ACCOUNT_ACTION_TRANSFER_TO, targetId)
+                        navController.popBackStack()
+                    },
+                    onReconcile = {
+                        accountsEntry?.savedStateHandle?.set(KEY_PENDING_ACCOUNT_ACTION_RECONCILE, true)
+                        navController.popBackStack()
+                    }
                 )
             }
 

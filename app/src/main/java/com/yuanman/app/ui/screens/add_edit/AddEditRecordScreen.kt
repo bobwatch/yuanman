@@ -1,5 +1,6 @@
 package com.yuanman.app.ui.screens.add_edit
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,6 +79,7 @@ fun AddEditRecordScreen(
     val isImeVisible = WindowInsets.isImeVisible
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
     var showPaymentSheet by remember { mutableStateOf(false) }
     var showRecordDateSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -85,7 +87,27 @@ fun AddEditRecordScreen(
     val expenseGridState = rememberLazyGridState()
     val incomeGridState = rememberLazyGridState()
 
-    // 左右滑动切换页面联动更新收支类型
+    // 有未保存修改时，系统返回键先弹确认（软键盘优先收起）
+    BackHandler(enabled = uiState.isDirty) {
+        if (isImeVisible || isRemarkFocused) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        } else {
+            showDiscardConfirm = true
+        }
+    }
+
+    fun requestExit() {
+        if (uiState.isDirty) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+            showDiscardConfirm = true
+        } else {
+            onNavigateBack()
+        }
+    }
+
+    // 左右滑动切换页面联动更新收支类型；跨月分摊账单由 VM 拦截类型切换
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val targetType = if (page == 0) RecordType.EXPENSE else RecordType.INCOME
@@ -95,7 +117,7 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 外部或快捷录入改变类型时，联动 Pager 平滑切页
+    // 外部或闪电记账改变类型时，联动 Pager 平滑切页
     LaunchedEffect(uiState.type) {
         val targetPage = if (uiState.type == RecordType.EXPENSE) 0 else 1
         if (pagerState.currentPage != targetPage && !pagerState.isScrollInProgress) {
@@ -137,6 +159,9 @@ fun AddEditRecordScreen(
     }
 
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
+    // 撤销删除需在页面退出后仍可执行，因此绑定应用级仓库与作用域，而非页面级 ViewModel
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val appContainer = appContext as com.yuanman.app.YuanmanApplication
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { msg ->
@@ -180,7 +205,7 @@ fun AddEditRecordScreen(
             CenterAlignedTopAppBar(
                 modifier = Modifier.offset(y = (-4).dp),
                 title = {
-                    if (uiState.isEditMode) {
+                    if (uiState.isEditMode && uiState.splitGroupId != null) {
                         Text(
                             text = "编辑账单",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -204,10 +229,12 @@ fun AddEditRecordScreen(
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .clickable {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(0)
+                                            if (uiState.type != RecordType.EXPENSE) {
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus()
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(0)
+                                                }
                                             }
                                         }
                                 ) {
@@ -227,10 +254,12 @@ fun AddEditRecordScreen(
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .clickable {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(1)
+                                            if (uiState.type != RecordType.INCOME) {
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus()
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(1)
+                                                }
                                             }
                                         }
                                 ) {
@@ -247,7 +276,7 @@ fun AddEditRecordScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = { requestExit() }) {
                         Icon(Icons.Default.Close, contentDescription = "取消")
                     }
                 },
@@ -270,6 +299,36 @@ fun AddEditRecordScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
+            // 跨月分摊账单提示条：编辑仅作用于本期记录
+            if (uiState.isEditMode && uiState.splitGroupId != null && (uiState.splitTotal ?: 0) > 1) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EventRepeat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "跨月分摊账单 · 第 ${uiState.splitIndex}/${uiState.splitTotal} 期，本页修改只作用于本期记录。",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
             // 🌟 1. 金额与当前分类主展示区 (精致主题色轻卡片)
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -361,6 +420,7 @@ fun AddEditRecordScreen(
             // 🌟 2. 主分类选择矩阵 (支持左右滑动切换支出/收入)
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = !uiState.isEditMode,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -527,7 +587,7 @@ fun AddEditRecordScreen(
 
                 // 属性配置区域：
                 // 当 isRemarkFocused 为 true（进入输入态）时：吸附系统输入法的整行都替换为全宽输入框 + [完成] 按钮
-                // 当 isRemarkFocused 为 false（常态）时：紧凑单行三胶囊展示 [日期胶囊] + [支付方式胶囊] + [备注输入胶囊]
+                // 当 isRemarkFocused 为 false（常态）时：紧凑单行三胶囊展示 [日期胶囊] + [扣款/入账胶囊] + [备注输入胶囊]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -568,7 +628,7 @@ fun AddEditRecordScreen(
                             }
                         }
 
-                        // 2. 支付方式 / 入账账户胶囊
+                        // 2. 扣款账户 / 入账账户胶囊
                         val hasPaymentMethod = uiState.paymentMethod.isNotBlank()
                         val selectedAccount = uiState.availableAccounts.firstOrNull { it.id == uiState.selectedAccountId }
                         val hasSpread = isExpense && uiState.spreadMonths > 1
@@ -580,7 +640,7 @@ fun AddEditRecordScreen(
                             hasPaymentMethod && hasSpread -> "${uiState.paymentMethod} · 分摊${uiState.spreadMonths}月"
                             hasPaymentMethod -> uiState.paymentMethod
                             hasSpread -> "分摊 ${uiState.spreadMonths} 个月"
-                            else -> "支付方式"
+                            else -> "扣款账户"
                         }
 
                         val paymentIcon = if (isExpense) {
@@ -673,7 +733,7 @@ fun AddEditRecordScreen(
                             ) {
                                 if (uiState.remark.isEmpty()) {
                                     Text(
-                                        text = if (isRemarkFocused) "添加备注（如：麦当劳、打车回家）..." else "写备注...",
+                                        text = if (isRemarkFocused) "添加备注（如：麦当劳、打车回家）…" else "写备注…",
                                         fontSize = 13.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                                         maxLines = 1,
@@ -771,7 +831,7 @@ fun AddEditRecordScreen(
 
 
 
-    // 🌟 6. 支付方式 / 入账账户与分摊设置 ModalBottomSheet
+    // 🌟 6. 扣款账户 / 入账账户与分摊设置 ModalBottomSheet
     if (showPaymentSheet) {
         YuanmanModalBottomSheet(
             onDismissRequest = { showPaymentSheet = false },
@@ -789,7 +849,7 @@ fun AddEditRecordScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isExpense) "选择支付方式" else "选择入账账户",
+                        text = if (isExpense) "选择扣款账户" else "选择入账账户",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -838,7 +898,10 @@ fun AddEditRecordScreen(
                                 ),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable { viewModel.selectAccount(account.id) }
+                                    .clickable {
+                                        viewModel.selectAccount(account.id)
+                                        showPaymentSheet = false
+                                    }
                             ) {
                                 Text(
                                     text = account.name,
@@ -854,7 +917,10 @@ fun AddEditRecordScreen(
                     }
 
                     TextButton(
-                        onClick = { viewModel.selectAccount(null) },
+                        onClick = {
+                            viewModel.selectAccount(null)
+                            showPaymentSheet = false
+                        },
                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                     ) {
                         Text("不关联账户", fontSize = 12.sp)
@@ -882,12 +948,10 @@ fun AddEditRecordScreen(
                                 .fillMaxWidth()
                                 .height(44.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    viewModel.setPaymentMethod(method)
-                                    if (!isExpense) {
-                                        showPaymentSheet = false
-                                    }
-                                }
+                            .clickable {
+                                viewModel.setPaymentMethod(method)
+                                showPaymentSheet = false
+                            }
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -925,7 +989,7 @@ fun AddEditRecordScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "跨月分摊 (选填)",
+                            text = "跨月分摊（选填）",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -940,7 +1004,7 @@ fun AddEditRecordScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     val spreadOptions = listOf(
-                        1 to "单笔(不分摊)",
+                        1 to "单笔（不分摊）",
                         2 to "分摊 2 个月",
                         3 to "分摊 3 个月",
                         6 to "分摊 6 个月",
@@ -990,8 +1054,39 @@ fun AddEditRecordScreen(
     ConfirmDeleteDialog(
         visible = showDeleteConfirm,
         title = "删除账单",
-        message = "确定要删除这条账单记录吗？删除后不可恢复。",
-        onConfirm = { viewModel.deleteRecord() },
+        message = if ((uiState.splitTotal ?: 0) > 1) {
+            "这笔账单来自跨月分摊（第 ${uiState.splitIndex}/${uiState.splitTotal} 期），删除只移除本期记录。删除后可在弹出提示中点“撤销”恢复。"
+        } else {
+            "删除后本条记录会从账单中移除。删除后可在弹出提示中点“撤销”恢复。"
+        },
+        onConfirm = {
+            val deletedId = viewModel.deleteRecord()
+            if (deletedId > 0L) {
+                toast.info(
+                    message = "账单已删除",
+                    actionLabel = "撤销",
+                    onAction = {
+                        appContainer.appScope.launch {
+                            appContainer.recordRepository.restoreRecord(deletedId)
+                        }
+                    }
+                )
+            }
+        },
         onDismiss = { showDeleteConfirm = false }
+    )
+
+    // 未保存离开确认
+    ConfirmDeleteDialog(
+        visible = showDiscardConfirm,
+        title = "放弃本次编辑？",
+        message = "当前填写的内容尚未保存，离开后这些修改将丢失。",
+        icon = Icons.Default.Close,
+        confirmButtonText = "放弃修改",
+        onConfirm = {
+            showDiscardConfirm = false
+            onNavigateBack()
+        },
+        onDismiss = { showDiscardConfirm = false }
     )
 }

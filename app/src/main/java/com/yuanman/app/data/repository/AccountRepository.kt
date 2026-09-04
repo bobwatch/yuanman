@@ -575,7 +575,7 @@ class AccountRepository(
                                 amount = kotlin.math.abs(diffCents),
                                 categoryId = categoryId,
                                 recordTime = now,
-                                remark = "【对账平账】${currentAccount.name} 差异校准",
+                                remark = "【对账差额】${currentAccount.name} 余额补齐",
                                 paymentMethod = currentAccount.name,
                                 accountId = currentAccount.id,
                                 isAdjustment = true,
@@ -815,6 +815,16 @@ class AccountRepository(
 
     fun getRecordsByAccountId(accountId: Long): Flow<List<RecordWithCategory>> {
         return recordDao.getRecordsByAccountId(accountId)
+    }
+
+    val recentRecords: Flow<List<RecordWithCategory>> = recordDao.getRecentRecords(limit = 20)
+
+    fun observePeriodRecords(
+        periodType: AccountPeriodType,
+        startDay: Int = 1
+    ): Flow<List<RecordWithCategory>> {
+        val period = AccountPeriodType.getPeriodInfo(System.currentTimeMillis(), periodType, startDay)
+        return recordDao.getRecordsByDateRange(period.startTimestamp, period.endTimestamp)
     }
 
     /**

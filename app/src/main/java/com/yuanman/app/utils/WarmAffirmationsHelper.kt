@@ -65,15 +65,4 @@ object WarmAffirmationsHelper {
         return Pair(ALL_AFFIRMATIONS[nextIndex], nextIndex)
     }
 
-    /**
-     * 根据预算使用比例获取情绪建议
-     */
-    fun getBudgetInsight(usedPercent: Float, remainingDays: Int, dailyAvailableCents: Long): String {
-        return when {
-            usedPercent <= 0.5f -> "财务状态极佳！按此节奏本月可沉淀一笔不错的储蓄哦～ 👏"
-            usedPercent <= 0.8f -> "预算进度健康，每日可用额度充足，保持从容节奏！ 🌿"
-            usedPercent <= 1.0f -> "预算已使用 ${(usedPercent * 100).toInt()}%，距月末还剩 $remainingDays 天，建议适当节制非必要开销 💡"
-            else -> "本月已超出设定预算，别慌张～接下来的日子精简支出，稳住节奏！ 💪"
-        }
-    }
 }

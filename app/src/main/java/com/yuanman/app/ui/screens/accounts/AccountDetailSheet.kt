@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.AccountEntity
+import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.AccountIconHelper
 import com.yuanman.app.data.model.AccountType
@@ -41,7 +42,7 @@ enum class AccountRecordFilter(val label: String) {
     EXPENSE("支出"),
     INCOME("收入"),
     TRANSFER("划转/还款"),
-    ADJUSTMENT("平账")
+    ADJUSTMENT("对账调整")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,8 +51,6 @@ fun AccountDetailSheet(
     account: AccountEntity,
     records: List<RecordWithCategory>,
     privacyMode: Boolean,
-    isDefaultExpense: Boolean = false,
-    onToggleDefaultExpense: () -> Unit = {},
     onDismiss: () -> Unit,
     onTransfer: (AccountEntity) -> Unit,
     onEdit: (AccountEntity) -> Unit,
@@ -78,24 +77,14 @@ fun AccountDetailSheet(
         }
     }
 
-    val totalOut = remember(records, account.id, isLiability) {
-        records.filter {
-            if (it.record.type == "TRANSFER" && isLiability) {
-                it.record.targetAccountId == account.id
-            } else {
-                it.record.type == RecordType.EXPENSE.name || (it.record.type == "TRANSFER" && it.record.accountId == account.id)
-            }
-        }.sumOf { it.record.amount }
+    // 入账/出账口径与单条账单共用同一判定（isMoneyOutForAccount）：
+    // 资金离开该账户为出账、进入该账户为入账；负债账户不反向处理——转入（如还款、减少欠款）即入账，转出即出账。
+    val totalOut = remember(records, account.id) {
+        records.filter { isMoneyOutForAccount(it.record, account.id) }.sumOf { it.record.amount }
     }
 
-    val totalIn = remember(records, account.id, isLiability) {
-        records.filter {
-            if (it.record.type == "TRANSFER" && isLiability) {
-                it.record.accountId == account.id
-            } else {
-                it.record.type == RecordType.INCOME.name || (it.record.type == "TRANSFER" && it.record.targetAccountId == account.id)
-            }
-        }.sumOf { it.record.amount }
+    val totalIn = remember(records, account.id) {
+        records.filterNot { isMoneyOutForAccount(it.record, account.id) }.sumOf { it.record.amount }
     }
 
     YuanmanModalBottomSheet(
@@ -157,7 +146,7 @@ fun AccountDetailSheet(
                                         Text(
                                             text = accType.groupTitle,
                                             style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = accColor
                                             ),
@@ -172,7 +161,7 @@ fun AccountDetailSheet(
                                             Text(
                                                 text = "已归档",
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 10.sp,
+                                                    fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.error
                                                 ),
@@ -188,7 +177,7 @@ fun AccountDetailSheet(
                                             Text(
                                                 text = "不计净资产",
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 10.sp,
+                                                    fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.outline
                                                 ),
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -248,11 +237,11 @@ fun AccountDetailSheet(
                                 )
                             )
                             Spacer(modifier = Modifier.height(2.dp))
-                            val displayText = if (privacyMode) "¥***" else if (isLiability) {
+                            val displayText = if (privacyMode) "****" else if (isLiability) {
                                 when {
                                     account.balanceCents > 0L -> "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"
-                                    account.balanceCents == 0L -> "¥0.00 (无欠款)"
-                                    else -> "¥${MoneyUtils.centsToYuanString(-account.balanceCents)} (溢缴)"
+                                    account.balanceCents == 0L -> "¥0.00（无欠款）"
+                                    else -> "¥${MoneyUtils.centsToYuanString(-account.balanceCents)}（溢缴）"
                                 }
                             } else {
                                 "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"
@@ -267,104 +256,50 @@ fun AccountDetailSheet(
                             )
                         }
 
-                        // 快速转账按钮
-                        Button(
-                            onClick = { onTransfer(account) },
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(34.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                if (isLiability) "还款/划转" else "资金划转",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
+                        // 快速转账按钮：已归档账户不参与划转（转出/转入候选仅限活动账户），故隐藏，避免误发到其他账户
+                        if (!account.isArchived) {
+                            Button(
+                                onClick = { onTransfer(account) },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (isLiability) "还款/划转" else "资金划转",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
                         }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 设为默认支出账户切换卡片
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (isDefaultExpense) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                border = BorderStroke(
-                    0.6.dp,
-                    if (isDefaultExpense) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { onToggleDefaultExpense() }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = if (isDefaultExpense) Icons.Default.Star else Icons.Outlined.StarOutline,
-                            contentDescription = null,
-                            tint = if (isDefaultExpense) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = if (isDefaultExpense) "当前默认支出账户" else "设为默认支出账户",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDefaultExpense) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            )
-                            Text(
-                                text = if (isDefaultExpense) "首页闪电记账与未指定时优先自动记入此账户" else "点击开启，闪电记账与未指定账户时优先记入",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = isDefaultExpense,
-                        onCheckedChange = { onToggleDefaultExpense() },
-                        modifier = Modifier.scale(0.8f)
-                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 2. 流水统计指示条与分类筛选 Chip
+            // 2. 账户账单统计指示条与分类筛选 Chip
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "账户流水 (${records.size})",
+                    text = "账户账单（${records.size}）",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                 )
 
                 if (records.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "入账: ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(totalIn)}"}",
+                            text = "入账：${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(totalIn)}"}",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
                         )
                         Text(
-                            text = "出账: ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(totalOut)}"}",
+                            text = "出账：${if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(totalOut)}"}",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.SemiBold
@@ -411,7 +346,7 @@ fun AccountDetailSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 3. 流水列表
+            // 3. 账单列表
             if (filteredRecords.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -420,7 +355,7 @@ fun AccountDetailSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     EmptyStateView(
-                        title = if (records.isEmpty()) "该账户暂无关联流水" else "暂无符合条件的流水",
+                        title = if (records.isEmpty()) "该账户暂无关联账单" else "暂无符合条件的账单",
                         description = if (records.isEmpty()) "记账或转账时选择该账户，将在此聚合展示" else "尝试切换上方分类筛选",
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -461,7 +396,7 @@ fun AccountDetailSheet(
                     text = if (account.isArchived) {
                         "确定恢复「${account.name}」吗？恢复后将重新显示在日常账户列表和记账选择中。"
                     } else {
-                        "确定归档「${account.name}」吗？归档后日常账户列表和记账时将不再展示该账户，但历史流水记录完好保留，可在底部「已归档账户」随时查看或恢复。"
+                        "确定归档「${account.name}」吗？归档后日常记账与列表将不再展示该账户，历史账单完整保留，可在底部「已归档账户」随时查看或恢复。"
                     }
                 )
             },
@@ -481,6 +416,19 @@ fun AccountDetailSheet(
                 }
             }
         )
+    }
+}
+
+/**
+ * 单条账单对"当前账户"而言是否属于出账的统一判定（汇总条合计与账单行内展示共用，保证口径一致）：
+ * 普通支出为出账；转账以资金是否离开当前账户为准（当前账户为转出方=出账、为转入方=入账）。
+ * 负债账户不做反向处理：资金转入（如还款、欠款减少）按入账计，资金转出（如借入消费）按出账计。
+ */
+private fun isMoneyOutForAccount(record: RecordEntity, currentAccountId: Long): Boolean {
+    return when {
+        record.type == RecordType.EXPENSE.name -> true
+        record.type == "TRANSFER" -> record.accountId == currentAccountId
+        else -> false
     }
 }
 
@@ -543,7 +491,7 @@ private fun AccountRecordItem(
                 Column {
                     Text(
                         text = if (isAdjustment) {
-                            "平账校准"
+                            "对账调整"
                         } else if (isTransfer) {
                             if (currentAccountIsLiability) {
                                 if (record.accountId == currentAccountId) "借入资金" else "还款"
@@ -562,7 +510,7 @@ private fun AccountRecordItem(
                             text = DateTimeUtils.formatDateTime(record.recordTime),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = MaterialTheme.colorScheme.outline,
-                                fontSize = 10.sp
+                                fontSize = 11.sp
                             )
                         )
                         if (record.remark.isNotBlank()) {
@@ -570,7 +518,7 @@ private fun AccountRecordItem(
                                 text = "· ${record.remark}",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = MaterialTheme.colorScheme.outline,
-                                    fontSize = 10.sp
+                                    fontSize = 11.sp
                                 ),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -581,16 +529,12 @@ private fun AccountRecordItem(
             }
 
             // 金额
-            val isMoneyOut = if (isTransfer && currentAccountIsLiability) {
-                record.targetAccountId == currentAccountId
-            } else {
-                isExpense || (isTransfer && record.accountId == currentAccountId)
-            }
+            val isMoneyOut = isMoneyOutForAccount(record, currentAccountId)
             val sign = if (isMoneyOut) "-" else "+"
             val color = if (isMoneyOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
             Text(
-                text = if (privacyMode) "$sign¥***" else "$sign¥${MoneyUtils.centsToYuanString(record.amount)}",
+                text = if (privacyMode) "****" else "$sign¥${MoneyUtils.centsToYuanString(record.amount)}",
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = color

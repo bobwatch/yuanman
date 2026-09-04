@@ -203,7 +203,7 @@ class SettingsViewModel(
         }
     }
 
-    /** 清除快捷记账根据用户保存记录形成的个人分类习惯。 */
+    /** 清除闪电记账根据用户保存记录形成的个人分类习惯。 */
     fun clearQuickEntryLearning() {
         viewModelScope.launch {
             categoryRepository.clearQuickEntryLearning()

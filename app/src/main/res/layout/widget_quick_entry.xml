@@ -18,7 +18,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:fontFamily="sans-serif-medium"
-            android:text="快捷记账"
+            android:text="闪电记账"
             android:textColor="@color/widget_text"
             android:textSize="13sp" />
 

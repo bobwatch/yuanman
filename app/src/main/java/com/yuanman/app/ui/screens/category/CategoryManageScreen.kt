@@ -149,7 +149,7 @@ fun CategoryManageScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 🌟 分类及其专属子标签列表
+            // 🌟 分类及其子标签列表
             if (uiState.isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -381,7 +381,7 @@ fun CategoryManageScreen(
                                                 ) {
                                                     Text(
                                                         text = if (usageCount > 0) "$usageCount 笔账单" else "未使用",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                                         color = if (usageCount > 0) primaryColor else MaterialTheme.colorScheme.outline,
                                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                                                     )
@@ -418,7 +418,7 @@ fun CategoryManageScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "子标签: ",
+                                                    text = "子标签：",
                                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                                     color = primaryColor
                                                 )
@@ -445,7 +445,7 @@ fun CategoryManageScreen(
     ConfirmDeleteDialog(
         visible = categoryToDelete != null,
         title = "删除分类",
-        message = "确定要删除分类「${categoryToDelete?.name}」及其专属子标签吗？",
+        message = "确定要删除分类「${categoryToDelete?.name}」及其子标签吗？",
         onConfirm = {
             categoryToDelete?.let {
                 viewModel.deleteCategory(it)

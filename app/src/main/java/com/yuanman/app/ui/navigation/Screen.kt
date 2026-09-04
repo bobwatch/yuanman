@@ -15,6 +15,7 @@ sealed class Screen(val route: String) {
     object Statistics : Screen("statistics")
     object CategoryManage : Screen("category_manage")
     object Settings : Screen("settings")
+    object AccountStatistics : Screen("account_statistics")
 
     object AddEditRecord : Screen("add_edit_record?recordId={recordId}&type={type}&categoryId={categoryId}") {
         fun createRoute(recordId: Long = 0L, type: RecordType? = null, categoryId: Long = 0L): String {

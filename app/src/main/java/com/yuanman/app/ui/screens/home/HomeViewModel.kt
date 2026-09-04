@@ -112,8 +112,6 @@ class HomeViewModel(
     private val _affirmationIndex = MutableStateFlow(0)
     private val _currentAffirmation = MutableStateFlow(WarmAffirmationsHelper.getAffirmationForCurrentTime())
     private val _quickEntryDraft = MutableStateFlow("")
-    private var lastReplayKey: String? = null
-    private var lastReplayAt: Long = 0L
 
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
     val quickEntryDraft: StateFlow<String> = _quickEntryDraft.asStateFlow()
@@ -414,13 +412,8 @@ class HomeViewModel(
         }
     }
 
-    fun replayTemplate(template: QuickRecordTemplate): Boolean {
-        val now = System.currentTimeMillis()
-        if (lastReplayKey == template.key && now - lastReplayAt < 1_200L) return false
-        lastReplayKey = template.key
-        lastReplayAt = now
+    fun replayTemplate(template: QuickRecordTemplate) {
         copyRecord(template.source.record)
-        return true
     }
 
     fun setTemplatePinned(item: RecordWithCategory, pinned: Boolean) {

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.AccountEntity
@@ -58,7 +59,7 @@ fun TransferSheet(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(text = "账户不足", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text(text = "进行账户间资金调拨与划转至少需要 2 个账户，请先创建更多账户。")
+                Text(text = "资金划转至少需要 2 个账户，请先创建更多账户。")
                 Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("知道了")
                 }
@@ -118,7 +119,7 @@ fun TransferSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "资金互转 / 划转",
+                    text = "资金划转",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
@@ -129,66 +130,52 @@ fun TransferSheet(
                 }
             }
 
-            // 1. 双卡槽直观互转选择器
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                modifier = Modifier.fillMaxWidth()
+            // 1. 左右双卡槽互转选择器：转出（左）→ 转入（右）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // 转出卡槽
-                    TransferAccountSlot(
-                        roleLabel = "转出账户",
-                        account = fromAccount,
-                            afterBalanceCents = transferPreview.fromAfterBalanceCents,
-                            privacyMode = privacyMode,
-                            onClick = { isSelectingFromAccount = true }
-                    )
+                TransferAccountSlot(
+                    roleLabel = "转出账户",
+                    account = fromAccount,
+                    afterBalanceCents = transferPreview.fromAfterBalanceCents,
+                    privacyMode = privacyMode,
+                    onClick = { isSelectingFromAccount = true },
+                    modifier = Modifier.weight(1f)
+                )
 
-                    // 中间交换按钮
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.surface),
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clickable {
-                                    val temp = fromAccountId
-                                    fromAccountId = toAccountId
-                                    toAccountId = temp
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.SwapVert,
-                                    contentDescription = "调换转出转入",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                // 中间调换按钮
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.surface),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clickable {
+                            val temp = fromAccountId
+                            fromAccountId = toAccountId
+                            toAccountId = temp
                         }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "调换转出转入",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-
-                    // 转入卡槽
-                    TransferAccountSlot(
-                        roleLabel = "转入账户",
-                        account = toAccount,
-                            afterBalanceCents = transferPreview.toAfterBalanceCents,
-                            privacyMode = privacyMode,
-                            onClick = { isSelectingToAccount = true }
-                    )
                 }
+
+                TransferAccountSlot(
+                    roleLabel = "转入账户",
+                    account = toAccount,
+                    afterBalanceCents = transferPreview.toAfterBalanceCents,
+                    privacyMode = privacyMode,
+                    onClick = { isSelectingToAccount = true },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             // 2. 转账金额输入框
@@ -230,7 +217,7 @@ fun TransferSheet(
                             }
                         ) {
                             Text(
-                                text = if (privacyMode) "结清欠款 (¥***)" else "结清欠款 (¥${MoneyUtils.centsToYuanString(toAccount.balanceCents)})",
+                                text = if (privacyMode) "结清欠款（¥****）" else "结清欠款（¥${MoneyUtils.centsToYuanString(toAccount.balanceCents)}）",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -336,7 +323,7 @@ fun TransferSheet(
                 } else {
                     Text(
                         text = if (privacyMode) {
-                            "确认转账 ¥***"
+                            "确认转账 ¥****"
                         } else {
                             "确认转账 ¥${if (amountStr.isNotBlank()) amountStr else "0.00"}"
                         },
@@ -388,30 +375,41 @@ private fun TransferAccountSlot(
     account: AccountEntity,
     afterBalanceCents: Long,
     privacyMode: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val accColor = try {
         Color(android.graphics.Color.parseColor(account.colorHex.ifBlank { "#1B5E20" }))
     } catch (e: Exception) {
         MaterialTheme.colorScheme.primary
     }
+    val stateLabel = if (AccountType.fromString(account.type).isLiability) "欠款" else "余额"
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+            Text(
+                text = roleLabel,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            )
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(accColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
@@ -420,44 +418,28 @@ private fun TransferAccountSlot(
                     imageVector = AccountIconHelper.getIcon(account.icon),
                     contentDescription = null,
                     tint = accColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Column {
-                Text(
-                    text = roleLabel,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = MaterialTheme.colorScheme.outline,
-                        fontSize = 10.sp
-                    )
-                )
-                Text(
-                    text = account.name,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            }
-        }
-
-        Column(horizontalAlignment = Alignment.End) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "当前${if (AccountType.fromString(account.type).isLiability) "欠款" else "余额"} ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(account.balanceCents)}"}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Text(
-                text = "转后${if (AccountType.fromString(account.type).isLiability) "欠款" else "余额"} ${if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(afterBalanceCents)}"}",
+                text = account.name,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (privacyMode) "当前$stateLabel ¥****" else "当前$stateLabel ¥${MoneyUtils.centsToYuanString(account.balanceCents)}",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (privacyMode) "转后$stateLabel ¥****" else "转后$stateLabel ¥${MoneyUtils.centsToYuanString(afterBalanceCents)}",
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.outline
-                )
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -550,7 +532,7 @@ private fun AccountSelectDialog(
                                         Text(
                                             text = "已选为对方账户",
                                             style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.error
                                             )
                                         )
@@ -559,7 +541,7 @@ private fun AccountSelectDialog(
                             }
 
                             Text(
-                                text = if (privacyMode) "¥***" else "¥${MoneyUtils.centsToYuanString(acc.balanceCents)}",
+                                text = if (privacyMode) "****" else "¥${MoneyUtils.centsToYuanString(acc.balanceCents)}",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (isDisabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
