@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.CategoryIconView
+import com.yuanman.app.ui.components.IconPainterCache
 import com.yuanman.app.ui.components.LocalToastHostState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -251,7 +252,7 @@ fun AddEditCategoryScreen(
                                     border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
@@ -261,15 +262,20 @@ fun AddEditCategoryScreen(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "删除子标签",
-                                            tint = MaterialTheme.colorScheme.outline,
+                                        Box(
                                             modifier = Modifier
-                                                .size(18.dp)
+                                                .size(24.dp)
                                                 .clip(CircleShape)
-                                                .clickable { viewModel.removeTag(tag) }
-                                        )
+                                                .clickable { viewModel.removeTag(tag) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "删除子标签",
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -364,7 +370,7 @@ fun AddEditCategoryScreen(
                 }
             }
 
-            // 🌟 卡片 3: 丰富图标选择 (60+ 图标，分组切换)
+            // 🌟 卡片 3: 选择图标（分组筛选 + 网格）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -398,7 +404,7 @@ fun AddEditCategoryScreen(
                         }
                     }
 
-                    // 图标网格
+                    // 图标网格（painter 走进程级缓存，避免每次进入页面重新编译矢量路径）
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(5),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -431,12 +437,22 @@ fun AddEditCategoryScreen(
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = iconInfo.icon,
-                                        contentDescription = iconInfo.name,
-                                        tint = if (isSelected) Color(uiState.selectedColor) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                                    val cachedPainter = IconPainterCache.get(iconInfo.key)
+                                    if (cachedPainter != null) {
+                                        Icon(
+                                            painter = cachedPainter,
+                                            contentDescription = iconInfo.name,
+                                            tint = if (isSelected) Color(uiState.selectedColor) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = iconInfo.icon,
+                                            contentDescription = iconInfo.name,
+                                            tint = if (isSelected) Color(uiState.selectedColor) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
@@ -483,7 +499,7 @@ fun AddEditCategoryScreen(
                                     .background(Color(colorHex))
                                     .border(
                                         width = if (isSelected) 3.dp else 0.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                                         shape = CircleShape
                                     )
                                     .clickable { viewModel.setColor(colorHex) },

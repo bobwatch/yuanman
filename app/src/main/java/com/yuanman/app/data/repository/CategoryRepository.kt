@@ -1,6 +1,7 @@
 package com.yuanman.app.data.repository
 
 import com.yuanman.app.data.local.AppDatabase
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.local.dao.CategoryDao
 import com.yuanman.app.data.local.dao.CategoryUsageCount
 import com.yuanman.app.data.local.dao.QuickEntryLearningDao
@@ -47,7 +48,7 @@ class CategoryRepository(
         val name = category.name.trim()
         val type = category.type.trim().uppercase(Locale.ROOT)
         val existing = categoryDao.getCategoryByNameIncludingDeleted(type, name)
-        if (existing != null) {
+        val id: Long = if (existing != null) {
             if (existing.deletedAt != null) {
                 categoryDao.updateCategory(
                     category.copy(
@@ -67,10 +68,13 @@ class CategoryRepository(
                 category.copy(name = name, type = type, updatedAt = System.currentTimeMillis(), deletedAt = null)
             )
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon()
+        id
     }
 
     suspend fun insertCategories(categories: List<CategoryEntity>) = withContext(Dispatchers.IO) {
         categoryDao.insertCategories(categories)
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     suspend fun mergeSyncedData(
@@ -79,6 +83,7 @@ class CategoryRepository(
     ): SyncMergeResult = withContext(Dispatchers.IO) {
         val result = syncDao.merge(categories, records)
         backfillQuickEntryLearningInternal()
+        DatabaseBackupManager.scheduleAutoBackupSoon()
         result
     }
 
@@ -96,6 +101,9 @@ class CategoryRepository(
         withContext(Dispatchers.IO) {
             val normalizedPhrase = QuickEntryParser.normalizeLearningText(phrase)
             if (normalizedPhrase.isBlank() || categorySyncId.isBlank()) return@withContext
+            // 用户的记账内容优先：覆盖同名的“纯系统预置”规则（从未被使用/整理过且指向其他分类），
+            // 避免预置映射与用户实际分类习惯冲突时压过用户内容。
+            quickEntryLearningDao.deleteUnusedPresetsForPhrase(type.name, normalizedPhrase, categorySyncId)
             val existing = quickEntryLearningDao.find(type.name, normalizedPhrase, categorySyncId)
             if (existing == null) {
                 quickEntryLearningDao.upsert(
@@ -114,13 +122,18 @@ class CategoryRepository(
                     lastUsedAt = System.currentTimeMillis()
                 )
             }
+            DatabaseBackupManager.scheduleAutoBackupSoon()
         }
 
     suspend fun clearQuickEntryLearning() = withContext(Dispatchers.IO) {
         quickEntryLearningDao.deleteUserRules()
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
-    /** 将解析器内置词库同步到分类学习页，幂等执行，不覆盖用户已经积累的权重。 */
+    /**
+     * 将解析器内置词库同步到分类学习页，幂等执行，不覆盖用户已经积累的权重；
+     * 同名短语若已被用户记账内容占用（任意分类下使用过或整理过），不再补建预置词。
+     */
     suspend fun ensureDefaultQuickEntryLearning() = withContext(Dispatchers.IO) {
         val defaultKeys = AppDatabase.getDefaultCategories()
             .map { "${it.type.trim().uppercase(Locale.ROOT)}_${it.name.trim()}" }
@@ -133,7 +146,9 @@ class CategoryRepository(
             }
             .forEach { category ->
                 QuickEntryParser.defaultLearningPhrases(category).forEach { phrase ->
-                    if (quickEntryLearningDao.find(category.type, phrase, category.syncId) == null) {
+                    if (quickEntryLearningDao.find(category.type, phrase, category.syncId) == null &&
+                        !quickEntryLearningDao.existsUserManagedRule(category.type, phrase)
+                    ) {
                         quickEntryLearningDao.upsert(
                             QuickEntryLearningEntity(
                                 type = category.type,
@@ -158,6 +173,8 @@ class CategoryRepository(
             val category = item.category ?: return@forEach
             val phrase = QuickEntryParser.normalizeLearningText(item.record.remark)
             if (phrase.isBlank()) return@forEach
+            // 历史账单的归类与同名纯预置规则不同时，用用户记账内容覆盖预置映射。
+            quickEntryLearningDao.deleteUnusedPresetsForPhrase(item.record.type, phrase, category.syncId)
             val existing = quickEntryLearningDao.find(item.record.type, phrase, category.syncId)
             if (existing == null) {
                 quickEntryLearningDao.upsert(
@@ -191,10 +208,12 @@ class CategoryRepository(
         if (normalizedPhrase.isBlank()) return@withContext
         quickEntryLearningDao.delete(rule)
         quickEntryLearningDao.upsert(rule.copy(type = type, phrase = normalizedPhrase, categorySyncId = categorySyncId, lastUsedAt = System.currentTimeMillis()))
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     suspend fun deleteQuickEntryLearning(rule: QuickEntryLearningEntity) = withContext(Dispatchers.IO) {
         quickEntryLearningDao.delete(rule)
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     suspend fun updateCategory(category: CategoryEntity) = withContext(Dispatchers.IO) {
@@ -206,6 +225,7 @@ class CategoryRepository(
                 deletedAt = null
             )
         )
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     suspend fun updateCategoryOrder(categoryIds: List<Long>) = withContext(Dispatchers.IO) {
@@ -213,6 +233,7 @@ class CategoryRepository(
         categoryIds.forEachIndexed { index, categoryId ->
             categoryDao.updateSortOrder(categoryId, index, updatedAt)
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     suspend fun isCategoryUsed(categoryId: Long): Boolean = withContext(Dispatchers.IO) {
@@ -233,6 +254,7 @@ class CategoryRepository(
             val usageCount = recordDao.countRecordsByCategoryId(category.id)
             Result.failure(IllegalStateException("该分类已被 $usageCount 条账单使用，无法直接删除"))
         } else {
+            DatabaseBackupManager.scheduleAutoBackupSoon()
             Result.success(Unit)
         }
     }
@@ -256,6 +278,7 @@ class CategoryRepository(
                 )
             }
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
     /**

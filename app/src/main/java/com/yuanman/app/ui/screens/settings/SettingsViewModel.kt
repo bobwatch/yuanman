@@ -2,9 +2,11 @@ package com.yuanman.app.ui.screens.settings
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
@@ -233,6 +235,78 @@ class SettingsViewModel(
         val categories = uiState.value.allCategories
         val records = uiState.value.allRecords
         JsonBackupUtils.shareBackupFile(context, categories, records)
+    }
+
+    /**
+     * 立即手动备份：分类、账单与个人习惯(偏好)整体快照到公共 Documents。
+     * 卸载/重装后应用可从快照自动恢复，实现数据不丢失。
+     */
+    fun backupDataToDocumentsNow(context: Context, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val ok = DatabaseBackupManager.createManualBackup(context)
+            onResult(
+                ok,
+                if (ok) {
+                    "已备份到 文档/Yuanman 目录，包含分类、全部账单与个人习惯"
+                } else {
+                    "备份失败，请稍后重试"
+                }
+            )
+        }
+    }
+
+    /**
+     * 从用户选择的备份文件整体还原(数据库快照或偏好快照)。
+     * 文件名含 preferences 视为个人习惯快照，否则视为数据库快照。
+     */
+    fun restoreFromBackupFile(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val displayName = context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                val isPreferences = displayName?.contains("preferences", ignoreCase = true) == true
+
+                val result = if (isPreferences) {
+                    DatabaseBackupManager.restorePreferencesFromUri(context, uri)
+                } else {
+                    DatabaseBackupManager.restoreFromUri(context, uri)
+                }
+                result.onSuccess {
+                    onResult(
+                        true,
+                        if (isPreferences) {
+                            "个人习惯(预算/标签/快捷设置)已恢复，重启应用后生效"
+                        } else {
+                            "分类与全部账单已恢复，重启应用后生效"
+                        }
+                    )
+                }.onFailure { e ->
+                    onResult(false, e.message ?: "恢复失败")
+                }
+            } catch (e: Exception) {
+                onResult(false, "恢复失败：${e.message ?: "无法读取所选文件"}")
+            }
+        }
+    }
+
+    /**
+     * 从公共 Documents/Yuanman 目录自动扫描并恢复最近的备份(需"所有文件访问"权限)。
+     * 用于卸载重装后 MediaStore 索引已被系统清除、无法从文件选择器定位备份的场景。
+     */
+    fun restoreFromDocumentsNow(context: Context, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = DatabaseBackupManager.restoreFromDocuments(context)
+            result.onSuccess {
+                onResult(true, "已从 文档/Yuanman 恢复分类、全部账单与个人习惯")
+            }.onFailure { e ->
+                onResult(false, e.message ?: "从文档恢复失败")
+            }
+        }
     }
 
     fun restoreFromJson(jsonString: String, onResult: (Boolean, String) -> Unit) {

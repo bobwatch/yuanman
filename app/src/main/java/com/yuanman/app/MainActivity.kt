@@ -20,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.ui.components.LocalToastHostState
+import com.yuanman.app.ui.components.PrimeIconPainters
 import com.yuanman.app.ui.components.ToastHostState
 import com.yuanman.app.ui.components.TopToastHost
 import com.yuanman.app.ui.navigation.YuanmanNavGraph
@@ -57,6 +58,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             val navController = rememberNavController()
+
+                            // 常驻预置分类图标 painter，避免各页面每次进入重建矢量树导致卡顿
+                            PrimeIconPainters()
 
                             LaunchedEffect(pendingWidgetRoute) {
                                 pendingWidgetRoute?.let { route ->

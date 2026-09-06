@@ -65,7 +65,9 @@ fun MonthPickerModal(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { selectedYear -= 1 }) {
+                IconButton(
+                    onClick = { selectedYear -= 1 }
+                ) {
                     Icon(Icons.Default.ChevronLeft, contentDescription = "上一年")
                 }
 
@@ -77,8 +79,21 @@ fun MonthPickerModal(
                     )
                 )
 
-                IconButton(onClick = { selectedYear += 1 }) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "下一年")
+                // 只能回看历史，不允许翻到当前年份之后的未来年份
+                val canGoNextYear = selectedYear < currentYear
+                IconButton(
+                    onClick = { selectedYear += 1 },
+                    enabled = canGoNextYear
+                ) {
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = "下一年",
+                        tint = if (canGoNextYear) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                        }
+                    )
                 }
             }
 
@@ -95,6 +110,9 @@ fun MonthPickerModal(
                     val month = index + 1
                     val isSelected = selectedYear == selectedYear && selectedMonth == month
                     val isCurrent = selectedYear == currentYear && month == currentMonth
+                    // 筛选只需回看：当前年份之后的月份、以及今年的未来月份均不可选
+                    val isFutureMonth = selectedYear > currentYear ||
+                            (selectedYear == currentYear && month > currentMonth)
 
                     Box(
                         modifier = Modifier
@@ -104,12 +122,19 @@ fun MonthPickerModal(
                                 when {
                                     isSelected -> MaterialTheme.colorScheme.primary
                                     isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                    isFutureMonth -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
                                     else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                                 }
                             )
-                            .clickable {
-                                selectedMonth = month
-                            },
+                            .then(
+                                if (isFutureMonth) {
+                                    Modifier
+                                } else {
+                                    Modifier.clickable {
+                                        selectedMonth = month
+                                    }
+                                }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -120,6 +145,7 @@ fun MonthPickerModal(
                                 color = when {
                                     isSelected -> MaterialTheme.colorScheme.onPrimary
                                     isCurrent -> MaterialTheme.colorScheme.primary
+                                    isFutureMonth -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                                     else -> MaterialTheme.colorScheme.onSurface
                                 }
                             )

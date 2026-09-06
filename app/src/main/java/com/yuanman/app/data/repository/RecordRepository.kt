@@ -8,6 +8,7 @@ import com.yuanman.app.utils.DateTimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.widget.WidgetUpdateManager
 
 class RecordRepository(
@@ -108,12 +109,14 @@ class RecordRepository(
         val now = System.currentTimeMillis()
         val id = recordDao.insertRecord(record.copy(deletedAt = null, updatedAt = now))
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
         id
     }
 
     suspend fun insertRecords(records: List<RecordEntity>) = withContext(Dispatchers.IO) {
         recordDao.insertRecords(records)
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun updateRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
@@ -126,29 +129,35 @@ class RecordRepository(
         )
         recordDao.updateRecord(normalized)
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
         recordDao.softDeleteRecordById(record.id, System.currentTimeMillis())
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteRecordById(id: Long) = withContext(Dispatchers.IO) {
         recordDao.softDeleteRecordById(id, System.currentTimeMillis())
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun restoreRecord(id: Long) = withContext(Dispatchers.IO) {
         recordDao.restoreRecordById(id, System.currentTimeMillis())
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteAllRecords() = withContext(Dispatchers.IO) {
         recordDao.softDeleteAllRecords(System.currentTimeMillis())
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     fun notifyDataChanged() {
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 }

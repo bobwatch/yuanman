@@ -19,6 +19,27 @@ interface QuickEntryLearningDao {
     @Query("SELECT * FROM quick_entry_learning WHERE type = :type AND phrase = :phrase AND categorySyncId = :categorySyncId LIMIT 1")
     suspend fun find(type: String, phrase: String, categorySyncId: String): QuickEntryLearningEntity?
 
+    /** 该短语是否已被用户“使用或手动整理过”（sampleCount>0 或曾设置 lastUsedAt）。 */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM quick_entry_learning
+            WHERE type = :type AND phrase = :phrase AND (sampleCount > 0 OR lastUsedAt > 0)
+        )
+    """)
+    suspend fun existsUserManagedRule(type: String, phrase: String): Boolean
+
+    /**
+     * 删除与目标分类不同的“纯系统预置”规则（从未被使用、也未被用户编辑过），
+     * 让用户记账内容覆盖同名的预置映射。
+     */
+    @Query("""
+        DELETE FROM quick_entry_learning
+        WHERE type = :type AND phrase = :phrase
+            AND sampleCount = 0 AND lastUsedAt = 0
+            AND categorySyncId != :keepCategorySyncId
+    """)
+    suspend fun deleteUnusedPresetsForPhrase(type: String, phrase: String, keepCategorySyncId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rule: QuickEntryLearningEntity)
 

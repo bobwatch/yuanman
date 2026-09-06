@@ -257,7 +257,7 @@ fun CategoryManageScreen(
                                 }
                             )
                         },
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(

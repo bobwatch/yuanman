@@ -26,6 +26,7 @@ import androidx.navigation.navArgument
 import com.yuanman.app.YuanmanApplication
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.BottomNavBar
+import com.yuanman.app.ui.screens.account.AccountScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordViewModel
 import com.yuanman.app.ui.screens.category.AddEditCategoryScreen
@@ -46,7 +47,7 @@ import com.yuanman.app.ui.screens.settings.SettingsViewModel
 private val TAB_ROUTES = listOf(
     Screen.Home.route,
     Screen.RecordList.route,
-    Screen.Statistics.route,
+    Screen.Account.route,
     Screen.Settings.route
 )
 
@@ -182,6 +183,7 @@ fun YuanmanNavGraph(
                 )
                 StatisticsScreen(
                     viewModel = statsViewModel,
+                    onNavigateBack = { navController.popBackStack() },
                     onCategoryClick = { categoryId ->
                         navController.navigate(Screen.CategoryRecords.createRoute(categoryId))
                     }
@@ -332,6 +334,11 @@ fun YuanmanNavGraph(
                         navController.navigate(Screen.AddEditRecord.createRoute(type = type, categoryId = catId))
                     }
                 )
+            }
+
+            // 9. 账户 (底部导航 Tab, 占位页)
+            composable(Screen.Account.route) {
+                AccountScreen()
             }
         }
 

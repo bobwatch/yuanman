@@ -3,11 +3,15 @@ package com.yuanman.app.ui.screens.home
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -18,7 +22,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,10 +32,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,11 +48,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.yuanman.app.data.local.entity.CategoryEntity
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.*
+import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.clickableDebounce
@@ -122,6 +132,12 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
+                // 月份翻页只允许回看：以当前自然月为上限（首页看板不涉及未来）
+                val canGoNextMonth =
+                    uiState.selectedYear < today.get(Calendar.YEAR) ||
+                        (uiState.selectedYear == today.get(Calendar.YEAR) &&
+                            uiState.selectedMonth < today.get(Calendar.MONTH) + 1)
+
                 // 🌟 1. 顶部收支看板与预算进度卡片
                 FinancialOverviewCard(
                     year = uiState.selectedYear,
@@ -136,6 +152,7 @@ fun HomeScreen(
                     remainingDays = uiState.remainingDays,
                     onPrevMonth = { viewModel.previousMonth() },
                     onNextMonth = { viewModel.nextMonth() },
+                    canGoNextMonth = canGoNextMonth,
                     onMonthClick = { showMonthPicker = true },
                     onBudgetClick = { showBudgetDialog = true },
                     onCardClick = onNavigateToStatistics,
@@ -151,8 +168,8 @@ fun HomeScreen(
                         categories = uiState.quickEntryCategories,
                         learningRules = uiState.quickEntryLearningRules,
                         onTypeChange = { quickEntryType = it },
-                        onSubmit = { input, type ->
-                            val saved = viewModel.saveQuickEntry(input, type)
+                        onSubmit = { input, type, categoryOverride ->
+                            val saved = viewModel.saveQuickEntry(input, type, categoryOverride)
                             if (saved != null) {
                                 val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
                                 toast.success(
@@ -236,15 +253,13 @@ fun HomeScreen(
                         }
                     }
 
-                    // 拖动阶段保留进度反馈，但使用透明容器，避免短距离下拉出现深色圆块。
+                    // 自绘刷新指示器：无容器无阴影，拖动期显示进度弧、刷新期显示圆环
                     if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
-                        PullToRefreshContainer(
+                        YuanmanPullRefreshIndicator(
                             state = pullRefreshState,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
-                                .padding(top = 4.dp),
-                            containerColor = Color.Transparent,
-                            contentColor = MaterialTheme.colorScheme.primary
+                                .padding(top = 4.dp)
                         )
                     }
                 }
@@ -264,77 +279,22 @@ fun HomeScreen(
         onDismiss = { showMonthPicker = false }
     )
 
-    // 预算配置弹窗
+    // 预算配置弹窗（拖动滑杆设置金额）
     if (showBudgetDialog) {
-        var budgetInput by remember {
-            mutableStateOf(
-                if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
-            )
-        }
-
-        Dialog(onDismissRequest = { showBudgetDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "设置 ${uiState.selectedYear}年${uiState.selectedMonth}月预算",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Text(
-                        text = "只影响当前月份；切换月份即可查看和设置各月预算。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    OutlinedTextField(
-                        value = budgetInput,
-                        onValueChange = { budgetInput = it },
-                        label = { Text("预算金额 (元)") },
-                        placeholder = { Text("如: 5000") },
-                        prefix = { Text("¥ ") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                viewModel.setMonthlyBudget(0L)
-                                showBudgetDialog = false
-                            }
-                        ) {
-                            Text("清除预算", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Button(
-                            onClick = {
-                                val cents = MoneyUtils.parseYuanToCents(budgetInput)
-                                viewModel.setMonthlyBudget(cents)
-                                showBudgetDialog = false
-                            }
-                        ) {
-                            Text("保存")
-                        }
-                    }
-                }
-            }
-        }
+        BudgetSliderDialog(
+            title = "设置 ${uiState.selectedYear}年${uiState.selectedMonth}月预算",
+            subtitle = "只影响当前月份；切换月份即可查看和设置各月预算。",
+            initialBudgetCents = uiState.monthlyBudget,
+            onSave = {
+                viewModel.setMonthlyBudget(it)
+                showBudgetDialog = false
+            },
+            onClear = {
+                viewModel.setMonthlyBudget(0L)
+                showBudgetDialog = false
+            },
+            onDismiss = { showBudgetDialog = false }
+        )
     }
 
     // 长按快捷操作底部弹层（直接展示明细）
@@ -452,23 +412,33 @@ private fun HomeFilterChip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QuickEntryStrip(
     type: RecordType,
-    categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
-    learningRules: List<com.yuanman.app.data.local.entity.QuickEntryLearningEntity>,
+    categories: List<CategoryEntity>,
+    learningRules: List<QuickEntryLearningEntity>,
     onTypeChange: (RecordType) -> Unit,
-    onSubmit: (String, RecordType) -> Boolean,
+    onSubmit: (String, RecordType, CategoryEntity?) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by remember { mutableStateOf("") }
+    // 用户点按解析徽章手动选定的分类；非空时优先于自动解析结果。
+    var manualCategory by remember { mutableStateOf<CategoryEntity?>(null) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
     }
     val preview = remember(text, availableCategories, learningRules) {
         QuickEntryParser.parse(text, availableCategories, learningRules)
     }
+    // 手动选择后继续改金额等解析词时保留手动分类；分类被删除或与收支类型不符则回退解析结果。
+    val effectiveCategory = manualCategory?.takeIf { manual ->
+        availableCategories.any { it.id == manual.id }
+    } ?: preview?.category
+    val isManualCategory = manualCategory != null
     val isExpense = type == RecordType.EXPENSE
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
@@ -500,13 +470,19 @@ private fun QuickEntryStrip(
             // 1. 支 / 收 极简切换胶囊
             QuickTypeTogglePill(
                 selectedType = type,
-                onTypeChange = onTypeChange
+                onTypeChange = { newType ->
+                    if (newType != type) manualCategory = null
+                    onTypeChange(newType)
+                }
             )
 
             // 2. 原生无框极简输入框
             BasicTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = { newText ->
+                    if (newText.isEmpty()) manualCategory = null
+                    text = newText
+                },
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 2.dp),
@@ -524,7 +500,10 @@ private fun QuickEntryStrip(
                 keyboardActions = KeyboardActions(
                     onDone = {
                         if (isReady) {
-                            if (onSubmit(text, type)) text = ""
+                            if (onSubmit(text, type, effectiveCategory)) {
+                                text = ""
+                                manualCategory = null
+                            }
                         }
                     }
                 ),
@@ -556,14 +535,22 @@ private fun QuickEntryStrip(
                 exit = fadeOut() + shrinkHorizontally()
             ) {
                 if (preview != null) {
-                    val cat = preview.category
+                    val cat = effectiveCategory
                     val catColor = cat?.let { Color(it.colorHex) } ?: accent
                     val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
 
+                    // 点按解析徽章即可修改分类（支持把识别错的分类换掉）
                     Surface(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showCategoryPicker = true
+                        },
                         shape = RoundedCornerShape(10.dp),
-                        color = accent.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
+                        color = if (isManualCategory) accent.copy(alpha = 0.17f) else accent.copy(alpha = 0.12f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isManualCategory) accent.copy(alpha = 0.55f) else accent.copy(alpha = 0.25f)
+                        ),
                         modifier = Modifier.padding(horizontal = 2.dp)
                     ) {
                         Row(
@@ -587,6 +574,14 @@ private fun QuickEntryStrip(
                                 maxLines = 1,
                                 softWrap = false
                             )
+                            if (isManualCategory) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "点击修改分类",
+                                    tint = accent,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                            }
                             Text(
                                 text = "¥${preview.amountYuan.toPlainString()}",
                                 style = MaterialTheme.typography.labelSmall.copy(
@@ -618,9 +613,13 @@ private fun QuickEntryStrip(
             IconButton(
                 onClick = {
                     if (isReady) {
-                        if (onSubmit(text, type)) text = ""
+                        if (onSubmit(text, type, effectiveCategory)) {
+                            text = ""
+                            manualCategory = null
+                        }
                     } else if (text.isNotEmpty()) {
                         text = ""
+                        manualCategory = null
                     } else {
                         onClose()
                     }
@@ -640,6 +639,135 @@ private fun QuickEntryStrip(
                     tint = btnIconColor,
                     modifier = Modifier.size(16.dp)
                 )
+            }
+        }
+
+        if (showCategoryPicker) {
+            QuickCategoryPickSheet(
+                categories = availableCategories,
+                selectedCategoryId = effectiveCategory?.id,
+                isManual = isManualCategory,
+                accent = accent,
+                onPick = { chosen ->
+                    manualCategory = chosen
+                    showCategoryPicker = false
+                },
+                onRestoreAuto = {
+                    manualCategory = null
+                    showCategoryPicker = false
+                },
+                onDismiss = { showCategoryPicker = false }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickCategoryPickSheet(
+    categories: List<CategoryEntity>,
+    selectedCategoryId: Long?,
+    isManual: Boolean,
+    accent: Color,
+    onPick: (CategoryEntity) -> Unit,
+    onRestoreAuto: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "选择分类",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f)
+                )
+                if (isManual) {
+                    TextButton(onClick = onRestoreAuto) {
+                        Text(
+                            text = "恢复自动识别",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accent
+                        )
+                    }
+                }
+            }
+            if (categories.isEmpty()) {
+                Text(
+                    text = "暂无可用分类",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                ) {
+                    gridItems(categories, key = { it.id }) { category ->
+                        val isSelected = category.id == selectedCategoryId
+                        val categoryColor = Color(category.colorHex)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onPick(category) }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) categoryColor.copy(alpha = 0.18f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    )
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(2.dp, categoryColor, CircleShape)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                            ) {
+                                CategoryIconView(
+                                    iconName = category.iconName,
+                                    colorHex = category.colorHex,
+                                    size = 46.dp,
+                                    iconSize = 22.dp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = category.name,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -726,6 +854,7 @@ private fun FinancialOverviewCard(
     remainingDays: Int,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    canGoNextMonth: Boolean,
     onMonthClick: () -> Unit,
     onBudgetClick: () -> Unit,
     onCardClick: (() -> Unit)? = null,
@@ -853,6 +982,7 @@ private fun FinancialOverviewCard(
 
                         IconButton(
                             onClick = onNextMonth,
+                            enabled = canGoNextMonth,
                             modifier = Modifier.size(22.dp)
                         ) {
                             Icon(

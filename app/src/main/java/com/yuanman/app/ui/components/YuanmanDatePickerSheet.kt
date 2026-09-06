@@ -49,6 +49,7 @@ fun YuanmanDatePickerSheet(
     initialDateMillis: Long,
     onDateSelected: ((year: Int, month: Int, day: Int) -> Unit)? = null,
     onDateTimeSelected: ((Long) -> Unit)? = null,
+    restrictFuture: Boolean = false,
     onDismiss: () -> Unit
 ) {
     val initialCalendar = remember(initialDateMillis) {
@@ -333,6 +334,11 @@ fun YuanmanDatePickerSheet(
                                             val isDaySelected = viewingYear == selectedYear &&
                                                     viewingMonth == selectedMonth &&
                                                     dayIndex == selectedDay
+                                            // 筛选场景不需要未来时间：今天之后的日期禁用
+                                            val isFuture = restrictFuture &&
+                                                    (viewingYear > todayCal.get(Calendar.YEAR) ||
+                                                            (viewingYear == todayCal.get(Calendar.YEAR) && viewingMonth > todayCal.get(Calendar.MONTH) + 1) ||
+                                                            (viewingYear == todayCal.get(Calendar.YEAR) && viewingMonth == todayCal.get(Calendar.MONTH) + 1 && dayIndex > todayCal.get(Calendar.DAY_OF_MONTH)))
 
                                             Box(
                                                 contentAlignment = Alignment.Center,
@@ -343,17 +349,27 @@ fun YuanmanDatePickerSheet(
                                                     .background(
                                                         if (isDaySelected) primaryColor else Color.Transparent
                                                     )
-                                                    .clickable {
-                                                        selectedYear = viewingYear
-                                                        selectedMonth = viewingMonth
-                                                        selectedDay = dayIndex
-                                                    }
+                                                    .then(
+                                                        if (isFuture) {
+                                                            Modifier
+                                                        } else {
+                                                            Modifier.clickable {
+                                                                selectedYear = viewingYear
+                                                                selectedMonth = viewingMonth
+                                                                selectedDay = dayIndex
+                                                            }
+                                                        }
+                                                    )
                                             ) {
                                                 Text(
                                                     text = dayIndex.toString(),
                                                     fontSize = 13.sp,
                                                     fontWeight = if (isDaySelected) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (isDaySelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                                    color = when {
+                                                        isDaySelected -> Color.White
+                                                        isFuture -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                                        else -> MaterialTheme.colorScheme.onSurface
+                                                    }
                                                 )
                                             }
                                         } else {

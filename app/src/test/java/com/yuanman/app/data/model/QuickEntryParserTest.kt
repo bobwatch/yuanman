@@ -79,6 +79,79 @@ class QuickEntryParserTest {
     }
 
     @Test
+    fun userRecordRuleOverridesPresetRuleOfSamePhrase() {
+        val categories = listOf(
+            CategoryEntity(id = 1L, name = "餐饮美食", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 1L, syncId = "food"),
+            CategoryEntity(id = 2L, name = "人情往来", type = RecordType.EXPENSE.name, iconName = "gift", colorHex = 2L, syncId = "gift")
+        )
+        val presetRule = QuickEntryLearningEntity(
+            type = RecordType.EXPENSE.name,
+            phrase = "奶茶",
+            categorySyncId = "food",
+            sampleCount = 0,
+            lastUsedAt = 0L
+        )
+        val userRule = QuickEntryLearningEntity(
+            type = RecordType.EXPENSE.name,
+            phrase = "奶茶",
+            categorySyncId = "gift",
+            sampleCount = 3,
+            lastUsedAt = 1000L
+        )
+
+        // 无论预置规则排在用户规则之前还是之后，用户记账内容都应覆盖同名预置规则。
+        val presetFirst = QuickEntryParser.parse("奶茶 20", categories, listOf(presetRule, userRule))
+        assertEquals("人情往来", presetFirst?.category?.name)
+
+        val userFirst = QuickEntryParser.parse("奶茶 20", categories, listOf(userRule, presetRule))
+        assertEquals("人情往来", userFirst?.category?.name)
+        assertTrue((userFirst?.confidence ?: 0f) > 0.7f)
+    }
+
+    @Test
+    fun newestUserRuleWinsWhenSampleCountsTie() {
+        val categories = listOf(
+            CategoryEntity(id = 1L, name = "餐饮美食", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 1L, syncId = "food"),
+            CategoryEntity(id = 2L, name = "超市买菜", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 2L, syncId = "market")
+        )
+        val older = QuickEntryLearningEntity(
+            type = RecordType.EXPENSE.name,
+            phrase = "水果",
+            categorySyncId = "food",
+            sampleCount = 1,
+            lastUsedAt = 100L
+        )
+        val newer = QuickEntryLearningEntity(
+            type = RecordType.EXPENSE.name,
+            phrase = "水果",
+            categorySyncId = "market",
+            sampleCount = 1,
+            lastUsedAt = 500L
+        )
+
+        val applied = QuickEntryParser.parse("水果 15", categories, listOf(older, newer))
+        assertEquals("超市买菜", applied?.category?.name)
+    }
+
+    @Test
+    fun presetRuleStillUsedWhenUserHasNoRuleForPhrase() {
+        val categories = listOf(
+            CategoryEntity(id = 1L, name = "餐饮美食", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 1L, syncId = "food"),
+            CategoryEntity(id = 2L, name = "人情往来", type = RecordType.EXPENSE.name, iconName = "gift", colorHex = 2L, syncId = "gift")
+        )
+        val presetRule = QuickEntryLearningEntity(
+            type = RecordType.EXPENSE.name,
+            phrase = "奶茶",
+            categorySyncId = "food",
+            sampleCount = 0,
+            lastUsedAt = 0L
+        )
+
+        val applied = QuickEntryParser.parse("奶茶 20", categories, listOf(presetRule))
+        assertEquals("餐饮美食", applied?.category?.name)
+    }
+
+    @Test
     fun fuzzyAliasMatchesCommonTypo() {
         val categories = listOf(
             CategoryEntity(id = 1L, name = "餐饮美食", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 1L),

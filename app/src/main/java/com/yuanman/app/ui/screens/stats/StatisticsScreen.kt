@@ -42,6 +42,19 @@ fun StatisticsScreen(
     var showMonthPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
 
+    // 周期翻页只允许回看：以当前自然周/月/年为上限（统计不涉及未来）
+    val (currentYear, currentMonth) = remember { DateTimeUtils.getCurrentYearMonth() }
+    val currentWeek = remember { DateTimeUtils.getCurrentYearWeek().second }
+    val canGoNextPeriod = when (uiState.periodMode) {
+        StatisticsPeriod.WEEK ->
+            uiState.selectedYear < currentYear ||
+                (uiState.selectedYear == currentYear && uiState.selectedWeek < currentWeek)
+        StatisticsPeriod.MONTH ->
+            uiState.selectedYear < currentYear ||
+                (uiState.selectedYear == currentYear && uiState.selectedMonth < currentMonth)
+        StatisticsPeriod.YEAR -> uiState.selectedYear < currentYear
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
@@ -115,12 +128,17 @@ fun StatisticsScreen(
 
                             IconButton(
                                 onClick = { viewModel.nextPeriod() },
+                                enabled = canGoNextPeriod,
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ChevronRight,
                                     contentDescription = "下一周期",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    tint = if (canGoNextPeriod) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.35f)
+                                    },
                                     modifier = Modifier.size(16.dp)
                                 )
                             }

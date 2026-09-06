@@ -389,8 +389,13 @@ class StatisticsViewModel(
     }
 
     fun nextPeriod() {
+        // 周期翻页只允许回看：周/月/年分别以当前自然周/月/年为上限（统计不涉及未来）
+        val curY = currentYearMonth.first
         when (_periodMode.value) {
             StatisticsPeriod.WEEK -> {
+                if (_selectedYear.value > curY ||
+                    (_selectedYear.value == curY && _selectedWeek.value >= currentYearWeek.second)
+                ) return
                 val maxWeeks = DateTimeUtils.getMaxWeeksInYear(_selectedYear.value)
                 if (_selectedWeek.value >= maxWeeks) {
                     _selectedYear.value += 1
@@ -401,6 +406,9 @@ class StatisticsViewModel(
                 _selectedCategory.value = null
             }
             StatisticsPeriod.MONTH -> {
+                if (_selectedYear.value > curY ||
+                    (_selectedYear.value == curY && _selectedMonth.value >= currentYearMonth.second)
+                ) return
                 var y = _selectedYear.value
                 var m = _selectedMonth.value + 1
                 if (m > 12) {
@@ -410,6 +418,7 @@ class StatisticsViewModel(
                 selectMonth(y, m)
             }
             StatisticsPeriod.YEAR -> {
+                if (_selectedYear.value >= curY) return
                 _selectedYear.value += 1
                 _selectedCategory.value = null
             }

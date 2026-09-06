@@ -230,13 +230,19 @@ class HomeViewModel(
     }
 
     fun nextMonth() {
-        var y = _selectedYear.value
-        var m = _selectedMonth.value + 1
-        if (m > 12) {
-            m = 1
-            y += 1
+        // 月份翻页只允许回看：以当前自然月为上限（首页看板不涉及未来）
+        val y = _selectedYear.value
+        val m = _selectedMonth.value
+        if (y > currentYearMonth.first ||
+            (y == currentYearMonth.first && m >= currentYearMonth.second)
+        ) return
+        var ny = y
+        var nm = m + 1
+        if (nm > 12) {
+            nm = 1
+            ny += 1
         }
-        selectMonth(y, m)
+        selectMonth(ny, nm)
     }
 
     fun togglePrivacy() {
@@ -268,10 +274,14 @@ class HomeViewModel(
     /**
      * Saves a compact entry directly from Home and returns the parsed preview for immediate UI feedback.
      */
-    fun saveQuickEntry(input: String, type: RecordType): QuickEntryResult? {
+    fun saveQuickEntry(input: String, type: RecordType, categoryOverride: CategoryEntity? = null): QuickEntryResult? {
         val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
         val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
-        val category = parsed.category ?: categories.firstOrNull() ?: return null
+        // 用户手动选择的分类优先；校验其仍属于当前收支类型，避免界面状态过期。
+        val category = categoryOverride?.takeIf { chosen -> categories.any { it.id == chosen.id } }
+            ?: parsed.category
+            ?: categories.firstOrNull()
+            ?: return null
         val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
         if (amountCents <= 0L) return null
 

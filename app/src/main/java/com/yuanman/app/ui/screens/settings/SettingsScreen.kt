@@ -3,6 +3,10 @@ package com.yuanman.app.ui.screens.settings
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -48,10 +52,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.sync.PeerDevice
+import com.yuanman.app.ui.components.BudgetSliderDialog
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
@@ -91,6 +97,8 @@ fun SettingsScreen(
 
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
+    // 数据管理底部操作层（导出 / 导入 / 备份与恢复）
+    var showDataManageSheet by remember { mutableStateOf(false) }
     var showThemeBottomSheet by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
@@ -99,6 +107,53 @@ fun SettingsScreen(
     var showQuickEntrySheet by remember { mutableStateOf(false) }
     var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
     var manualCheckRequested by remember { mutableStateOf(false) }
+    var showRestartAfterRestoreDialog by remember { mutableStateOf(false) }
+    var restoreSuccessMessage by remember { mutableStateOf("") }
+    var isBackingUp by remember { mutableStateOf(false) }
+    var isRestoringBackup by remember { mutableStateOf(false) }
+    var showStorageAccessDialog by remember { mutableStateOf(false) }
+
+    val backupRestorePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.restoreFromBackupFile(context, uri) { success, message ->
+                if (success) {
+                    restoreSuccessMessage = message
+                    showRestartAfterRestoreDialog = true
+                } else {
+                    toast.error(message)
+                }
+            }
+        }
+    }
+
+    // 持有"所有文件访问"权限时：直接扫描 文档/Yuanman 自动恢复；目录中没有备份则回退文件选择器
+    val performDocumentsRestore: () -> Unit = {
+        isRestoringBackup = true
+        viewModel.restoreFromDocumentsNow(context) { success, message ->
+            isRestoringBackup = false
+            if (success) {
+                restoreSuccessMessage = message
+                showRestartAfterRestoreDialog = true
+            } else {
+                toast.error(message)
+                backupRestorePickerLauncher.launch(arrayOf("*/*"))
+            }
+        }
+    }
+
+    // 系统"所有文件访问"设置页返回：授权成功则自动扫描恢复，否则回退手动选择
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (DatabaseBackupManager.hasAllFilesAccess(context)) {
+            performDocumentsRestore()
+        } else {
+            toast.info("未授予文件访问权限，请手动选择备份文件")
+            backupRestorePickerLauncher.launch(arrayOf("*/*"))
+        }
+    }
 
     // 进入设置页后静默检查一次，避免用户必须先点击才能知道有无新版本。
     LaunchedEffect(Unit) {
@@ -256,35 +311,12 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 导出账单表格 (高频实用)
+                    // 数据管理（导出、导入、备份与恢复，点击弹出底部操作层）
                     SettingsRowItem(
-                        icon = Icons.Outlined.FileDownload,
-                        title = "导出账单表格",
-                        subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
-                        onClick = { viewModel.exportRecordsCsv(context) }
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    // 导入账单表格
-                    SettingsRowItem(
-                        icon = Icons.Outlined.FileUpload,
-                        title = "导入账单表格",
-                        subtitle = "支持导入 CSV 账单表格并自动归类入库",
-                        onClick = {
-                            csvPickerLauncher.launch(
-                                arrayOf(
-                                    "text/comma-separated-values",
-                                    "text/csv",
-                                    "text/plain",
-                                    "application/csv",
-                                    "*/*"
-                                )
-                            )
-                        }
+                        icon = Icons.Outlined.Storage,
+                        title = "数据管理",
+                        subtitle = "导出、导入、备份与恢复",
+                        onClick = { showDataManageSheet = true }
                     )
 
                     HorizontalDivider(
@@ -406,89 +438,88 @@ fun SettingsScreen(
         }
     }
 
-    // 🌟 月度预算设置弹窗
-    if (showBudgetDialog) {
-        val budgetFocusRequester = remember { FocusRequester() }
-        val keyboardController = LocalSoftwareKeyboardController.current
-        var budgetInput by remember {
-            mutableStateOf(
-                if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
-            )
-        }
-
-        LaunchedEffect(Unit) {
-            delay(120)
-            budgetFocusRequester.requestFocus()
-            keyboardController?.show()
-        }
-
-        Dialog(onDismissRequest = { showBudgetDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "设置月度预算",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Text(
-                        text = "设定合理的月度预算目标，可在首页看板实时把控消费节奏。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    OutlinedTextField(
-                        value = budgetInput,
-                        onValueChange = { budgetInput = it },
-                        label = { Text("预算金额 (元)") },
-                        placeholder = { Text("如: 5000") },
-                        prefix = { Text("¥ ") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(budgetFocusRequester)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                viewModel.setMonthlyBudget(0L)
-                                showBudgetDialog = false
-                                toast.success("已清除预算设置")
-                            }
-                        ) {
-                            Text("清除预算", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Button(
-                            onClick = {
-                                val cents = MoneyUtils.parseYuanToCents(budgetInput)
-                                viewModel.setMonthlyBudget(cents)
-                                showBudgetDialog = false
-                                toast.success("月度预算已保存")
-                            }
-                        ) {
-                            Text("保存")
+    // 卸载重装后系统可能清除备份文件索引：引导授予"所有文件访问"以便自动扫描 文档/Yuanman
+    if (showStorageAccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showStorageAccessDialog = false },
+            title = { Text("恢复备份数据") },
+            text = {
+                Text(
+                    "卸载重装后，系统可能无法再索引 文档/Yuanman 中的备份文件。\n\n" +
+                        "授予「所有文件访问」权限后，应用将自动查找最近的备份并整体还原；" +
+                        "也可以不授权，直接手动选择备份文件。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showStorageAccessDialog = false
+                    val uri = Uri.parse("package:${context.packageName}")
+                    val settingsIntent =
+                        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, uri)
+                    try {
+                        allFilesAccessLauncher.launch(settingsIntent)
+                    } catch (e: Exception) {
+                        try {
+                            allFilesAccessLauncher.launch(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)
+                            )
+                        } catch (e2: Exception) {
+                            toast.error("无法打开权限设置，请手动选择备份文件")
+                            backupRestorePickerLauncher.launch(arrayOf("*/*"))
                         }
                     }
-                }
+                }) { Text("去授权并恢复") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showStorageAccessDialog = false
+                    backupRestorePickerLauncher.launch(arrayOf("*/*"))
+                }) { Text("手动选择文件") }
             }
-        }
+        )
+    }
+
+    // 从备份文件恢复成功后，提示重启使新数据完整生效
+    if (showRestartAfterRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestartAfterRestoreDialog = false },
+            title = { Text("数据已恢复") },
+            text = { Text("$restoreSuccessMessage。\n\n重启应用后新数据将完整生效，是否立即重启？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRestartAfterRestoreDialog = false
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        context.startActivity(intent)
+                    }
+                    Runtime.getRuntime().exit(0)
+                }) { Text("立即重启") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestartAfterRestoreDialog = false }) { Text("稍后再说") }
+            }
+        )
+    }
+
+    // 🌟 月度预算设置弹窗（拖动滑杆设置金额）
+    if (showBudgetDialog) {
+        BudgetSliderDialog(
+            title = "设置月度预算",
+            subtitle = "设定合理的月度预算目标，可在首页看板实时把控消费节奏。",
+            initialBudgetCents = uiState.monthlyBudget,
+            onSave = {
+                viewModel.setMonthlyBudget(it)
+                showBudgetDialog = false
+                toast.success("月度预算已保存")
+            },
+            onClear = {
+                viewModel.setMonthlyBudget(0L)
+                showBudgetDialog = false
+                toast.success("已清除预算设置")
+            },
+            onDismiss = { showBudgetDialog = false }
+        )
     }
 
     // 🌟 新版本更新详情弹窗
@@ -696,6 +727,102 @@ fun SettingsScreen(
     }
 
     // 🌟 设备同步弹层
+    // 数据管理底部弹层：导出、导入、备份与恢复
+    if (showDataManageSheet) {
+        YuanmanModalBottomSheet(
+            onDismissRequest = { showDataManageSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "数据管理",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Text(
+                    text = "导出、导入、备份与恢复",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.FileDownload,
+                    title = "导出账单表格",
+                    subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
+                    onClick = {
+                        viewModel.exportRecordsCsv(context)
+                        showDataManageSheet = false
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.FileUpload,
+                    title = "导入账单表格",
+                    subtitle = "支持导入 CSV 账单表格并自动归类入库",
+                    onClick = {
+                        csvPickerLauncher.launch(
+                            arrayOf(
+                                "text/comma-separated-values",
+                                "text/csv",
+                                "text/plain",
+                                "application/csv",
+                                "*/*"
+                            )
+                        )
+                        showDataManageSheet = false
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.Save,
+                    title = "立即备份到文档",
+                    subtitle = "分类、账单与个人习惯保存至 文档/Yuanman，重装可自动还原",
+                    isLoading = isBackingUp,
+                    onClick = {
+                        isBackingUp = true
+                        showDataManageSheet = false
+                        viewModel.backupDataToDocumentsNow(context) { success, message ->
+                            isBackingUp = false
+                            if (success) {
+                                toast.success(message)
+                            } else {
+                                toast.error(message)
+                            }
+                        }
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.SettingsBackupRestore,
+                    title = "从备份文件恢复",
+                    subtitle = "重装后可自动找回 文档/Yuanman 备份，也可手动选择文件还原",
+                    isLoading = isRestoringBackup,
+                    onClick = {
+                        showDataManageSheet = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                            !DatabaseBackupManager.hasAllFilesAccess(context)
+                        ) {
+                            // 卸载重装后 MediaStore 索引可能已被系统清除，引导授予文件访问权限
+                            showStorageAccessDialog = true
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            performDocumentsRestore()
+                        } else {
+                            backupRestorePickerLauncher.launch(arrayOf("*/*"))
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
     if (showWifiSyncModal) {
         FamilySyncBottomSheet(
             syncManager = viewModel.syncManager,

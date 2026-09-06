@@ -53,6 +53,10 @@ class YuanmanApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 重装或新机恢复场景：首启同步还原 Documents 中的个人习惯偏好快照。
+        // 必须在任何 DataStore 读取(首屏组合收集)之前完成，否则进程内将一直读到旧值。
+        com.yuanman.app.data.local.DatabaseBackupManager.restorePreferencesForReinstallNow(this)
+        com.yuanman.app.data.local.DatabaseBackupManager.attach(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var startedActivityCount = 0
 

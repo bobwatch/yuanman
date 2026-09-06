@@ -103,9 +103,21 @@ object QuickEntryParser {
         val normalized = normalizeLearningText(description)
         if (normalized.isBlank()) return Triple(categories.first(), 0.05f, categories.drop(1).take(2))
 
-        // 1. 用户历史学习规则匹配
-        val matchedRule = learningRules.firstOrNull { rule ->
-            rule.phrase.isNotBlank() && normalizeLearningText(rule.phrase) == normalized
+        // 1. 用户历史学习规则匹配。
+        // 同名规则可能同时存在用户记账内容与系统预置词（sampleCount=0），
+        // 选择权重最高、最近使用的规则，保证用户记账内容覆盖同名的预置规则。
+        val matchedRule = learningRules.fold(null as QuickEntryLearningEntity?) { best, rule ->
+            val rulePhrase = rule.phrase
+            if (rulePhrase.isBlank() || normalizeLearningText(rulePhrase) != normalized) {
+                best
+            } else if (best == null ||
+                rule.sampleCount > best.sampleCount ||
+                (rule.sampleCount == best.sampleCount && rule.lastUsedAt > best.lastUsedAt)
+            ) {
+                rule
+            } else {
+                best
+            }
         }
         if (matchedRule != null) {
             val cat = categories.firstOrNull { it.syncId == matchedRule.categorySyncId && it.type == matchedRule.type }

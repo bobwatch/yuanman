@@ -2,12 +2,14 @@ package com.yuanman.app.data.repository
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
@@ -15,10 +17,35 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.widget.WidgetUpdateManager
+import java.io.File
 import java.util.Calendar
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "yuanman_preferences")
+private val dataStoreLock = Any()
+private val dataStores = HashMap<Context, DataStore<Preferences>>()
+
+/**
+ * 进程内单例 DataStore；若文件被意外写坏（如进程被强杀），自动以空配置替换，
+ * 避免启动时直接崩溃闪退（MIUI 强杀场景实测会触发 CorruptionException）。
+ */
+val Context.dataStore: DataStore<Preferences>
+    get() {
+        val appContext = applicationContext
+        synchronized(dataStoreLock) {
+            dataStores[appContext]?.let { return it }
+        }
+        val store = PreferenceDataStoreFactory.create(
+            produceFile = {
+                File(appContext.filesDir, "datastore/yuanman_preferences.preferences_pb")
+            },
+            corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
+        )
+        synchronized(dataStoreLock) {
+            dataStores[appContext] = store
+            return store
+        }
+    }
 
 class PreferencesRepository(private val context: Context) {
 
@@ -98,18 +125,21 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setDefaultRecordType(type: RecordType) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_RECORD_TYPE] = type.name
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setDefaultPaymentMethod(method: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] = method
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setMonthlyBudget(budgetCents: Long) {
@@ -123,6 +153,7 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.MONTHLY_BUDGETS] = serializeMonthlyBudgets(budgets)
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setPrivacyMode(enabled: Boolean) {
@@ -130,6 +161,7 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.PRIVACY_MODE] = enabled
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun togglePrivacyMode() {
@@ -138,24 +170,28 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.PRIVACY_MODE] = !current
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setHapticFeedbackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] = enabled
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setQuickEntryEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] = enabled
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setCustomTags(tags: List<String>) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.CUSTOM_TAGS] = tags.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun addCustomTag(tag: String) {
@@ -168,6 +204,7 @@ class PreferencesRepository(private val context: Context) {
                 preferences[PreferencesKeys.CUSTOM_TAGS] = (current + trimmed).joinToString(",")
             }
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun updateCustomTag(oldTag: String, newTag: String) {
@@ -179,6 +216,7 @@ class PreferencesRepository(private val context: Context) {
             val updated = current.map { if (it == oldTag) trimmed else it }.distinct()
             preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteCustomTag(tag: String) {
@@ -188,6 +226,7 @@ class PreferencesRepository(private val context: Context) {
             val updated = current.filterNot { it == tag }
             preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun clearAll() {
@@ -195,6 +234,7 @@ class PreferencesRepository(private val context: Context) {
             preferences.clear()
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun getWidgetPreferences(year: Int, month: Int): WidgetPreferences {
