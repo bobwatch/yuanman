@@ -174,12 +174,6 @@ fun RecordListScreen(
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    // 月份翻页只允许回看：以当前自然月为上限（筛选不涉及未来）
-    val nowCal = remember { Calendar.getInstance() }
-    val canGoNextMonth = uiState.selectedYear < nowCal.get(Calendar.YEAR) ||
-            (uiState.selectedYear == nowCal.get(Calendar.YEAR) &&
-                    uiState.selectedMonth < nowCal.get(Calendar.MONTH) + 1)
-
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
@@ -193,68 +187,79 @@ fun RecordListScreen(
                     )
                 },
                 actions = {
-                    // 顶栏右侧：月份切换胶囊（点年月文本弹出月份选择对话框）
+                    val isSearchActive = showSearchBar || uiState.searchQuery.isNotEmpty()
+
+                    // 顶栏右侧：1. 统一风格的月份选择 Chip（32dp 高度，极简微胶囊）
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showMonthPicker = true }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp)
                         ) {
-                            IconButton(
-                                onClick = { viewModel.previousMonth() },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ChevronLeft,
-                                    contentDescription = "上月",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
                             Text(
                                 text = "${uiState.selectedYear}年${uiState.selectedMonth}月",
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurface
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { showMonthPicker = true }
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            )
-
-                            IconButton(
-                                onClick = { viewModel.nextMonth() },
-                                enabled = canGoNextMonth,
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ChevronRight,
-                                    contentDescription = "下月",
-                                    tint = if (canGoNextMonth) {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                                    },
-                                    modifier = Modifier.size(16.dp)
                                 )
-                            }
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "选择月份",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
 
-                    // 展开/收起搜索框
-                    IconButton(onClick = { showSearchBar = !showSearchBar }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 2. 统一风格的搜索圆形微胶囊（32dp x 32dp，展开时高亮激活）
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSearchActive) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                        },
+                        border = BorderStroke(
+                            0.75.dp,
+                            if (isSearchActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                if (isSearchActive) {
+                                    showSearchBar = false
+                                    viewModel.updateSearchQuery("")
+                                } else {
+                                    showSearchBar = true
+                                }
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = if (isSearchActive) "收起搜索" else "展开搜索",
+                                tint = if (isSearchActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.width(12.dp))
                 }
             )
         }
@@ -448,20 +453,22 @@ fun RecordListScreen(
                         }
 
                         if (isCurrentSelectedMonth) {
-                            item {
-                                ModernFilterPill(
-                                    text = "今日 (${currentDay}日)",
-                                    selected = uiState.selectedDay == currentDay,
-                                    onClick = { viewModel.selectDay(currentDay) }
-                                )
-                            }
-
                             if (currentDay > 1) {
                                 item {
                                     ModernFilterPill(
-                                        text = "昨日 (${currentDay - 1}日)",
+                                        text = "昨天 (${currentDay - 1}日)",
                                         selected = uiState.selectedDay == currentDay - 1,
                                         onClick = { viewModel.selectDay(currentDay - 1) }
+                                    )
+                                }
+                            }
+
+                            if (currentDay > 2) {
+                                item {
+                                    ModernFilterPill(
+                                        text = "前天 (${currentDay - 2}日)",
+                                        selected = uiState.selectedDay == currentDay - 2,
+                                        onClick = { viewModel.selectDay(currentDay - 2) }
                                     )
                                 }
                             }
@@ -469,9 +476,9 @@ fun RecordListScreen(
 
                         // 自定义日期选择器 📅
                         item {
-                            val isCustomDaySelected = uiState.selectedDay != null &&
-                                    uiState.selectedDay != currentDay &&
-                                    uiState.selectedDay != (currentDay - 1)
+                            val isYesterday = isCurrentSelectedMonth && currentDay > 1 && uiState.selectedDay == (currentDay - 1)
+                            val isDayBeforeYesterday = isCurrentSelectedMonth && currentDay > 2 && uiState.selectedDay == (currentDay - 2)
+                            val isCustomDaySelected = uiState.selectedDay != null && !isYesterday && !isDayBeforeYesterday
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isCustomDaySelected) {
@@ -709,7 +716,8 @@ fun RecordListScreen(
                                         )
                                     }
                                 }
-                            } else if (!uiState.hasMore && uiState.filteredRecords.size >= 25) {
+                            } else if (!uiState.hasMore && uiState.filteredRecords.isNotEmpty()) {
+                                // 🌟 到底提示：无论总数多少，加载完最后一页即展示
                                 item(key = "footer_no_more_records") {
                                     Box(
                                         modifier = Modifier

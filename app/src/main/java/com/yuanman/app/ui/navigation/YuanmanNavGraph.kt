@@ -26,6 +26,7 @@ import androidx.navigation.navArgument
 import com.yuanman.app.YuanmanApplication
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.BottomNavBar
+import com.yuanman.app.ui.components.PredictiveSwipeBackBox
 import com.yuanman.app.ui.screens.account.AccountScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordViewModel
@@ -181,13 +182,15 @@ fun YuanmanNavGraph(
                         preferencesRepository = app.preferencesRepository
                     )
                 )
-                StatisticsScreen(
-                    viewModel = statsViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onCategoryClick = { categoryId ->
-                        navController.navigate(Screen.CategoryRecords.createRoute(categoryId))
-                    }
-                )
+                PredictiveSwipeBackBox(onBack = { navController.popBackStack() }) {
+                    StatisticsScreen(
+                        viewModel = statsViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onCategoryClick = { categoryId ->
+                            navController.navigate(Screen.CategoryRecords.createRoute(categoryId))
+                        }
+                    )
+                }
             }
 
             // 4. 分类管理
@@ -197,16 +200,18 @@ fun YuanmanNavGraph(
                         categoryRepository = app.categoryRepository
                     )
                 )
-                CategoryManageScreen(
-                    viewModel = categoryViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToAddCategory = { type ->
-                        navController.navigate(Screen.AddEditCategory.createRoute(type = type))
-                    },
-                    onNavigateToEditCategory = { categoryId ->
-                        navController.navigate(Screen.AddEditCategory.createRoute(categoryId = categoryId))
-                    }
-                )
+                PredictiveSwipeBackBox(onBack = { navController.popBackStack() }) {
+                    CategoryManageScreen(
+                        viewModel = categoryViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToAddCategory = { type ->
+                            navController.navigate(Screen.AddEditCategory.createRoute(type = type))
+                        },
+                        onNavigateToEditCategory = { categoryId ->
+                            navController.navigate(Screen.AddEditCategory.createRoute(categoryId = categoryId))
+                        }
+                    )
+                }
             }
 
             // 5. 设置 / 我的
@@ -263,13 +268,15 @@ fun YuanmanNavGraph(
                     )
                 )
 
-                AddEditRecordScreen(
-                    viewModel = addEditViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToCategoryManage = {
-                        navController.navigate(Screen.CategoryManage.route)
-                    }
-                )
+                PredictiveSwipeBackBox(onBack = { navController.popBackStack() }) {
+                    AddEditRecordScreen(
+                        viewModel = addEditViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToCategoryManage = {
+                            navController.navigate(Screen.CategoryManage.route)
+                        }
+                    )
+                }
             }
 
             // 7. 新增 / 编辑分类及其子标签 (全屏二级页面)
@@ -299,10 +306,12 @@ fun YuanmanNavGraph(
                     )
                 )
 
-                AddEditCategoryScreen(
-                    viewModel = addEditCategoryViewModel,
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                PredictiveSwipeBackBox(onBack = { navController.popBackStack() }) {
+                    AddEditCategoryScreen(
+                        viewModel = addEditCategoryViewModel,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
 
             // 8. 分类账单详情 (统计页分类排行点击进入)
@@ -324,16 +333,18 @@ fun YuanmanNavGraph(
                         categoryRepository = app.categoryRepository
                     )
                 )
-                CategoryRecordsScreen(
-                    viewModel = categoryRecordsViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToEdit = { recordId ->
-                        navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
-                    },
-                    onNavigateToAddRecord = { type, catId ->
-                        navController.navigate(Screen.AddEditRecord.createRoute(type = type, categoryId = catId))
-                    }
-                )
+                PredictiveSwipeBackBox(onBack = { navController.popBackStack() }) {
+                    CategoryRecordsScreen(
+                        viewModel = categoryRecordsViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToEdit = { recordId ->
+                            navController.navigate(Screen.AddEditRecord.createRoute(recordId = recordId))
+                        },
+                        onNavigateToAddRecord = { type, catId ->
+                            navController.navigate(Screen.AddEditRecord.createRoute(type = type, categoryId = catId))
+                        }
+                    )
+                }
             }
 
             // 9. 账户 (底部导航 Tab, 占位页)

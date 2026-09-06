@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CalendarToday
@@ -177,15 +178,35 @@ fun AddEditRecordScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            CenterAlignedTopAppBar(
-                modifier = Modifier.offset(y = (-4).dp),
-                title = {
-                    if (uiState.isEditMode) {
+            if (uiState.isEditMode) {
+                // 编辑模式：与分类管理页头部一致 —— 返回箭头 + 靠左加粗标题
+                TopAppBar(
+                    modifier = Modifier.offset(y = (-4).dp),
+                    title = {
                         Text(
                             text = "编辑账单",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
-                    } else {
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showDeleteConfirm = true }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "删除",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                )
+            } else {
+                CenterAlignedTopAppBar(
+                    modifier = Modifier.offset(y = (-4).dp),
+                    title = {
                         // 🌟 顶部极简分段胶囊（支出 / 收入）
                         Surface(
                             shape = CircleShape,
@@ -244,25 +265,14 @@ fun AddEditRecordScreen(
                                 }
                             }
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.Close, contentDescription = "取消")
-                    }
-                },
-                actions = {
-                    if (uiState.isEditMode) {
-                        IconButton(onClick = { showDeleteConfirm = true }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         Column(

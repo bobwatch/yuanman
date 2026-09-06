@@ -112,13 +112,12 @@ fun BudgetSliderDialog(
                 Slider(
                     value = sliderIndex,
                     onValueChange = { position ->
-                        sliderIndex = position
                         val index = position.roundToInt()
                             .coerceIn(0, BUDGET_TIERS.lastIndex)
+                        sliderIndex = index.toFloat() // 吸附到档位，thumb 与回显金额始终一致
                         draftCents = BUDGET_TIERS[index] * 100
                     },
                     valueRange = 0f..(BUDGET_TIERS.size - 1).toFloat(),
-                    steps = BUDGET_TIERS.size - 2,
                     colors = SliderDefaults.colors(
                         thumbColor = primary,
                         activeTrackColor = primary,
