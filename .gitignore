@@ -67,3 +67,6 @@ captures/
 
 # Adb sync working dir
 .adb_sync_backup/
+
+# ZCode session artifacts
+.zcode/
