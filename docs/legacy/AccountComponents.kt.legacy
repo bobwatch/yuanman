@@ -1,0 +1,1507 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+package com.yuanman.app.ui.screens.account
+
+import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.ui.components.CategoryIconView
+import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+import com.yuanman.app.ui.theme.ExpenseColorLight
+import com.yuanman.app.ui.theme.IncomeColorLight
+import com.yuanman.app.utils.DateTimeUtils
+import com.yuanman.app.utils.MoneyUtils
+import java.math.BigDecimal
+import java.util.Calendar
+
+/**
+ * 羊脂玉润 · 全景资产主看板 (全新重构版)
+ *
+ * 核心升级：
+ * 1. 净资产真身排版（总资产 - 负债后真正拥有的家底）
+ * 2. 资产 vs 负债 双向对称对照面板（名下总共多少钱，欠款多少，一眼即明）
+ * 3. 极简资金分布比例彩条（动态展示各大类资产占比）
+ * 4. 月度出入脉动微胶囊
+ */
+@Composable
+fun AccountOverviewHeroCard(
+    totalBalanceCents: Long,
+    totalAssetCents: Long,
+    totalDebtCents: Long,
+    distributionSegments: List<DistributionSegment>,
+    monthInCents: Long,
+    monthOutCents: Long,
+    monthNetCents: Long,
+    isPrivacyMode: Boolean,
+    onTogglePrivacy: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val cardSurfaceColor = MaterialTheme.colorScheme.surface
+    val textureLineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.022f)
+    val textureGlowColor = primaryColor.copy(alpha = 0.040f)
+    val haptic = LocalHapticFeedback.current
+
+    val cardShape = RoundedCornerShape(
+        topStart = 0.dp,
+        topEnd = 0.dp,
+        bottomEnd = 22.dp,
+        bottomStart = 22.dp
+    )
+
+    Card(
+        modifier = modifier
+            .clip(cardShape)
+            .drawBehind {
+                drawRect(cardSurfaceColor)
+
+                // 斜向质感微纹理
+                val spacing = 22.dp.toPx()
+                val lineWidth = 1.dp.toPx()
+                var x = -size.height
+                while (x < size.width + size.height) {
+                    drawLine(
+                        color = textureLineColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x + size.height, size.height),
+                        strokeWidth = lineWidth
+                    )
+                    drawLine(
+                        color = textureLineColor.copy(alpha = 0.012f),
+                        start = Offset(x + size.height * 0.45f, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = lineWidth
+                    )
+                    x += spacing
+                }
+
+                // 翡翠绿双层环境柔光
+                drawCircle(
+                    color = textureGlowColor,
+                    radius = size.minDimension * 0.82f,
+                    center = Offset(size.width * 0.92f, size.height * 0.08f)
+                )
+                drawCircle(
+                    color = textureGlowColor.copy(alpha = 0.025f),
+                    radius = size.minDimension * 0.55f,
+                    center = Offset(size.width * 0.05f, size.height * 0.95f)
+                )
+            },
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
+            // 顶行：净资产标题 + 隐私切换
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor)
+                    )
+                    Text(
+                        text = "净资产总额 (身家)",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onTogglePrivacy()
+                    },
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isPrivacyMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (isPrivacyMode) "显示金额" else "隐藏金额",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 净资产主字号金额
+            if (isPrivacyMode) {
+                Text(
+                    text = "••••••",
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 4.sp,
+                        fontSize = 35.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                val isNegative = totalBalanceCents < 0L
+                val absCents = if (isNegative) -totalBalanceCents else totalBalanceCents
+                val amountStr = MoneyUtils.centsToYuanString(absCents, withGrouping = true)
+                val parts = amountStr.split(".")
+                val integerPart = parts.getOrNull(0) ?: "0"
+                val decimalPart = parts.getOrNull(1) ?: "00"
+
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = if (isNegative) "-¥ " else "¥ ",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp
+                        ),
+                        color = if (isNegative) ExpenseColorLight else primaryColor,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                    Text(
+                        text = integerPart,
+                        style = MaterialTheme.typography.displayLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 35.sp
+                        ),
+                        color = if (isNegative) ExpenseColorLight else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = ".$decimalPart",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 20.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 🌟 核心升级：资产 vs 负债 双向对称对照面板
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 左侧：正向总资产
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(IncomeColorLight)
+                            )
+                            Text(
+                                text = "正向总资产",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isPrivacyMode) "****" else MoneyUtils.formatCurrency(totalAssetCents),
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.5.sp
+                            ),
+                            color = IncomeColorLight
+                        )
+                    }
+
+                    // 中间精致微分割线
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(26.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    )
+
+                    // 右侧：待还总负债 (负数赤红呈现)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 14.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(ExpenseColorLight)
+                            )
+                            Text(
+                                text = "待还总负债",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val debtStr = if (isPrivacyMode) {
+                            "****"
+                        } else {
+                            val abs = if (totalDebtCents < 0L) -totalDebtCents else totalDebtCents
+                            if (abs == 0L) "¥0.00" else "-¥${MoneyUtils.centsToYuanString(abs)}"
+                        }
+                        Text(
+                            text = debtStr,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.5.sp
+                            ),
+                            color = if (totalDebtCents < 0L) ExpenseColorLight else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // 🌟 核心升级：动态资金分布比例彩条 (Asset Allocation Bar)
+            if (distributionSegments.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // 彩条本体
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(5.5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        distributionSegments.forEach { seg ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(seg.percentage.coerceAtLeast(0.02f))
+                                    .fillMaxHeight()
+                                    .background(Color(seg.colorHex))
+                            )
+                        }
+                    }
+
+                    // 图例与百分比展示 (单行横滑，精致从容)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        distributionSegments.forEach { seg ->
+                            val pctText = "${(seg.percentage * 100).toInt()}%"
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(seg.colorHex))
+                                )
+                                Text(
+                                    text = "${seg.label} $pctText",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 底部 3 维当月流水指示胶囊条
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OverviewMetricPill(
+                    label = "本月流入",
+                    amountCents = monthInCents,
+                    isPrivacyMode = isPrivacyMode,
+                    icon = Icons.Default.ArrowUpward,
+                    accentColor = IncomeColorLight,
+                    modifier = Modifier.weight(1f)
+                )
+
+                OverviewMetricPill(
+                    label = "本月流出",
+                    amountCents = monthOutCents,
+                    isPrivacyMode = isPrivacyMode,
+                    icon = Icons.Default.ArrowDownward,
+                    accentColor = ExpenseColorLight,
+                    modifier = Modifier.weight(1f)
+                )
+
+                OverviewMetricPill(
+                    label = "收支结余",
+                    amountCents = monthNetCents,
+                    isPrivacyMode = isPrivacyMode,
+                    icon = Icons.Default.SwapHoriz,
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverviewMetricPill(
+    label: String,
+    amountCents: Long,
+    isPrivacyMode: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(11.dp)
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            val displayAmount = if (isPrivacyMode) {
+                "****"
+            } else {
+                val isNegative = amountCents < 0L
+                val absStr = MoneyUtils.centsToYuanString(if (isNegative) -amountCents else amountCents, withGrouping = true)
+                if (isNegative) "-¥$absStr" else "¥$absStr"
+            }
+            Text(
+                text = displayAmount,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * 场景快捷动作栏
+ */
+@Composable
+fun AccountQuickActionBar(
+    onTransferClick: () -> Unit,
+    onAddAccountClick: () -> Unit,
+    onReconcileClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // 快速转账/还款 (高亮主通道)
+        Surface(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onTransferClick()
+            },
+            shape = RoundedCornerShape(14.dp),
+            color = secondaryColor.copy(alpha = 0.12f),
+            border = BorderStroke(1.dp, secondaryColor.copy(alpha = 0.28f)),
+            modifier = Modifier
+                .weight(1.2f)
+                .height(44.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SwapHoriz,
+                    contentDescription = null,
+                    tint = secondaryColor,
+                    modifier = Modifier.size(19.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "转账 / 还款",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    ),
+                    color = secondaryColor
+                )
+            }
+        }
+
+        // 新建账户
+        Surface(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onAddAccountClick()
+            },
+            shape = RoundedCornerShape(14.dp),
+            color = primaryColor.copy(alpha = 0.10f),
+            border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.25f)),
+            modifier = Modifier
+                .weight(1f)
+                .height(44.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = primaryColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = "新建账户",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp
+                    ),
+                    color = primaryColor
+                )
+            }
+        }
+
+        // 资金对账
+        Surface(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onReconcileClick()
+            },
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier
+                .weight(1f)
+                .height(44.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountBalanceWallet,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = "资金对账",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 分组标题栏
+ */
+@Composable
+fun AccountGroupHeader(
+    label: String,
+    accountCount: Int,
+    groupTotalCents: Long,
+    isPrivacyMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp, 13.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(primaryColor)
+            )
+            Text(
+                text = "$label ($accountCount)",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        val totalStr = if (isPrivacyMode) {
+            "****"
+        } else {
+            val isNeg = groupTotalCents < 0L
+            val abs = MoneyUtils.centsToYuanString(if (isNeg) -groupTotalCents else groupTotalCents, withGrouping = true)
+            if (isNeg) "-¥$abs" else "¥$abs"
+        }
+
+        Text(
+            text = "合计 $totalStr",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = if (groupTotalCents < 0L) ExpenseColorLight else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * 账户卡片项 (全新重构版)
+ * 1. 负余额直接赤红排版，并配备专属「⚡ 还款」微按钮
+ * 2. 对账时效人性化呈现（今天已核对 / 昨天已核对 / X天未核对）
+ * 3. 彻底清除任何归档标记
+ */
+@Composable
+fun AccountItemCard(
+    account: AccountUiModel,
+    isPrivacyMode: Boolean,
+    onClick: () -> Unit,
+    onQuickRepay: (AccountUiModel) -> Unit,
+    onMoreClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isNegative = account.balanceCents < 0L
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 账户图标底座
+            CategoryIconView(
+                iconName = account.iconName,
+                colorHex = account.colorHex,
+                size = 44.dp,
+                iconSize = 22.dp
+            )
+
+            Spacer(modifier = Modifier.width(13.dp))
+
+            // 账户名称与元信息
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = account.name,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (account.label.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                        ) {
+                            Text(
+                                text = account.label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // 月度出入微注
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val inYuan = MoneyUtils.centsToYuanString(account.inCents)
+                    val outYuan = MoneyUtils.centsToYuanString(account.outCents)
+                    Text(
+                        text = "本月入 ¥$inYuan · 出 ¥$outYuan",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // 人性化对账时效呈现 (今天/昨天/几天前核对/逾期未核对)
+                val reconcileTag = calculateReconcileTag(account.lastReconciledAt)
+                Text(
+                    text = reconcileTag.text,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        fontWeight = if (reconcileTag.isFresh) FontWeight.Medium else FontWeight.Normal
+                    ),
+                    color = if (reconcileTag.isFresh) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 右侧余额排版与动作按键
+            Column(horizontalAlignment = Alignment.End) {
+                val balanceText = if (isPrivacyMode) {
+                    "••••"
+                } else {
+                    val absVal = if (isNegative) -account.balanceCents else account.balanceCents
+                    val formatted = MoneyUtils.centsToYuanString(absVal, withGrouping = true)
+                    if (isNegative) "-¥$formatted" else "¥$formatted"
+                }
+
+                Text(
+                    text = balanceText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    ),
+                    color = if (isNegative) ExpenseColorLight else MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // 🌟 针对欠款/信用卡负额账户的一键「还款」微按钮
+                    if (isNegative) {
+                        Surface(
+                            onClick = { onQuickRepay(account) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = secondaryColor.copy(alpha = 0.12f),
+                            border = BorderStroke(0.5.dp, secondaryColor.copy(alpha = 0.35f)),
+                            modifier = Modifier.height(24.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = secondaryColor,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "还款",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = secondaryColor
+                                )
+                            }
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onMoreClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "更多操作",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class ReconcileTagInfo(val text: String, val isFresh: Boolean)
+
+private fun calculateReconcileTag(timestamp: Long?): ReconcileTagInfo {
+    if (timestamp == null) return ReconcileTagInfo("未对账", false)
+
+    val now = Calendar.getInstance()
+    val curYear = now.get(Calendar.YEAR)
+    val curMonth = now.get(Calendar.MONTH) + 1
+
+    val recCal = Calendar.getInstance().apply { timeInMillis = timestamp }
+    val recYear = recCal.get(Calendar.YEAR)
+    val recMonth = recCal.get(Calendar.MONTH) + 1
+
+    val monthDiff = (curYear - recYear) * 12 + (curMonth - recMonth)
+
+    return when {
+        monthDiff == 0 -> ReconcileTagInfo("✓ 本月已核对", true)
+        monthDiff == 1 -> ReconcileTagInfo("本月待核对 · 上次${recMonth}月", false)
+        recYear == curYear -> ReconcileTagInfo("上次核对: ${recMonth}月", false)
+        else -> ReconcileTagInfo("上次核对: ${recYear}年${recMonth}月", false)
+    }
+}
+
+/**
+ * 账户操作菜单底包 (Sheet，已彻底剔除归档选项)
+ */
+@Composable
+fun AccountContextMenuSheet(
+    account: AccountUiModel,
+    onDismiss: () -> Unit,
+    onReconcile: () -> Unit,
+    onTransfer: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CategoryIconView(
+                    iconName = account.iconName,
+                    colorHex = account.colorHex,
+                    size = 38.dp,
+                    iconSize = 20.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = account.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = "当前余额: ${MoneyUtils.formatCurrency(account.balanceCents)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            )
+
+            // 操作列表 (纯粹四项，无归档噪音)
+            ListItem(
+                headlineContent = { Text("资金对账 (核对真实现金/存款并校准)") },
+                leadingContent = {
+                    Icon(Icons.Default.AccountBalanceWallet, null, tint = MaterialTheme.colorScheme.primary)
+                },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    onReconcile()
+                }
+            )
+
+            ListItem(
+                headlineContent = { Text("跨账户转账 / 信用卡还款") },
+                leadingContent = {
+                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.secondary)
+                },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    onTransfer()
+                }
+            )
+
+            ListItem(
+                headlineContent = { Text("编辑账户 (修改名称/标签/图标/期初)") },
+                leadingContent = {
+                    Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.onSurface)
+                },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    onEdit()
+                }
+            )
+
+            ListItem(
+                headlineContent = { Text("删除账户", color = ExpenseColorLight) },
+                leadingContent = {
+                    Icon(Icons.Default.Delete, null, tint = ExpenseColorLight)
+                },
+                modifier = Modifier.clickable {
+                    onDismiss()
+                    onDelete()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+/**
+ * 新增 / 编辑账户底包 (AddEditAccountSheet)
+ */
+@Composable
+fun AddEditAccountSheet(
+    accountToEdit: AccountUiModel? = null,
+    onDismiss: () -> Unit,
+    onSave: (name: String, label: String, iconName: String, colorHex: Long, openingBalanceCents: Long) -> Unit
+) {
+    var name by remember { mutableStateOf(accountToEdit?.name ?: "") }
+    var label by remember { mutableStateOf(accountToEdit?.label ?: "流动活期") }
+    var iconName by remember { mutableStateOf(accountToEdit?.iconName ?: "wallet") }
+    var colorHex by remember { mutableStateOf(accountToEdit?.colorHex ?: 0xFF059669L) }
+    var openingYuan by remember {
+        mutableStateOf(
+            if (accountToEdit != null) {
+                val bd = BigDecimal(accountToEdit.openingBalanceCents).divide(BigDecimal(100))
+                bd.stripTrailingZeros().toPlainString()
+            } else "0"
+        )
+    }
+
+    val presetLabels = listOf("流动活期", "储备资金", "信用借贷", "现钞零钱", "投资理财")
+    val presetColors = listOf(
+        0xFF059669L, // 翡翠翠绿
+        0xFF0284C7L, // 晴空蔚蓝
+        0xFFE53935L, // 鲜明赤红
+        0xFFFF9800L, // 活力暖橙
+        0xFF9C27B0L, // 优雅紫
+        0xFFE91E63L, // 珊瑚粉
+        0xFF009688L, // 墨玉青
+        0xFF3F51B5L, // 靛青蓝
+        0xFF795548L, // 暖棕
+        0xFF607D8BL, // 极简灰
+        0xFFFFB300L, // 晨曦金
+        0xFF26A69AL  // 薄荷绿
+    )
+
+    val availableIcons = listOf(
+        "wallet", "part_time", "bank", "bonus", "savings", "salary",
+        "finance", "refund", "card_gift", "shopping", "digital", "housing",
+        "traffic", "other"
+    )
+
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = if (accountToEdit == null) "新建账户" else "编辑账户",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            // 账户名称
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("账户名称 (如: 微信零钱、招行储蓄卡、花呗)") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 类型标签选择
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "资金梯队分类",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    presetLabels.forEach { item ->
+                        val isSelected = label == item
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { label = item },
+                            label = { Text(item) },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                }
+            }
+
+            // 期初余额
+            OutlinedTextField(
+                value = openingYuan,
+                onValueChange = { openingYuan = it },
+                label = { Text("期初余额 (元，信用卡欠款可输负数如 -1500)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 图标选择
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "账户图标",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    availableIcons.forEach { iconKey ->
+                        val isSelected = iconName == iconKey
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                                .border(
+                                    width = if (isSelected) 2.dp else 0.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { iconName = iconKey },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = CategoryIconHelper.getIcon(iconKey),
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 颜色选择
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "主题色彩",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    presetColors.forEach { colorVal ->
+                        val isSelected = colorHex == colorVal
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(colorVal))
+                                .clickable { colorHex = colorVal },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        val cents = try {
+                            val bd = BigDecimal(openingYuan.trim())
+                            bd.multiply(BigDecimal(100)).toLong()
+                        } catch (e: Exception) {
+                            0L
+                        }
+                        onSave(name.trim(), label, iconName, colorHex, cents)
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("保存账户", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+/**
+ * 快速转账 / 信用卡还款底包 (QuickTransferSheet)
+ */
+@Composable
+fun QuickTransferSheet(
+    accounts: List<AccountUiModel>,
+    initialFromAccountId: Long? = null,
+    initialToAccountId: Long? = null,
+    onDismiss: () -> Unit,
+    onConfirmTransfer: (fromId: Long, toId: Long, amountCents: Long, remark: String) -> Unit
+) {
+    var fromAccountId by remember {
+        mutableStateOf(
+            initialFromAccountId ?: accounts.firstOrNull { it.id != initialToAccountId && it.balanceCents > 0 }?.id ?: accounts.firstOrNull()?.id ?: 0L
+        )
+    }
+    var toAccountId by remember {
+        mutableStateOf(
+            initialToAccountId ?: accounts.firstOrNull { it.id != fromAccountId }?.id ?: 0L
+        )
+    }
+    var amountYuan by remember { mutableStateOf("") }
+    var remark by remember { mutableStateOf("") }
+
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "资金转账 / 信用卡还款",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+
+            // 转出账户选择
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "转出账户 (付款方)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    accounts.forEach { acc ->
+                        FilterChip(
+                            selected = acc.id == fromAccountId,
+                            onClick = {
+                                fromAccountId = acc.id
+                                if (toAccountId == acc.id) {
+                                    toAccountId = accounts.firstOrNull { it.id != acc.id }?.id ?: 0L
+                                }
+                            },
+                            label = { Text("${acc.name} (${MoneyUtils.centsToYuanString(acc.balanceCents)})") },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                }
+            }
+
+            // 方向指示箭头
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowDownward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // 转入账户选择
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "转入账户 (收款方/还款卡)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    accounts.filter { it.id != fromAccountId }.forEach { acc ->
+                        FilterChip(
+                            selected = acc.id == toAccountId,
+                            onClick = { toAccountId = acc.id },
+                            label = { Text("${acc.name} (${MoneyUtils.centsToYuanString(acc.balanceCents)})") },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                }
+            }
+
+            // 转账金额
+            OutlinedTextField(
+                value = amountYuan,
+                onValueChange = { amountYuan = it },
+                label = { Text("转账金额 (元)") },
+                placeholder = { Text("0.00") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 备注
+            OutlinedTextField(
+                value = remark,
+                onValueChange = { remark = it },
+                label = { Text("备注说明 (可选，如: 还清本期花呗账单)") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Button(
+                onClick = {
+                    val cents = MoneyUtils.parseYuanToCents(amountYuan)
+                    if (cents > 0L && fromAccountId > 0L && toAccountId > 0L && fromAccountId != toAccountId) {
+                        onConfirmTransfer(fromAccountId, toAccountId, cents, remark.trim())
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("确认转账", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+/**
+ * 资金对账对话框 (AccountReconcileDialog)
+ */
+@Composable
+fun AccountReconcileDialog(
+    account: AccountUiModel,
+    onDismiss: () -> Unit,
+    onConfirmReconcile: (actualBalanceCents: Long, applyCorrection: Boolean) -> Unit
+) {
+    val bookBalanceCents = account.balanceCents
+    var actualYuanInput by remember {
+        mutableStateOf(
+            BigDecimal(bookBalanceCents).divide(BigDecimal(100)).stripTrailingZeros().toPlainString()
+        )
+    }
+
+    val actualCents = try {
+        BigDecimal(actualYuanInput.trim()).multiply(BigDecimal(100)).toLong()
+    } catch (e: Exception) {
+        bookBalanceCents
+    }
+
+    val diffCents = actualCents - bookBalanceCents
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CategoryIconView(
+                        iconName = account.iconName,
+                        colorHex = account.colorHex,
+                        size = 36.dp,
+                        iconSize = 18.dp
+                    )
+                    Text(
+                        text = "月度资金对账 · ${account.name}",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                Text(
+                    text = "建议按月核对一次网银或对账单即可，保持轻松记账。若有微小利息、手续费或漏记，可一键自动校正期初基线。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // 账面余额卡
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "当前账面余额",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = MoneyUtils.formatCurrency(bookBalanceCents),
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                }
+
+                // 真实实际余额输入框
+                OutlinedTextField(
+                    value = actualYuanInput,
+                    onValueChange = { actualYuanInput = it },
+                    label = { Text("实际真实余额 (元)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 差额比对提示框
+                if (diffCents == 0L) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = primaryColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = "账面与实际完全一致，无需校正",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = primaryColor
+                            )
+                        }
+                    }
+                } else {
+                    val diffStr = MoneyUtils.centsToYuanString(if (diffCents > 0L) diffCents else -diffCents)
+                    val hint = if (diffCents > 0L) "实际比账面多出 ¥$diffStr" else "实际比账面缺少 ¥$diffStr"
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = ExpenseColorLight.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, ExpenseColorLight.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(
+                                text = "存在差额: $hint",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = ExpenseColorLight
+                            )
+                            Text(
+                                text = "点击下方校正，差额将并入期初基线，保持后续流水自然累计。",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 操作按钮栏
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("取消")
+                    }
+
+                    if (diffCents != 0L) {
+                        Button(
+                            onClick = { onConfirmReconcile(actualCents, true) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            modifier = Modifier.weight(1.4f)
+                        ) {
+                            Text("按实际校正期初", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Button(
+                            onClick = { onConfirmReconcile(actualCents, false) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("确认对账", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

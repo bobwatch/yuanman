@@ -36,11 +36,13 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.ui.components.AppHeaderSurface
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
@@ -176,93 +178,8 @@ fun RecordListScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.statusBars,
-        topBar = {
-            TopAppBar(
-                modifier = Modifier.offset(y = (-4).dp),
-                title = {
-                    Text(
-                        text = "账单明细",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                actions = {
-                    val isSearchActive = showSearchBar || uiState.searchQuery.isNotEmpty()
-
-                    // 顶栏右侧：1. 统一风格的月份选择 Chip（32dp 高度，极简微胶囊）
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                        border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { showMonthPicker = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp)
-                        ) {
-                            Text(
-                                text = "${uiState.selectedYear}年${uiState.selectedMonth}月",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "选择月份",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // 2. 统一风格的搜索圆形微胶囊（32dp x 32dp，展开时高亮激活）
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isSearchActive) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                        },
-                        border = BorderStroke(
-                            0.75.dp,
-                            if (isSearchActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        ),
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .clickable {
-                                if (isSearchActive) {
-                                    showSearchBar = false
-                                    viewModel.updateSearchQuery("")
-                                } else {
-                                    showSearchBar = true
-                                }
-                            }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = if (isSearchActive) "收起搜索" else "展开搜索",
-                                tint = if (isSearchActive) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-                }
-            )
-        }
+        // 顶部 Header 卡铺满内容区顶端（贴屏幕顶、与首页顶卡同构），因此内容区不再吃状态栏内边距
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -272,366 +189,461 @@ fun RecordListScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // 🌟 1. 全宽现代搜索框（顶栏搜索图标展开/收起；有关键词输入时保持展开）
-                AnimatedVisibility(
-                    visible = showSearchBar || uiState.searchQuery.isNotEmpty(),
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                // 🌟 0. 顶部 Header —— 与首页 FinancialOverviewCard 同款视觉（AppHeaderSurface：
+                // 素面底 + 低对比斜向细纹理 + 主色柔光晕 + 1dp 细描边 + 3dp 柔和投影）。贴屏幕顶、
+                // 仅底部 18dp 圆角，下方滚动列表之上留出间距承接投影。原标题行 / 搜索框 / 筛选区 /
+                // 当月汇总统一收纳进这张 Header 卡，全部交互与显隐动画保持原样。
+                AppHeaderSurface(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        border = BorderStroke(
-                            width = if (searchFocused) 1.5.dp else 0.75.dp,
-                            color = if (searchFocused) primaryColor.copy(alpha = 0.8f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
+                        // 顶栏行：账单明细标题 + 月份选择 + 搜索入口（原 TopAppBar 内容迁入卡内）
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "搜索",
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(18.dp)
+                            Text(
+                                text = "账单明细",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier.weight(1f),
-                                contentAlignment = Alignment.CenterStart
+
+                            val isSearchActive = showSearchBar || uiState.searchQuery.isNotEmpty()
+
+                            // 1. 统一风格的月份选择 Chip（32dp 高度，极简微胶囊）
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { showMonthPicker = true }
                             ) {
-                                if (uiState.searchQuery.isEmpty()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp)
+                                ) {
                                     Text(
-                                        text = "搜索备注、金额、分类或支付方式...",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.outline
-                                        ),
-                                        maxLines = 1
+                                        text = "${uiState.selectedYear}年${uiState.selectedMonth}月",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "选择月份",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
-                                BasicTextField(
-                                    value = uiState.searchQuery,
-                                    onValueChange = { viewModel.updateSearchQuery(it) },
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    ),
-                                    cursorBrush = SolidColor(primaryColor),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(searchFocusRequester)
-                                        .onFocusChanged { searchFocused = it.isFocused }
-                                )
                             }
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(
-                                    onClick = { viewModel.updateSearchQuery("") },
-                                    modifier = Modifier.size(20.dp)
-                                ) {
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // 2. 统一风格的搜索圆形微胶囊（32dp x 32dp，展开时高亮激活）
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSearchActive) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                },
+                                border = BorderStroke(
+                                    0.75.dp,
+                                    if (isSearchActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                ),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        if (isSearchActive) {
+                                            showSearchBar = false
+                                            viewModel.updateSearchQuery("")
+                                        } else {
+                                            showSearchBar = true
+                                        }
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "清除",
-                                        tint = MaterialTheme.colorScheme.outline,
+                                        imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                                        contentDescription = if (isSearchActive) "收起搜索" else "展开搜索",
+                                        tint = if (isSearchActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                         }
-                    }
-                }
+                        // 🌟 1. 全宽现代搜索框（顶栏搜索图标展开/收起；有关键词输入时保持展开）
+                        AnimatedVisibility(
+                            visible = showSearchBar || uiState.searchQuery.isNotEmpty(),
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = BorderStroke(
+                                    width = if (searchFocused) 1.5.dp else 0.75.dp,
+                                    color = if (searchFocused) primaryColor.copy(alpha = 0.8f)
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "搜索",
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier.weight(1f),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        if (uiState.searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "搜索备注、金额、分类或支付方式...",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontSize = 13.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                ),
+                                                maxLines = 1
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = uiState.searchQuery,
+                                            onValueChange = { viewModel.updateSearchQuery(it) },
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            cursorBrush = SolidColor(primaryColor),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(searchFocusRequester)
+                                                .onFocusChanged { searchFocused = it.isFocused }
+                                        )
+                                    }
+                                    if (uiState.searchQuery.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { viewModel.updateSearchQuery("") },
+                                            modifier = Modifier.size(20.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Clear,
+                                                contentDescription = "清除",
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
-                // 🌟 2. 筛选过滤区（类型切换 + 排序 + 日期天筛选）
-                // 往回翻看（手指下滑）超过阈值自动隐藏、往下翻浏览（手指上滑）或回到顶部自动展开（见 filtersVisibilityConnection）
-                AnimatedVisibility(
-                    visible = showFilters,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(vertical = 4.dp)
-                    ) {
-                        // 第一行：类型切换 (全部 / 仅支出 / 仅收入) 与 排序
+                        // 🌟 2. 筛选过滤区（类型切换 + 排序 + 日期天筛选）
+                        // 往回翻看（手指下滑）超过阈值自动隐藏、往下翻浏览（手指上滑）或回到顶部自动展开（见 filtersVisibilityConnection）
+                        AnimatedVisibility(
+                            visible = showFilters,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // 已并入 AppHeaderSurface 的素面底，去掉独立底色避免压住底纹纹理
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                // 第一行：类型切换 (全部 / 仅支出 / 仅收入) 与 排序
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 和谐主题色类型分段胶囊
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        ModernFilterPill(
+                                            text = "全部",
+                                            selected = uiState.selectedType == null,
+                                            onClick = { viewModel.selectType(null) }
+                                        )
+                                        ModernFilterPill(
+                                            text = "仅支出",
+                                            selected = uiState.selectedType == RecordType.EXPENSE,
+                                            onClick = { viewModel.selectType(RecordType.EXPENSE) }
+                                        )
+                                        ModernFilterPill(
+                                            text = "仅收入",
+                                            selected = uiState.selectedType == RecordType.INCOME,
+                                            onClick = { viewModel.selectType(RecordType.INCOME) }
+                                        )
+                                    }
+
+                                    // 排序按钮
+                                    Box {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { showSortMenu = true }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序", modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(uiState.sortOrder.title, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = showSortMenu,
+                                            onDismissRequest = { showSortMenu = false }
+                                        ) {
+                                            RecordSortOrder.values().forEach { order ->
+                                                DropdownMenuItem(
+                                                    text = { Text(order.title) },
+                                                    onClick = {
+                                                        viewModel.setSortOrder(order)
+                                                        showSortMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // 第二行：按天筛选快捷栏（支持精准选择到天）
+                                val todayCal = Calendar.getInstance()
+                                val isCurrentSelectedMonth = todayCal.get(Calendar.YEAR) == uiState.selectedYear &&
+                                        (todayCal.get(Calendar.MONTH) + 1) == uiState.selectedMonth
+                                val currentDay = todayCal.get(Calendar.DAY_OF_MONTH)
+
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                // 全月
+                                item {
+                                    ModernFilterPill(
+                                        text = "全月",
+                                        selected = uiState.selectedDay == null,
+                                        onClick = { viewModel.selectDay(null) }
+                                    )
+                                }
+
+                                if (isCurrentSelectedMonth) {
+                                    if (currentDay > 1) {
+                                        item {
+                                            ModernFilterPill(
+                                                text = "昨天 (${currentDay - 1}日)",
+                                                selected = uiState.selectedDay == currentDay - 1,
+                                                onClick = { viewModel.selectDay(currentDay - 1) }
+                                            )
+                                        }
+                                    }
+
+                                    if (currentDay > 2) {
+                                        item {
+                                            ModernFilterPill(
+                                                text = "前天 (${currentDay - 2}日)",
+                                                selected = uiState.selectedDay == currentDay - 2,
+                                                onClick = { viewModel.selectDay(currentDay - 2) }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 自定义日期选择器 📅
+                                item {
+                                    val isYesterday = isCurrentSelectedMonth && currentDay > 1 && uiState.selectedDay == (currentDay - 1)
+                                    val isDayBeforeYesterday = isCurrentSelectedMonth && currentDay > 2 && uiState.selectedDay == (currentDay - 2)
+                                    val isCustomDaySelected = uiState.selectedDay != null && !isYesterday && !isDayBeforeYesterday
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isCustomDaySelected) {
+                                            primaryColor.copy(alpha = 0.14f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isCustomDaySelected) {
+                                                primaryColor.copy(alpha = 0.8f)
+                                            } else {
+                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                            }
+                                        ),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { showDatePickerSheet = true }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.CalendarMonth,
+                                                contentDescription = "选择日期",
+                                                tint = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (uiState.selectedDay != null) "${uiState.selectedMonth}月${uiState.selectedDay}日" else "选择日期",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (uiState.selectedDay != null) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (uiState.selectedDay != null) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "清除天筛选",
+                                                    tint = primaryColor,
+                                                    modifier = Modifier
+                                                        .size(12.dp)
+                                                        .clickable { viewModel.selectDay(null) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // 第三行：分类筛选横滑栏
+                                val relevantCategories = uiState.availableCategories.filter {
+                                    uiState.selectedType == null || it.type == uiState.selectedType?.name
+                                }
+
+                                if (relevantCategories.isNotEmpty()) {
+                                    LazyRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        item {
+                                            ModernFilterPill(
+                                                text = "全部分类",
+                                                selected = uiState.selectedCategoryIds.isEmpty(),
+                                                onClick = { viewModel.selectCategory(null) }
+                                            )
+                                        }
+
+                                        items(relevantCategories) { cat ->
+                                            val isSelected = cat.id in uiState.selectedCategoryIds
+                                            ModernFilterPill(
+                                                text = cat.name,
+                                                selected = isSelected,
+                                                onClick = { viewModel.selectCategory(cat.id) }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 第四行：支付方式筛选
+                                val paymentMethods = when (uiState.selectedType) {
+                                    RecordType.INCOME -> PaymentMethod.INCOME_ACCOUNTS
+                                    RecordType.EXPENSE -> PaymentMethod.EXPENSE_METHODS
+                                    null -> (PaymentMethod.EXPENSE_METHODS + PaymentMethod.INCOME_ACCOUNTS).distinct()
+                                }.distinct()
+                                Spacer(modifier = Modifier.height(2.dp))
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    item {
+                                        ModernFilterPill(
+                                            text = "全部方式",
+                                            selected = uiState.selectedPaymentMethods.isEmpty(),
+                                            onClick = { viewModel.selectPaymentMethod(null) }
+                                        )
+                                    }
+                                    items(paymentMethods) { method ->
+                                        val isSelected = method in uiState.selectedPaymentMethods
+                                        ModernFilterPill(
+                                            text = method,
+                                            selected = isSelected,
+                                            onClick = { viewModel.selectPaymentMethod(method) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 🌟 3. 当月汇总收支条（并入 Header 卡后去掉独立底色带，避免双重底色）
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 和谐主题色类型分段胶囊
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                ModernFilterPill(
-                                    text = "全部",
-                                    selected = uiState.selectedType == null,
-                                    onClick = { viewModel.selectType(null) }
-                                )
-                                ModernFilterPill(
-                                    text = "仅支出",
-                                    selected = uiState.selectedType == RecordType.EXPENSE,
-                                    onClick = { viewModel.selectType(RecordType.EXPENSE) }
-                                )
-                                ModernFilterPill(
-                                    text = "仅收入",
-                                    selected = uiState.selectedType == RecordType.INCOME,
-                                    onClick = { viewModel.selectType(RecordType.INCOME) }
-                                )
-                            }
-
-                            // 排序按钮
-                            Box {
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { showSortMenu = true }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    ) {
-                                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序", modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(uiState.sortOrder.title, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false }
-                                ) {
-                                    RecordSortOrder.values().forEach { order ->
-                                        DropdownMenuItem(
-                                            text = { Text(order.title) },
-                                            onClick = {
-                                                viewModel.setSortOrder(order)
-                                                showSortMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // 第二行：按天筛选快捷栏（支持精准选择到天）
-                        val todayCal = Calendar.getInstance()
-                        val isCurrentSelectedMonth = todayCal.get(Calendar.YEAR) == uiState.selectedYear &&
-                                (todayCal.get(Calendar.MONTH) + 1) == uiState.selectedMonth
-                        val currentDay = todayCal.get(Calendar.DAY_OF_MONTH)
-
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                        // 全月
-                        item {
-                            ModernFilterPill(
-                                text = "全月",
-                                selected = uiState.selectedDay == null,
-                                onClick = { viewModel.selectDay(null) }
-                            )
-                        }
-
-                        if (isCurrentSelectedMonth) {
-                            if (currentDay > 1) {
-                                item {
-                                    ModernFilterPill(
-                                        text = "昨天 (${currentDay - 1}日)",
-                                        selected = uiState.selectedDay == currentDay - 1,
-                                        onClick = { viewModel.selectDay(currentDay - 1) }
-                                    )
-                                }
-                            }
-
-                            if (currentDay > 2) {
-                                item {
-                                    ModernFilterPill(
-                                        text = "前天 (${currentDay - 2}日)",
-                                        selected = uiState.selectedDay == currentDay - 2,
-                                        onClick = { viewModel.selectDay(currentDay - 2) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // 自定义日期选择器 📅
-                        item {
-                            val isYesterday = isCurrentSelectedMonth && currentDay > 1 && uiState.selectedDay == (currentDay - 1)
-                            val isDayBeforeYesterday = isCurrentSelectedMonth && currentDay > 2 && uiState.selectedDay == (currentDay - 2)
-                            val isCustomDaySelected = uiState.selectedDay != null && !isYesterday && !isDayBeforeYesterday
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isCustomDaySelected) {
-                                    primaryColor.copy(alpha = 0.14f)
+                            Text(
+                                text = if (uiState.selectedDay != null) {
+                                    "已筛选 ${uiState.selectedMonth}月${uiState.selectedDay}日 · 共 ${uiState.recordCount} 笔"
                                 } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    "共 ${uiState.recordCount} 笔记录"
                                 },
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isCustomDaySelected) {
-                                        primaryColor.copy(alpha = 0.8f)
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                                    }
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { showDatePickerSheet = true }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.CalendarMonth,
-                                        contentDescription = "选择日期",
-                                        tint = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (uiState.selectedDay != null) "${uiState.selectedMonth}月${uiState.selectedDay}日" else "选择日期",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (uiState.selectedDay != null) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (uiState.selectedDay != null) primaryColor else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (uiState.selectedDay != null) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "清除天筛选",
-                                            tint = primaryColor,
-                                            modifier = Modifier
-                                                .size(12.dp)
-                                                .clickable { viewModel.selectDay(null) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // 第三行：分类筛选横滑栏
-                        val relevantCategories = uiState.availableCategories.filter {
-                            uiState.selectedType == null || it.type == uiState.selectedType?.name
-                        }
-
-                        if (relevantCategories.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                item {
-                                    ModernFilterPill(
-                                        text = "全部分类",
-                                        selected = uiState.selectedCategoryIds.isEmpty(),
-                                        onClick = { viewModel.selectCategory(null) }
-                                    )
-                                }
-
-                                items(relevantCategories) { cat ->
-                                    val isSelected = cat.id in uiState.selectedCategoryIds
-                                    ModernFilterPill(
-                                        text = cat.name,
-                                        selected = isSelected,
-                                        onClick = { viewModel.selectCategory(cat.id) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // 第四行：支付方式筛选
-                        val paymentMethods = when (uiState.selectedType) {
-                            RecordType.INCOME -> PaymentMethod.INCOME_ACCOUNTS
-                            RecordType.EXPENSE -> PaymentMethod.EXPENSE_METHODS
-                            null -> (PaymentMethod.EXPENSE_METHODS + PaymentMethod.INCOME_ACCOUNTS).distinct()
-                        }.distinct()
-                        Spacer(modifier = Modifier.height(2.dp))
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            item {
-                                ModernFilterPill(
-                                    text = "全部方式",
-                                    selected = uiState.selectedPaymentMethods.isEmpty(),
-                                    onClick = { viewModel.selectPaymentMethod(null) }
-                                )
-                            }
-                            items(paymentMethods) { method ->
-                                val isSelected = method in uiState.selectedPaymentMethods
-                                ModernFilterPill(
-                                    text = method,
-                                    selected = isSelected,
-                                    onClick = { viewModel.selectPaymentMethod(method) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 🌟 3. 当月汇总收支条
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (uiState.selectedDay != null) {
-                                "已筛选 ${uiState.selectedMonth}月${uiState.selectedDay}日 · 共 ${uiState.recordCount} 笔"
-                            } else {
-                                "共 ${uiState.recordCount} 笔记录"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text = "支 ¥${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
                             )
-                            Text(
-                                text = "收 ¥${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = primaryColor
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text(
+                                    text = "支 ¥${MoneyUtils.centsToYuanString(uiState.totalExpense)}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 )
-                            )
+                                Text(
+                                    text = "收 ¥${MoneyUtils.centsToYuanString(uiState.totalIncome)}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = primaryColor
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -663,7 +675,7 @@ fun RecordListScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(horizontal = 16.dp),
-                            contentPadding = PaddingValues(top = 2.dp, bottom = 88.dp)
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp)
                         ) {
                             uiState.groupedRecords.forEach { (dayTimestamp, recordsInDay) ->
                                 val summary = uiState.daySummaries[dayTimestamp]

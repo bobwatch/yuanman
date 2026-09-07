@@ -83,6 +83,14 @@ fun YuanmanTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            // 窗口底色与主题同步（与启动底 splash_suet_jade 同值）：保证冷启动
+            // 首帧前/转屏等任何露出窗口底的瞬间都已是当前主题色，杜绝深色下闪白。
+            // 系统深色由 values-night 翻色兜底；这里覆盖「应用内强制深色 + 系统浅色」的场景。
+            window.setBackgroundDrawable(
+                android.graphics.drawable.ColorDrawable(
+                    if (darkTheme) 0xFF0B0E14.toInt() else 0xFFF5F2EB.toInt()
+                )
+            )
             window.statusBarColor = android.graphics.Color.TRANSPARENT
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

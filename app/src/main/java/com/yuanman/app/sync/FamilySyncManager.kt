@@ -51,11 +51,6 @@ data class PendingSyncRequest(
     val hostAddress: String
 )
 
-private enum class SyncMode {
-    APPROVAL,
-    PAIRING_CODE
-}
-
 class FamilySyncManager(
     context: Context,
     private val categoryRepository: CategoryRepository,
@@ -84,9 +79,6 @@ class FamilySyncManager(
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
 
-    private val _pairingCode = MutableStateFlow(loadOrCreatePairingCode())
-    val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
-
     private val _pendingRequests = MutableStateFlow<List<PendingSyncRequest>>(emptyList())
     val pendingRequests: StateFlow<List<PendingSyncRequest>> = _pendingRequests.asStateFlow()
 
@@ -109,19 +101,6 @@ class FamilySyncManager(
             ?: UUID.randomUUID().toString().also {
                 prefs.edit().putString(KEY_DEVICE_ID, it).apply()
             }
-
-    fun regeneratePairingCode() {
-        val code = randomCode()
-        _pairingCode.value = code
-        prefs.edit().putString(KEY_PAIRING_CODE, code).apply()
-    }
-
-    fun setPairingCode(code: String): Boolean {
-        if (!code.matches(Regex("\\d{6}"))) return false
-        _pairingCode.value = code
-        prefs.edit().putString(KEY_PAIRING_CODE, code).apply()
-        return true
-    }
 
     @Synchronized
     fun start() {
@@ -184,7 +163,7 @@ class FamilySyncManager(
         }
         _status.value = "正在同步数据..."
         _syncing.value = true
-        val jobs = peers.map { connectAndSync(it, SyncMode.APPROVAL) }
+        val jobs = peers.map { connectAndSync(it) }
         scope.launch {
             jobs.forEach { it.join() }
             _syncing.value = false
@@ -197,24 +176,7 @@ class FamilySyncManager(
             _status.value = "请先开启设备同步"
             return
         }
-        connectAndSync(device, SyncMode.APPROVAL)
-    }
-
-    /** 配对码备用入口，默认 UI 不展示，保留给无法点击设备时使用。 */
-    fun syncNowWithPairingCode() {
-        if (_syncing.value) return
-        val peers = _devices.value
-        if (peers.isEmpty()) {
-            _status.value = "未发现同一 WiFi 下的其他设备"
-            return
-        }
-        _status.value = "正在使用配对码同步..."
-        _syncing.value = true
-        val jobs = peers.map { connectAndSync(it, SyncMode.PAIRING_CODE) }
-        scope.launch {
-            jobs.forEach { it.join() }
-            _syncing.value = false
-        }
+        connectAndSync(device)
     }
 
     fun respondToSyncRequest(requestId: String, accepted: Boolean) {
@@ -312,7 +274,7 @@ class FamilySyncManager(
         _status.value = "发现 ${_devices.value.size} 台设备在线"
     }
 
-    private fun connectAndSync(device: PeerDevice, mode: SyncMode): Job {
+    private fun connectAndSync(device: PeerDevice): Job {
         if (!running) return scope.launch { }
         return scope.launch(Dispatchers.IO) {
             if (!outboundSyncs.add(device.name)) return@launch
@@ -320,7 +282,7 @@ class FamilySyncManager(
             val socket = Socket()
             try {
                 socket.connect(InetSocketAddress(device.host, device.port), CONNECT_TIMEOUT_MS)
-                val (peerName, recordCount, categoryCount) = exchange(socket, incoming = false, mode = mode)
+                val (peerName, recordCount, categoryCount) = exchange(socket, incoming = false)
                 markConnected(device.name, true)
                 _status.value = "已成功同步设备 $peerName"
                 val event = SyncEvent(peerName, recordCount, categoryCount)
@@ -352,7 +314,7 @@ class FamilySyncManager(
                 }
                 scope.launch(Dispatchers.IO) {
                     try {
-                        val (peerName, recordCount, categoryCount) = exchange(socket, incoming = true, mode = SyncMode.APPROVAL)
+                        val (peerName, recordCount, categoryCount) = exchange(socket, incoming = true)
                         synchronized(authFailures) { authFailures.remove(remoteHost) }
                         val event = SyncEvent(peerName, recordCount, categoryCount)
                         _lastEvent.value = event
@@ -372,8 +334,7 @@ class FamilySyncManager(
 
     private suspend fun exchange(
         socket: Socket,
-        incoming: Boolean,
-        mode: SyncMode
+        incoming: Boolean
     ): Triple<String, Int, Int> {
         activeSockets.add(socket)
         return try {
@@ -402,90 +363,77 @@ class FamilySyncManager(
                 peerHello.optInt("syncFormat", 0) != SYNC_FORMAT_VERSION ||
                 peerId == deviceId
             ) {
-                throw IOException("同步协议不匹配，请将两台设备都升级到 v0.0.3")
+                throw IOException("同步协议不匹配，请将两台设备都升级到 v0.0.4")
             }
             val peerNonce = Base64.decode(peerHello.getString("nonce"), Base64.NO_WRAP)
             val peerName = peerHello.optString("deviceName", peerId.take(6))
 
-            // 2. 新流程先请求对方确认；旧的配对码流程仍可从折叠入口使用。
-            var firstPeerAuth: String? = null
-            val authMode: SyncMode
+            // 2. 双向确认：连接方先发出同步请求，接收方弹窗确认后才会继续传输数据。
             if (incoming) {
-                val firstLine = readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("对端未响应")
-                val firstJson = runCatching { JSONObject(firstLine) }.getOrNull()
-                if (firstJson?.optString("type") == "sync_request") {
-                    val requestId = firstJson.optString("requestId")
-                    if (requestId.isBlank()) throw IOException("同步请求无效")
-                    val request = PendingSyncRequest(
-                        id = requestId,
-                        deviceName = firstJson.optString("deviceName", peerName),
-                        hostAddress = s.inetAddress.hostAddress ?: "unknown"
-                    )
-                    val accepted = awaitIncomingApproval(request)
-                    writer.write(
-                        JSONObject()
-                            .put("type", "sync_decision")
-                            .put("requestId", requestId)
-                            .put("accepted", accepted)
-                            .toString()
-                    )
-                    writer.newLine()
-                    writer.flush()
-                    if (!accepted) throw IOException("对方拒绝同步请求")
-                    authMode = SyncMode.APPROVAL
-                } else {
-                    // 同一版本仍支持手动配对码；这里的首行就是对端的加密认证消息。
-                    authMode = SyncMode.PAIRING_CODE
-                    firstPeerAuth = firstLine
+                val requestLine = readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("对端未响应")
+                val requestJson = runCatching { JSONObject(requestLine) }.getOrNull()
+                if (requestJson?.optString("type") != "sync_request") {
+                    throw IOException("对方发起的是不受支持的同步方式，请确认双方均已同意同步")
                 }
+                val requestId = requestJson.optString("requestId")
+                if (requestId.isBlank()) throw IOException("同步请求无效")
+                val request = PendingSyncRequest(
+                    id = requestId,
+                    deviceName = requestJson.optString("deviceName", peerName),
+                    hostAddress = s.inetAddress.hostAddress ?: "unknown"
+                )
+                val accepted = awaitIncomingApproval(request)
+                writer.write(
+                    JSONObject()
+                        .put("type", "sync_decision")
+                        .put("requestId", requestId)
+                        .put("accepted", accepted)
+                        .toString()
+                )
+                writer.newLine()
+                writer.flush()
+                if (!accepted) throw IOException("对方拒绝同步请求")
             } else {
-                authMode = mode
-                if (mode == SyncMode.APPROVAL) {
-                    val requestId = UUID.randomUUID().toString()
-                    writer.write(
-                        JSONObject()
-                            .put("type", "sync_request")
-                            .put("requestId", requestId)
-                            .put("deviceName", localName)
-                            .toString()
-                    )
-                    writer.newLine()
-                    writer.flush()
-                    val decision = JSONObject(
-                        readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("等待对方确认超时")
-                    )
-                    if (decision.optString("type") != "sync_decision" ||
-                        decision.optString("requestId") != requestId
-                    ) {
-                        throw IOException("对方返回的同步确认无效")
-                    }
-                    if (!decision.optBoolean("accepted", false)) {
-                        throw IOException("对方拒绝同步请求")
-                    }
+                val requestId = UUID.randomUUID().toString()
+                writer.write(
+                    JSONObject()
+                        .put("type", "sync_request")
+                        .put("requestId", requestId)
+                        .put("deviceName", localName)
+                        .toString()
+                )
+                writer.newLine()
+                writer.flush()
+                val decision = JSONObject(
+                    readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("等待对方确认超时")
+                )
+                if (decision.optString("type") != "sync_decision" ||
+                    decision.optString("requestId") != requestId
+                ) {
+                    throw IOException("对方返回的同步确认无效")
+                }
+                if (!decision.optBoolean("accepted", false)) {
+                    throw IOException("对方拒绝同步请求")
                 }
             }
 
             s.soTimeout = IO_TIMEOUT_MS
-            val sessionKey = deriveSessionKey(localNonce, peerNonce, peerId, authMode)
+            val sessionKey = deriveSessionKey(localNonce, peerNonce, peerId)
 
-            // 3. 双向认证。点击在线设备同意后使用临时会话密钥，不再要求输入配对码。
+            // 3. 双向认证：确认通过后双方使用临时会话密钥完成加密握手。
             val auth = JSONObject()
                 .put("type", "auth")
                 .put("from", deviceId)
                 .put("to", peerId)
-                .put("mode", authMode.name)
                 .toString()
             writer.write(encryptEnvelope(auth, sessionKey, AUTH_AAD))
             writer.newLine()
             writer.flush()
 
-            val peerAuthRaw = firstPeerAuth ?: readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("认证超时")
+            val peerAuthRaw = readLimitedLine(reader, MAX_CONTROL_LINE_CHARS) ?: throw IOException("认证超时")
             val peerAuth = JSONObject(decryptEnvelope(peerAuthRaw, sessionKey, AUTH_AAD))
             if (peerAuth.optString("from") != peerId || peerAuth.optString("to") != deviceId) {
-                throw IOException("配对码错误或认证失败")
-            }
-            if (peerAuth.optString("mode").isNotBlank() && peerAuth.optString("mode") != authMode.name) {
-                throw IOException("双方同步方式不一致，请重新发起同步")
+                throw IOException("设备认证失败，请确认双方设备与网络后重新发起同步")
             }
 
             // 4. 分类用于映射，账单仅发送该设备尚未确认过的变化。
@@ -583,8 +531,7 @@ class FamilySyncManager(
     private fun deriveSessionKey(
         localNonce: ByteArray,
         peerNonce: ByteArray,
-        peerId: String,
-        mode: SyncMode
+        peerId: String
     ): SecretKey {
         val first = Base64.encodeToString(localNonce, Base64.NO_WRAP)
         val second = Base64.encodeToString(peerNonce, Base64.NO_WRAP)
@@ -592,12 +539,10 @@ class FamilySyncManager(
         val orderedIds = if (deviceId <= peerId) "$deviceId|$peerId" else "$peerId|$deviceId"
         val salt = MessageDigest.getInstance("SHA-256")
             .digest("yuanman-sync-v3|$ordered|$orderedIds".toByteArray(Charsets.UTF_8))
-        val secret = when (mode) {
-            SyncMode.APPROVAL -> "approved-session"
-            SyncMode.PAIRING_CODE -> _pairingCode.value
-        }
+        // 会话只会在双方设备互相确认同意后建立（见上面 sync_request / sync_decision），
+        // 密钥仍由双方 deviceId + 随机 nonce 按序派生，保证每次同步会话独立。
         val spec = PBEKeySpec(
-            secret.toCharArray(),
+            "approved-session".toCharArray(),
             salt,
             PBKDF2_ITERATIONS,
             KEY_BITS
@@ -671,22 +616,8 @@ class FamilySyncManager(
         prefs.edit().putString(KEY_SENT_VERSIONS_PREFIX + peerId, json.toString()).apply()
     }
 
-    private fun loadOrCreatePairingCode(): String {
-        val saved = prefs.getString(KEY_PAIRING_CODE, null)
-        if (saved != null && saved.matches(Regex("\\d{6}"))) return saved
-        val code = randomCode()
-        prefs.edit().putString(KEY_PAIRING_CODE, code).apply()
-        return code
-    }
-
-    private fun randomCode(): String {
-        val num = SecureRandom().nextInt(1_000_000)
-        return String.format(Locale.US, "%06d", num)
-    }
-
     companion object {
         private const val PREFS_NAME = "yuanman_sync"
-        private const val KEY_PAIRING_CODE = "pairing_code"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_SENT_VERSIONS_PREFIX = "sent_versions_"
         private const val SERVICE_TYPE = "_yuanman_sync._tcp."

@@ -59,6 +59,10 @@ class PreferencesRepository(private val context: Context) {
         val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
         val QUICK_ENTRY_ENABLED = booleanPreferencesKey("quick_entry_enabled")
         val CUSTOM_TAGS = stringPreferencesKey("custom_tags")
+        val ACCOUNTS_DATA = stringPreferencesKey("accounts_data")
+        val SAVING_PLANS_DATA = stringPreferencesKey("saving_plans_data")
+        val PAYCHECK_SCHEME_DATA = stringPreferencesKey("paycheck_scheme_data")
+        val PAYCHECK_LAST_RUN_DATA = stringPreferencesKey("paycheck_last_run_data")
     }
 
     val defaultPresetTags = listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "超市买菜", "地铁打车", "零食水果", "日用品", "房租水电", "聚会请客", "网购")
@@ -119,6 +123,52 @@ class PreferencesRepository(private val context: Context) {
     /** Natural-language quick entry is enabled by default and can be hidden from Settings. */
     val quickEntryEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] ?: true
+    }
+
+    val accountsData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ACCOUNTS_DATA]
+    }
+
+    suspend fun saveAccountsData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACCOUNTS_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    // ---- 攒钱计划 & 发薪分配（v0.3）：与账户同构的 JSON DataStore 持久化 ----
+
+    val savingPlansData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SAVING_PLANS_DATA]
+    }
+
+    val paycheckSchemeData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_SCHEME_DATA]
+    }
+
+    val paycheckLastRunData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_LAST_RUN_DATA]
+    }
+
+    suspend fun saveSavingPlansData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SAVING_PLANS_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun savePaycheckSchemeData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_SCHEME_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun savePaycheckLastRunData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_LAST_RUN_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {

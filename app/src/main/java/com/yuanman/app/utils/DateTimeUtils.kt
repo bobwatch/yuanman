@@ -28,6 +28,10 @@ object DateTimeUtils {
         return yearMonthFormatter.format(Date(timestamp))
     }
 
+    fun formatMonthDay(timestamp: Long): String {
+        return monthDayFormatter.format(Date(timestamp))
+    }
+
     fun formatYearMonth(year: Int, month: Int): String {
         val cal = Calendar.getInstance()
         cal.set(Calendar.YEAR, year)
