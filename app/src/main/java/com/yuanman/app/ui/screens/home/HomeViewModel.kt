@@ -1,10 +1,8 @@
 package com.yuanman.app.ui.screens.home
 
-import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.yuanman.app.data.local.entity.AccountEntity
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.local.entity.CategoryEntity
@@ -13,7 +11,6 @@ import com.yuanman.app.data.model.MonthSummaryData
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.QuickEntryResult
 import com.yuanman.app.data.model.RecordType
-import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
@@ -30,7 +27,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
 import java.util.Calendar
 
 data class HomeUiState(
@@ -55,14 +51,6 @@ data class HomeUiState(
     val isLoading: Boolean = false
 )
 
-data class QuickRecordTemplate(
-    val key: String,
-    val source: RecordWithCategory,
-    val usageCount: Int,
-    val lastUsedAt: Long,
-    val isPinned: Boolean
-)
-
 private data class MonthInfo(
     val year: Int,
     val month: Int,
@@ -80,16 +68,10 @@ private data class PrefsInfo(
     val defaultIncomeAccount: String
 )
 
-private data class TemplateInfo(
-    val templates: List<QuickRecordTemplate>,
-    val pinnedKeys: Set<String>
-)
-
 class HomeViewModel(
     private val recordRepository: RecordRepository,
     private val preferencesRepository: PreferencesRepository,
-    private val categoryRepository: CategoryRepository,
-    private val accountRepository: AccountRepository
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     // 工资到账自动分账执行器（v0.0.4.5）：首页快捷记账保存「工资」类收入后自动按规则分账
@@ -104,18 +86,8 @@ class HomeViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     private val _affirmationIndex = MutableStateFlow(0)
     private val _currentAffirmation = MutableStateFlow(WarmAffirmationsHelper.getAffirmationForCurrentTime())
-    private val _quickEntryDraft = MutableStateFlow("")
 
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
-    val quickEntryDraft: StateFlow<String> = _quickEntryDraft.asStateFlow()
-
-    fun updateQuickEntryDraft(value: String) {
-        _quickEntryDraft.value = value
-    }
-
-    fun clearQuickEntryDraft() {
-        _quickEntryDraft.value = ""
-    }
 
     val defaultRecordType = preferencesRepository.defaultRecordType
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RecordType.EXPENSE)
@@ -160,40 +132,12 @@ class HomeViewModel(
         )
     }
 
-    private val templateInfoFlow = combine(
-        recordRepository.getAllRecords(),
-        preferencesRepository.pinnedTemplateKeys,
-        preferencesRepository.hiddenTemplateKeys
-    ) { records, pinnedKeys, hiddenKeys ->
-        val templates = records
-            .groupBy(::templateKey)
-            .mapNotNull { (key, group) ->
-                if (key in hiddenKeys || (group.size < 2 && key !in pinnedKeys)) return@mapNotNull null
-                val source = group.maxByOrNull { it.record.recordTime } ?: return@mapNotNull null
-                QuickRecordTemplate(
-                    key = key,
-                    source = source,
-                    usageCount = group.size,
-                    lastUsedAt = group.maxOf { it.record.recordTime },
-                    isPinned = key in pinnedKeys
-                )
-            }
-            .sortedWith(
-                compareByDescending<QuickRecordTemplate> { it.isPinned }
-                    .thenByDescending { it.usageCount }
-                    .thenByDescending { it.lastUsedAt }
-            )
-            .take(5)
-        TemplateInfo(templates, pinnedKeys)
-    }
-
     val uiState: StateFlow<HomeUiState> = combine(
         monthInfoFlow,
         prefsInfoFlow,
         categoryRepository.getAllCategories(),
-        categoryRepository.observeAllQuickEntryLearning(),
-        templateInfoFlow
-    ) { monthInfo, prefsInfo, categories, learningRules, templateInfo ->
+        categoryRepository.observeAllQuickEntryLearning()
+    ) { monthInfo, prefsInfo, categories, learningRules ->
         val year = monthInfo.year
         val month = monthInfo.month
         val records = monthInfo.records
@@ -305,13 +249,10 @@ class HomeViewModel(
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
-            val startedAt = SystemClock.elapsedRealtime()
             try {
                 _refreshToken.update { it + 1 }
-                // 保证刷新指示器至少展示一个可感知的时长，但查询本身就慢时不再叠加等待。
-                val elapsed = SystemClock.elapsedRealtime() - startedAt
-                val remaining = MIN_REFRESH_MILLIS - elapsed
-                if (remaining > 0) delay(remaining)
+                // 给 Room 重新查询和 UI 指示器留出可感知但短暂的时间，避免一闪而过。
+                delay(280)
             } finally {
                 _isRefreshing.value = false
             }
@@ -363,7 +304,6 @@ class HomeViewModel(
                 recordTime = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
-                revision = 0L,
                 syncId = java.util.UUID.randomUUID().toString(),
                 deletedAt = null
             )
@@ -373,7 +313,6 @@ class HomeViewModel(
 
     /**
      * Saves a compact entry directly from Home and returns the parsed preview for immediate UI feedback.
-     * @param overrideCategory 用户点击解析徽章手动选择的分类；为空时使用解析结果。
      */
     fun saveQuickEntry(
         input: String,
@@ -390,13 +329,6 @@ class HomeViewModel(
             ?: return null
         val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
         if (amountCents <= 0L) return null
-
-        val defaultExpenseId = if (type == RecordType.EXPENSE) defaultExpenseAccountId.value else null
-        val resolvedAccountId = if (accountId == -1L) null else accountId ?: parsed.paymentMethod?.let { method ->
-            accounts.value.firstOrNull { acc ->
-                acc.name.contains(method, ignoreCase = true) || method.contains(acc.name, ignoreCase = true)
-            }?.id
-        } ?: defaultExpenseId
 
         viewModelScope.launch(Dispatchers.IO) {
             val isExpense = type == RecordType.EXPENSE
@@ -467,62 +399,20 @@ class HomeViewModel(
         }
     }
 
-    fun replayTemplate(template: QuickRecordTemplate) {
-        copyRecord(template.source.record)
-    }
-
-    fun setTemplatePinned(item: RecordWithCategory, pinned: Boolean) {
-        viewModelScope.launch { preferencesRepository.setTemplatePinned(templateKey(item), pinned) }
-    }
-
-    fun setTemplatePinned(template: QuickRecordTemplate, pinned: Boolean) {
-        viewModelScope.launch { preferencesRepository.setTemplatePinned(template.key, pinned) }
-    }
-
-    fun hideTemplate(template: QuickRecordTemplate) {
-        viewModelScope.launch {
-            preferencesRepository.setTemplateHidden(template.key, true)
-            preferencesRepository.setTemplatePinned(template.key, false)
-        }
-    }
-
-    fun isTemplatePinned(item: RecordWithCategory): Boolean = templateKey(item) in uiState.value.pinnedTemplateKeys
-
     fun setQuickEntryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setQuickEntryEnabled(enabled)
         }
     }
 
-    companion object {
-        /** 给品牌化刷新动效留出可感知但不拖沓的最短展示时间。 */
-        private const val MIN_REFRESH_MILLIS = 650L
-
-        fun templateKey(item: RecordWithCategory): String {
-            val record = item.record
-            val categoryKey = item.category?.syncId ?: "category:${record.categoryId}"
-            val canonical = listOf(
-                record.type.trim().uppercase(),
-                record.amount.toString(),
-                categoryKey,
-                record.remark.trim().lowercase(),
-                record.paymentMethod.trim()
-            ).joinToString("\u0001")
-            return MessageDigest.getInstance("SHA-256")
-                .digest(canonical.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-        }
-    }
-
     class Factory(
         private val recordRepository: RecordRepository,
         private val preferencesRepository: PreferencesRepository,
-        private val categoryRepository: CategoryRepository,
-        private val accountRepository: AccountRepository
+        private val categoryRepository: CategoryRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return HomeViewModel(recordRepository, preferencesRepository, categoryRepository, accountRepository) as T
+            return HomeViewModel(recordRepository, preferencesRepository, categoryRepository) as T
         }
     }
 }

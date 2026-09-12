@@ -35,14 +35,12 @@ import com.yuanman.app.utils.MoneyUtils
 @Composable
 fun StatisticsScreen(
     viewModel: StatisticsViewModel,
-    onNavigateBack: () -> Unit = {},
+    onNavigateBack: (() -> Unit)? = null,
     onCategoryClick: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showMonthPicker by remember { mutableStateOf(false) }
-    var showYearPicker by remember { mutableStateOf(false) }
-    var showWeekPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
 
     // 周期翻页只允许回看：以当前自然周/月/年为上限（统计不涉及未来）
@@ -101,13 +99,13 @@ fun StatisticsScreen(
                         ) {
                             IconButton(
                                 onClick = { viewModel.previousPeriod() },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ChevronLeft,
                                     contentDescription = "上一周期",
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
 
@@ -116,13 +114,11 @@ fun StatisticsScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        when (uiState.periodMode) {
-                                            StatisticsPeriod.MONTH -> showMonthPicker = true
-                                            StatisticsPeriod.YEAR -> showYearPicker = true
-                                            StatisticsPeriod.WEEK -> showWeekPicker = true
+                                        if (uiState.periodMode == StatisticsPeriod.MONTH) {
+                                            showMonthPicker = true
                                         }
                                     }
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
                                     text = when (uiState.periodMode) {
@@ -140,7 +136,7 @@ fun StatisticsScreen(
                                     Text(
                                         text = DateTimeUtils.formatWeekRangeShort(uiState.weekStartTimestamp, uiState.weekEndTimestamp),
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                                         )
                                     )
@@ -163,7 +159,6 @@ fun StatisticsScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                        }
                         }
                     }
                 }
@@ -291,7 +286,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // 2. 月预算复盘：把“花了多少”翻译为可执行的消费节奏
+            // 2. 月度预算复盘：把“花了多少”翻译为可执行的消费节奏
             if (uiState.periodMode == StatisticsPeriod.MONTH) {
                 item {
                     BudgetReviewCard(
@@ -433,7 +428,7 @@ fun StatisticsScreen(
             // 6. 分类排行榜清单
             item {
                 Text(
-                    text = "分类排行（${uiState.categoryStats.size} 项）",
+                    text = "分类排行 (${uiState.categoryStats.size} 项)",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
                     modifier = Modifier.padding(top = 2.dp, bottom = 0.dp)
                 )
@@ -489,27 +484,6 @@ fun StatisticsScreen(
         onDismiss = { showMonthPicker = false }
     )
 
-    YearPickerModal(
-        visible = showYearPicker,
-        initialYear = uiState.selectedYear,
-        onYearSelected = { year ->
-            viewModel.selectYear(year)
-            showYearPicker = false
-        },
-        onDismiss = { showYearPicker = false }
-    )
-
-    WeekPickerModal(
-        visible = showWeekPicker,
-        initialYear = uiState.selectedYear,
-        initialWeek = uiState.selectedWeek,
-        onWeekSelected = { year, week ->
-            viewModel.selectWeek(year, week)
-            showWeekPicker = false
-        },
-        onDismiss = { showWeekPicker = false }
-    )
-
     if (showBudgetDialog) {
         var budgetInput by remember(uiState.selectedYear, uiState.selectedMonth) {
             mutableStateOf(
@@ -517,11 +491,6 @@ fun StatisticsScreen(
                     ?.let(MoneyUtils::centsToYuanString)
                     .orEmpty()
             )
-        }
-        val budgetError = if (budgetInput.isNotBlank() && !MoneyUtils.isValidAmountInput(budgetInput.trim())) {
-            "请输入大于 0 的有效金额"
-        } else {
-            null
         }
         Dialog(onDismissRequest = { showBudgetDialog = false }) {
             Card(
@@ -547,14 +516,6 @@ fun StatisticsScreen(
                         onValueChange = { budgetInput = it },
                         label = { Text("预算金额（元）") },
                         prefix = { Text("¥ ") },
-                        isError = budgetError != null,
-                        supportingText = {
-                            if (budgetError != null) {
-                                Text(budgetError, color = MaterialTheme.colorScheme.error)
-                            } else {
-                                Text("留空并保存可清除已设预算")
-                            }
-                        },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
@@ -567,10 +528,8 @@ fun StatisticsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                if (budgetError == null) {
-                                    viewModel.setMonthlyBudget(MoneyUtils.parseYuanToCents(budgetInput.trim()))
-                                    showBudgetDialog = false
-                                }
+                                viewModel.setMonthlyBudget(MoneyUtils.parseYuanToCents(budgetInput))
+                                showBudgetDialog = false
                             }
                         ) { Text("保存") }
                     }

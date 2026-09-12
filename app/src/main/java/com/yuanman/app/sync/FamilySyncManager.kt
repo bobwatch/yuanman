@@ -5,10 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Base64
-import androidx.room.withTransaction
-import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.local.entity.RecordEntity
-import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.utils.JsonBackupUtils
 import com.yuanman.app.widget.WidgetUpdateManager
@@ -19,7 +16,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import org.json.JSONObject
 import java.io.*
 import java.net.InetAddress
@@ -40,13 +36,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
-data class SyncEvent(
-    val peerName: String,
-    val recordCount: Int,
-    val categoryCount: Int,
-    val accountCount: Int = 0,
-    val snapshotCount: Int = 0
-)
+data class SyncEvent(val peerName: String, val recordCount: Int, val categoryCount: Int)
 
 data class PeerDevice(
     val name: String,
@@ -64,8 +54,6 @@ data class PendingSyncRequest(
 class FamilySyncManager(
     context: Context,
     private val categoryRepository: CategoryRepository,
-    private val accountRepository: AccountRepository,
-    private val database: AppDatabase,
     private val scope: CoroutineScope
 ) {
     private val appContext = context.applicationContext
@@ -290,29 +278,22 @@ class FamilySyncManager(
         if (!running) return scope.launch { }
         return scope.launch(Dispatchers.IO) {
             if (!outboundSyncs.add(device.name)) return@launch
-            _pendingOutboundDevices.update { it + device.name }
+            _pendingOutboundDevices.value = _pendingOutboundDevices.value + device.name
             val socket = Socket()
             try {
                 socket.connect(InetSocketAddress(device.host, device.port), CONNECT_TIMEOUT_MS)
                 val (peerName, recordCount, categoryCount) = exchange(socket, incoming = false)
                 markConnected(device.name, true)
-                _status.value = "已成功同步设备 ${result.peerName}"
-                val event = SyncEvent(
-                    peerName = result.peerName,
-                    recordCount = result.recordCount,
-                    categoryCount = result.categoryCount,
-                    accountCount = result.accountCount,
-                    snapshotCount = result.snapshotCount
-                )
+                _status.value = "已成功同步设备 $peerName"
+                val event = SyncEvent(peerName, recordCount, categoryCount)
                 _lastEvent.value = event
                 _events.emit(event)
             } catch (e: Exception) {
-                markConnected(device.name, false)
-                _status.value = "同步 ${device.name} 失败：${e.message ?: "连接异常"}。数据未确认写入，可再次点击设备重试"
+                _status.value = "同步 ${device.name} 失败：${e.message ?: "连接异常"}"
             } finally {
                 runCatching { socket.close() }
                 outboundSyncs.remove(device.name)
-                _pendingOutboundDevices.update { it - device.name }
+                _pendingOutboundDevices.value = _pendingOutboundDevices.value - device.name
             }
         }
     }
@@ -335,20 +316,14 @@ class FamilySyncManager(
                     try {
                         val (peerName, recordCount, categoryCount) = exchange(socket, incoming = true)
                         synchronized(authFailures) { authFailures.remove(remoteHost) }
-                        val event = SyncEvent(
-                            peerName = result.peerName,
-                            recordCount = result.recordCount,
-                            categoryCount = result.categoryCount,
-                            accountCount = result.accountCount,
-                            snapshotCount = result.snapshotCount
-                        )
+                        val event = SyncEvent(peerName, recordCount, categoryCount)
                         _lastEvent.value = event
                         _events.emit(event)
                     } catch (e: Exception) {
                         synchronized(authFailures) {
                             authFailures[remoteHost] = System.currentTimeMillis() + AUTH_FAILURE_BACKOFF_MS
                         }
-                        _status.value = "接收 $remoteHost 的同步失败：${e.message ?: "认证或数据异常"}。请确认双方版本和分类后重试"
+                        _status.value = "接收 $remoteHost 的同步失败：${e.message ?: "认证或数据异常"}"
                     }
                 }
             } catch (e: Exception) {
@@ -463,18 +438,12 @@ class FamilySyncManager(
 
             // 4. 分类用于映射，账单仅发送该设备尚未确认过的变化。
             val snapshot = categoryRepository.getSyncSnapshot()
-            val accountSnapshot = accountRepository.getSyncSnapshot()
             val previouslySent = loadSentRecordVersions(peerId)
             val currentVersions = snapshot.records.associate { it.syncId to recordVersion(it) }
             val changedRecords = snapshot.records.filter { record ->
                 previouslySent[record.syncId] != currentVersions[record.syncId]
             }
-            val payload = JsonBackupUtils.exportEntitiesToJsonString(
-                categories = snapshot.categories,
-                records = changedRecords,
-                accounts = accountSnapshot.accounts,
-                accountSnapshots = accountSnapshot.accountSnapshots
-            )
+            val payload = JsonBackupUtils.exportEntitiesToJsonString(snapshot.categories, changedRecords)
             if (payload.toByteArray(Charsets.UTF_8).size > MAX_PLAIN_PAYLOAD_BYTES) {
                 throw IOException("同步数据超过 ${MAX_PLAIN_PAYLOAD_BYTES / 1024 / 1024}MB 限制，请先导出备份并清理历史数据")
             }
@@ -487,27 +456,12 @@ class FamilySyncManager(
             val dataJson = decryptEnvelope(dataRaw, sessionKey, DATA_AAD)
             val backupData = JsonBackupUtils.parseFromJsonString(dataJson, legacySourceId = peerId)
 
-            // 账户、分类与账单主键只在各自设备内有效。先匹配本地账户并建立
-            // 账户 ID 映射，再将远端账单的账户关联改成本地主键，最后合并分类和账单。
-            // 账户快照中的嵌入式账户 ID 也在账户合并阶段一并重映射。
-            val (accountMergeResult, mergeResult) = database.withTransaction {
-                val balanceBaselines = accountRepository.captureBalanceBaselinesInTransaction()
-                val accountMerge = accountRepository.mergeSyncedAccountsInTransaction(
-                    remoteAccounts = backupData.accounts,
-                    remoteSnapshots = backupData.accountSnapshots
-                )
-                val remappedRecords = accountRepository.remapRecordAccountIds(
-                    records = backupData.records,
-                    remoteToLocalAccountIds = accountMerge.remoteToLocalAccountIds,
-                    includesAccounts = backupData.includesAccounts
-                )
-                val recordMerge = categoryRepository.mergeSyncedDataInTransaction(
-                    backupData.categories,
-                    remappedRecords
-                )
-                accountRepository.recalculateBalancesInTransaction(balanceBaselines)
-                accountMerge to recordMerge
-            }
+            // 分类与账单主键只在各自设备内有效。先匹配本地分类，再将远端账单
+            // 映射到本地分类主键后一起写入，避免重复分类和错误关联。
+            val mergeResult = categoryRepository.mergeSyncedData(
+                backupData.categories,
+                backupData.records
+            )
 
             // 6. 双方都完成数据库事务后再推进增量游标，失败会在下次重传。
             val ack = JSONObject()
@@ -528,11 +482,7 @@ class FamilySyncManager(
                 throw IOException("对端有 ${peerAck.optInt("skippedRecords")} 笔账单未能匹配分类，将在下次同步重试")
             }
             saveSentRecordVersions(peerId, currentVersions)
-            if (mergeResult.changedRecordCount > 0 ||
-                mergeResult.changedCategoryCount > 0 ||
-                accountMergeResult.changedAccountCount > 0 ||
-                accountMergeResult.changedSnapshotCount > 0
-            ) {
+            if (mergeResult.changedRecordCount > 0 || mergeResult.changedCategoryCount > 0) {
                 WidgetUpdateManager.requestUpdate(appContext)
             }
 
@@ -540,12 +490,10 @@ class FamilySyncManager(
                 _status.value = "同步完成，但有 ${mergeResult.skippedRecordCount} 笔账单因分类缺失被跳过"
             }
 
-            SyncExchangeResult(
-                peerName = peerId.take(6),
-                recordCount = mergeResult.changedRecordCount,
-                categoryCount = mergeResult.changedCategoryCount,
-                accountCount = accountMergeResult.changedAccountCount,
-                snapshotCount = accountMergeResult.changedSnapshotCount
+            Triple(
+                peerId.take(6),
+                mergeResult.changedRecordCount,
+                mergeResult.changedCategoryCount
             )
             }
         } finally {
@@ -649,14 +597,6 @@ class FamilySyncManager(
         val digest = MessageDigest.getInstance("SHA-256").digest(record.toString().toByteArray(Charsets.UTF_8))
         return Base64.encodeToString(digest, Base64.NO_WRAP)
     }
-
-    private data class SyncExchangeResult(
-        val peerName: String,
-        val recordCount: Int,
-        val categoryCount: Int,
-        val accountCount: Int,
-        val snapshotCount: Int
-    )
 
     private fun loadSentRecordVersions(peerId: String): Map<String, String> = runCatching {
         val raw = prefs.getString(KEY_SENT_VERSIONS_PREFIX + peerId, null) ?: return emptyMap()

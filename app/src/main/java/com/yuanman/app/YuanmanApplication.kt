@@ -24,29 +24,12 @@ class YuanmanApplication : Application() {
             database.categoryDao(),
             database.recordDao(),
             database.syncDao(),
-            database.quickEntryLearningDao(),
-            database
+            database.quickEntryLearningDao()
         )
     }
 
     val recordRepository: RecordRepository by lazy {
-        RecordRepository(
-            recordDao = database.recordDao(),
-            context = this,
-            database = database,
-            accountDao = database.accountDao()
-        )
-    }
-
-    val accountRepository: com.yuanman.app.data.repository.AccountRepository by lazy {
-        com.yuanman.app.data.repository.AccountRepository(
-            database = database,
-            accountDao = database.accountDao(),
-            accountSnapshotDao = database.accountSnapshotDao(),
-            recordDao = database.recordDao(),
-            categoryDao = database.categoryDao(),
-            context = this
-        )
+        RecordRepository(database.recordDao(), this)
     }
 
     val preferencesRepository: PreferencesRepository by lazy {
@@ -59,8 +42,6 @@ class YuanmanApplication : Application() {
         com.yuanman.app.sync.FamilySyncManager(
             context = this,
             categoryRepository = categoryRepository,
-            accountRepository = accountRepository,
-            database = database,
             scope = appScope
         )
     }

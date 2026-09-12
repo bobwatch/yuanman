@@ -55,7 +55,6 @@ import com.yuanman.app.ui.components.MonthPickerModal
 import com.yuanman.app.ui.components.RecordDetailCard
 import com.yuanman.app.ui.components.SwipeRevealDeleteItem
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
-import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.ui.components.YuanmanDatePickerSheet
 import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.ui.screens.home.BitgetTransactionItem
@@ -89,6 +88,7 @@ fun RecordListScreen(
     var activeMenuRecord by remember { mutableStateOf<RecordWithCategory?>(null) }
     var searchFocused by remember { mutableStateOf(false) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
+    val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
     var refreshWasRunning by remember { mutableStateOf(false) }
     // 🌟 展开式搜索框：顶栏搜索图标切换显隐，展开后自动聚焦并弹出键盘
     val searchFocusRequester = remember { FocusRequester() }
@@ -105,18 +105,20 @@ fun RecordListScreen(
         }
     }
 
-    // 下拉触发刷新；刷新期间禁用再次下拉，避免状态互相覆盖导致指示器卡住。
     LaunchedEffect(pullRefreshState.isRefreshing) {
-        if (pullRefreshState.isRefreshing && !refreshWasRunning) {
+        if (pullRefreshState.isRefreshing) {
             refreshWasRunning = true
             viewModel.refresh()
         }
     }
     LaunchedEffect(isRefreshing) {
-        if (!isRefreshing && refreshWasRunning) {
+        if (isRefreshing) {
+            refreshWasRunning = true
+        } else if (refreshWasRunning) {
             if (pullRefreshState.isRefreshing) {
                 pullRefreshState.endRefresh()
             }
+            toast.success("刷新成功")
             refreshWasRunning = false
         }
     }
@@ -725,7 +727,7 @@ fun RecordListScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             EmptyStateView(
-                                title = if (uiState.searchQuery.isNotEmpty()) "未找到相关账单" else "该时间段暂无账单",
+                                title = if (uiState.searchQuery.isNotEmpty()) "未找到相关账单" else "该时间段暂无账单记录",
                                 description = if (uiState.searchQuery.isNotEmpty()) "换个关键词试试" else "点击底部「＋」记账",
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -889,7 +891,6 @@ fun RecordListScreen(
                         .clickable {
                             viewModel.copyRecord(target.record)
                             activeMenuRecord = null
-                            toast.success("已成功复制一笔账单")
                         }
                 )
 
@@ -921,14 +922,7 @@ fun RecordListScreen(
         title = "删除账单",
         message = "确定要删除分类为「${recordToDelete?.category?.name ?: "未分类"}」金额为「${MoneyUtils.formatCurrency(recordToDelete?.record?.amount ?: 0L)}」的账单吗？",
         onConfirm = {
-            recordToDelete?.let { target ->
-                viewModel.deleteRecord(target)
-                toast.info(
-                    message = "账单已删除",
-                    actionLabel = "撤销",
-                    onAction = { viewModel.undoDelete(target.record) }
-                )
-            }
+            recordToDelete?.let { viewModel.deleteRecord(it) }
             recordToDelete = null
         },
         onDismiss = { recordToDelete = null }

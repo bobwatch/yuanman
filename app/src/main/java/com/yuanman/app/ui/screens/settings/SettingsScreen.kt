@@ -42,8 +42,9 @@ import com.yuanman.app.sync.PeerDevice
 import com.yuanman.app.ui.components.BudgetSliderDialog
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
-import com.yuanman.app.ui.components.YuanmanHeaderBackground
 import com.yuanman.app.utils.MoneyUtils
+import com.yuanman.app.utils.UpdateInfo
+import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.utils.clickableDebounce
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,13 +56,11 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
+    val hasUnseenUpdate by viewModel.hasUnseenUpdate.collectAsStateWithLifecycle()
     val learningRules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
     val toast = com.yuanman.app.ui.components.LocalToastHostState.current
     val context = LocalContext.current
-    var pendingJsonRestore by remember { mutableStateOf<PendingJsonRestore?>(null) }
-    var uninstallSafeBackupEnabled by remember {
-        mutableStateOf(com.yuanman.app.data.local.DatabaseBackupManager.isUninstallSafeBackupEnabled(context))
-    }
 
     val csvPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -73,17 +72,6 @@ fun SettingsScreen(
                 } else {
                     toast.error(message)
                 }
-            }
-        }
-    }
-
-    val jsonBackupPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.previewJsonBackup(context, uri) { result ->
-                result.onSuccess { pendingJsonRestore = it }
-                    .onFailure { toast.error("无法读取备份：${it.message ?: "文件无效"}") }
             }
         }
     }
@@ -193,19 +181,10 @@ fun SettingsScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            YuanmanHeaderBackground {
-                TopAppBar(
-                    modifier = Modifier.offset(y = (-4).dp),
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    title = {
-                        Text(
-                            text = "设置",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-                )
-            }
+            TopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
+                title = { Text("设置", fontWeight = FontWeight.Bold) }
+            )
         }
     ) { innerPadding ->
         Column(
@@ -214,26 +193,26 @@ fun SettingsScreen(
                 .padding(top = innerPadding.calculateTopPadding())
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(top = 10.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(top = 8.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 🌟 卡片 1: 记账偏好设置（最高频常用）
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 月预算配置 (核心开销管理目标)
+                    // 月度预算配置 (核心开销管理目标)
                     SettingsRowItem(
                         icon = Icons.Outlined.AccountBalanceWallet,
-                        title = "月预算",
+                        title = "月度预算",
                         subtitle = if (uiState.monthlyBudget > 0L) "¥${MoneyUtils.centsToYuanString(uiState.monthlyBudget)}" else "未设置",
                         subtitleHighlight = uiState.monthlyBudget > 0L,
                         onClick = { showBudgetDialog = true }
@@ -248,7 +227,7 @@ fun SettingsScreen(
                     SettingsRowItem(
                         icon = Icons.Outlined.Category,
                         title = "分类管理",
-                        subtitle = "管理支出与收入分类及子标签",
+                        subtitle = "管理支出与收入分类及专属子标签",
                         onClick = { onNavigateToCategoryManage?.invoke() }
                     )
 
@@ -275,16 +254,16 @@ fun SettingsScreen(
 
             // 🌟 卡片 2: 个性化外观（常用视觉偏好）
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     // 主题外观（浅色 / 深色 / 跟随系统）
                     SettingsRowItem(
@@ -299,16 +278,16 @@ fun SettingsScreen(
 
             // 🌟 卡片 3: 数据与资产管理（导出与多端互联）
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     // 数据管理（导出、导入、备份与恢复，点击弹出底部操作层）
                     SettingsRowItem(
@@ -333,20 +312,30 @@ fun SettingsScreen(
                 }
             }
 
-            // 🌟 卡片 4: 关于应用
+            // 🌟 卡片 4: 系统与更新（低频维护）
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    // 关于沅满
+                    val currentVer = viewModel.updateManager.currentVersionName
+                    val (updateSubtitle, subtitleHighlight, downloadProgress) = when (val state = updateState) {
+                        is UpdateState.Checking -> Triple("正在检查…", true, null)
+                        is UpdateState.Available -> Triple("发现 v${state.info.versionName} · 点此查看", true, null)
+                        is UpdateState.Downloading -> Triple("下载中 ${(state.progress * 100).toInt()}%", true, state.progress)
+                        is UpdateState.ReadyToInstall -> Triple("已下载 · 点此安装", true, null)
+                        is UpdateState.UpToDate -> Triple("v$currentVer · 已是最新", false, null)
+                        is UpdateState.Error -> Triple("检查失败 · 点此重试", false, null)
+                        else -> Triple("v$currentVer · 点此检查", false, null)
+                    }
+
                     SettingsRowItem(
                         icon = Icons.Outlined.SystemUpdate,
                         title = "版本更新",
@@ -381,16 +370,16 @@ fun SettingsScreen(
 
             // 🌟 卡片 5: 数据清理危险区（置底防误触）
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     // 清空全部数据
                     SettingsRowItem(
@@ -417,7 +406,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "版本 v${viewModel.updateManager.currentVersionName} · 沅满记账井井有条",
+                    text = "版本 v${viewModel.updateManager.currentVersionName} · 纯本地离线隐私保护",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -626,56 +615,6 @@ fun SettingsScreen(
         }
     }
 
-    if (showSpreadsheetBottomSheet) {
-        SpreadsheetBottomSheet(
-            totalRecordCount = uiState.totalRecordCount,
-            onDismiss = { showSpreadsheetBottomSheet = false },
-            onExport = {
-                showSpreadsheetBottomSheet = false
-                viewModel.exportRecordsCsv(context)
-            },
-            onImport = {
-                showSpreadsheetBottomSheet = false
-                csvPickerLauncher.launch(
-                    arrayOf(
-                        "text/comma-separated-values",
-                        "text/csv",
-                        "text/plain",
-                        "application/csv",
-                        "*/*"
-                    )
-                )
-            }
-        )
-    }
-
-    if (showBackupBottomSheet) {
-        BackupAndRestoreBottomSheet(
-            lastBackupAt = uiState.lastBackupAt,
-            uninstallSafeBackupEnabled = uninstallSafeBackupEnabled,
-            onDismiss = { showBackupBottomSheet = false },
-            onCreateBackup = {
-                showBackupBottomSheet = false
-                viewModel.exportJsonBackup(context) { success, message ->
-                    if (success) toast.success(message) else toast.error(message)
-                }
-            },
-            onRestore = {
-                showBackupBottomSheet = false
-                jsonBackupPickerLauncher.launch(arrayOf("application/json", "text/json", "*/*"))
-            },
-            onUninstallSafeBackupChanged = { enabled ->
-                uninstallSafeBackupEnabled = enabled
-                com.yuanman.app.data.local.DatabaseBackupManager.setUninstallSafeBackupEnabled(context, enabled)
-                if (enabled) {
-                    toast.info("已开启卸载保护，副本会保存到公共 Documents")
-                } else {
-                    toast.success("卸载保护已关闭，公共副本已移除")
-                }
-            }
-        )
-    }
-
     // 🌟 设备同步弹层
     // 数据管理底部弹层：导出、导入、备份与恢复
     if (showDataManageSheet) {
@@ -831,7 +770,7 @@ private fun SettingsRowItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .clickableDebounce(debounceTimeMs = 400L, onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 6.dp),
+            .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -841,16 +780,16 @@ private fun SettingsRowItem(
         ) {
             Box {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = CircleShape,
                     color = if (isDestructive) errorColor.copy(alpha = 0.12f) else primaryColor.copy(alpha = 0.12f),
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
                             tint = if (isDestructive) errorColor else primaryColor,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -975,10 +914,7 @@ private fun FamilySyncBottomSheet(
     // 🌟 同步完成提示：每次数据互通完成后 toast
     LaunchedEffect(Unit) {
         syncManager.events.collect { event ->
-            toast.success(
-                "同步完成：更新 ${event.recordCount} 笔账单、${event.categoryCount} 个分类、" +
-                    "${event.accountCount} 个账户、${event.snapshotCount} 个快照"
-            )
+            toast.success("同步完成：更新 ${event.recordCount} 笔账单、${event.categoryCount} 个分类")
         }
     }
 
@@ -1061,7 +997,7 @@ private fun FamilySyncBottomSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "在线设备（${devices.size}）",
+                            text = "在线设备 (${devices.size})",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -1136,7 +1072,7 @@ private fun FamilySyncBottomSheet(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("正在同步…")
+                            Text("正在同步...")
                         } else {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))

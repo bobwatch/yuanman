@@ -280,16 +280,6 @@ class PreferencesRepository(private val context: Context) {
         DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
-    suspend fun setDefaultExpenseAccountId(accountId: Long?) {
-        context.dataStore.edit { preferences ->
-            if (accountId != null && accountId > 0L) {
-                preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID] = accountId
-            } else {
-                preferences.remove(PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID)
-            }
-        }
-    }
-
     suspend fun setMonthlyBudget(budgetCents: Long) {
         setBudgetForMonth(currentYear(), currentMonth(), budgetCents)
     }
@@ -333,64 +323,6 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] = enabled
         }
         DatabaseBackupManager.scheduleAutoBackupSoon(context)
-    }
-
-    suspend fun setTemplatePinned(key: String, pinned: Boolean) {
-        if (key.isBlank()) return
-        context.dataStore.edit { preferences ->
-            val keys = parseKeySet(preferences[PreferencesKeys.PINNED_TEMPLATE_KEYS]).toMutableSet()
-            if (pinned) keys += key else keys -= key
-            preferences[PreferencesKeys.PINNED_TEMPLATE_KEYS] = serializeKeySet(keys)
-        }
-    }
-
-    suspend fun setTemplateHidden(key: String, hidden: Boolean) {
-        if (key.isBlank()) return
-        context.dataStore.edit { preferences ->
-            val keys = parseKeySet(preferences[PreferencesKeys.HIDDEN_TEMPLATE_KEYS]).toMutableSet()
-            if (hidden) keys += key else keys -= key
-            preferences[PreferencesKeys.HIDDEN_TEMPLATE_KEYS] = serializeKeySet(keys)
-        }
-    }
-
-    suspend fun markBackupCreated(at: Long = System.currentTimeMillis()) {
-        context.dataStore.edit { preferences -> preferences[PreferencesKeys.LAST_BACKUP_AT] = at }
-    }
-
-    suspend fun createSnapshot(): PreferenceSnapshot {
-        val preferences = context.dataStore.data.first()
-        return PreferenceSnapshot(
-            themeMode = preferences[PreferencesKeys.THEME_MODE] ?: ThemeMode.SYSTEM.name,
-            defaultRecordType = preferences[PreferencesKeys.DEFAULT_RECORD_TYPE] ?: RecordType.EXPENSE.name,
-            defaultPaymentMethod = preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] ?: PaymentMethod.defaultMethod(),
-            monthlyBudgets = parseMonthlyBudgets(preferences[PreferencesKeys.MONTHLY_BUDGETS]),
-            legacyMonthlyBudget = preferences[PreferencesKeys.MONTHLY_BUDGET] ?: 0L,
-            privacyMode = preferences[PreferencesKeys.PRIVACY_MODE] ?: false,
-            hapticFeedbackEnabled = preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] ?: true,
-            quickEntryEnabled = preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] ?: true,
-            customTags = preferences[PreferencesKeys.CUSTOM_TAGS]
-                ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
-                ?: defaultPresetTags,
-            pinnedTemplateKeys = parseKeySet(preferences[PreferencesKeys.PINNED_TEMPLATE_KEYS]),
-            hiddenTemplateKeys = parseKeySet(preferences[PreferencesKeys.HIDDEN_TEMPLATE_KEYS])
-        )
-    }
-
-    suspend fun restoreSnapshot(snapshot: PreferenceSnapshot) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.THEME_MODE] = snapshot.themeMode
-            preferences[PreferencesKeys.DEFAULT_RECORD_TYPE] = snapshot.defaultRecordType
-            preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] = snapshot.defaultPaymentMethod
-            preferences[PreferencesKeys.MONTHLY_BUDGETS] = serializeMonthlyBudgets(snapshot.monthlyBudgets)
-            preferences[PreferencesKeys.MONTHLY_BUDGET] = snapshot.legacyMonthlyBudget.coerceAtLeast(0L)
-            preferences[PreferencesKeys.PRIVACY_MODE] = snapshot.privacyMode
-            preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] = snapshot.hapticFeedbackEnabled
-            preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] = snapshot.quickEntryEnabled
-            preferences[PreferencesKeys.CUSTOM_TAGS] = snapshot.customTags.joinToString(",")
-            preferences[PreferencesKeys.PINNED_TEMPLATE_KEYS] = serializeKeySet(snapshot.pinnedTemplateKeys)
-            preferences[PreferencesKeys.HIDDEN_TEMPLATE_KEYS] = serializeKeySet(snapshot.hiddenTemplateKeys)
-        }
-        WidgetUpdateManager.requestUpdate(context)
     }
 
     suspend fun setCustomTags(tags: List<String>) {
@@ -471,27 +403,8 @@ class PreferencesRepository(private val context: Context) {
 
         private fun serializeMonthlyBudgets(budgets: Map<String, Long>): String =
             budgets.toSortedMap().entries.joinToString(",") { "${it.key}:${it.value}" }
-
-        private fun parseKeySet(raw: String?): Set<String> =
-            raw?.lineSequence()?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
-
-        private fun serializeKeySet(keys: Set<String>): String = keys.sorted().joinToString("\n")
     }
 }
-
-data class PreferenceSnapshot(
-    val themeMode: String,
-    val defaultRecordType: String,
-    val defaultPaymentMethod: String,
-    val monthlyBudgets: Map<String, Long>,
-    val legacyMonthlyBudget: Long,
-    val privacyMode: Boolean,
-    val hapticFeedbackEnabled: Boolean,
-    val quickEntryEnabled: Boolean,
-    val customTags: List<String>,
-    val pinnedTemplateKeys: Set<String> = emptySet(),
-    val hiddenTemplateKeys: Set<String> = emptySet()
-)
 
 data class WidgetPreferences(
     val monthlyBudget: Long,

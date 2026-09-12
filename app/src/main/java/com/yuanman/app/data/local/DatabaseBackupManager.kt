@@ -31,7 +31,6 @@ object DatabaseBackupManager {
     private const val SHARED_BACKUP_FILE_PREFIX = "yuanman_database_backup"
     private const val BACKUP_STATE_PREFERENCES = "database_backup_state"
     private const val DATABASE_INITIALIZED_KEY = "database_initialized"
-    private const val UNINSTALL_SAFE_BACKUP_ENABLED_KEY = "uninstall_safe_backup_enabled"
     private const val SHARED_BACKUP_TEMP_PREFIX = ".yuanman_database_backup_"
     private const val SHARED_BACKUP_DIR_NAME = "Yuanman"
     private const val SHARED_BACKUP_MIME_TYPE = "application/vnd.sqlite3"
@@ -125,14 +124,9 @@ object DatabaseBackupManager {
                     }
                 }
 
-                // 公共 Documents 对其他文件管理工具可见，只在用户明确授权后写入。
-                if (isUninstallSafeBackupEnabled(context)) {
-                    if (!createSharedBackup(context, dbFile)) {
-                        Log.w(TAG, "Shared uninstall-safe backup was not updated.")
-                    }
-                } else {
-                    // v0.0.3 曾默认创建公共副本；升级后按新的默认隐私策略主动收口。
-                    removeSharedBackups(context)
+                // 应用私有目录会随卸载删除，额外写入公共 Documents，供重装后自动恢复。
+                if (!createSharedBackup(context, dbFile)) {
+                    Log.w(TAG, "Shared uninstall-safe backup was not updated.")
                 }
 
                 // 个人习惯偏好(DataStore)同样发布到公共 Documents，重装后随数据库一并还原。
@@ -203,8 +197,8 @@ object DatabaseBackupManager {
             if (isDatabaseUsable(dbFile)) {
                 // 全新安装时 Android 可能会先恢复一个合法但为空的 Room 数据库。
                 // 只有在本应用尚未完成过初始化时，才允许公共快照覆盖这个空库；
-                // 已有历史数据的升级包即使尚未写入初始化标记，也绝不能被旧快照覆盖。
-                if (!isDatabaseInitialized(appContext) && isDatabaseEmpty(dbFile)) {
+                // 已使用过的应用即使账单为空，也不能被旧快照“复活”。
+                if (!isDatabaseInitialized(appContext)) {
                     val restored = restoreLatestBackupLocked(appContext)
                     Log.i(TAG, "Initial database recovery attempted. Restored: $restored")
                     restored
@@ -223,28 +217,6 @@ object DatabaseBackupManager {
             .edit()
             .putBoolean(DATABASE_INITIALIZED_KEY, true)
             .apply()
-    }
-
-    fun isUninstallSafeBackupEnabled(context: Context): Boolean =
-        context.applicationContext
-            .getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(UNINSTALL_SAFE_BACKUP_ENABLED_KEY, false)
-
-    fun setUninstallSafeBackupEnabled(context: Context, enabled: Boolean) {
-        context.applicationContext
-            .getSharedPreferences(BACKUP_STATE_PREFERENCES, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(UNINSTALL_SAFE_BACKUP_ENABLED_KEY, enabled)
-            .apply()
-        if (enabled) autoBackup(context) else removeSharedBackups(context)
-    }
-
-    /** Called only after the user explicitly disables public uninstall-safe backups. */
-    private fun removeSharedBackups(context: Context) {
-        runCatching {
-            querySharedBackupUris(context).forEach { context.contentResolver.delete(it, null, null) }
-            legacySharedBackupFile()?.takeIf { it.isFile }?.delete()
-        }.onFailure { Log.w(TAG, "Unable to remove shared backups: ${it.message}") }
     }
 
     private fun isDatabaseInitialized(context: Context): Boolean {
@@ -384,12 +356,8 @@ object DatabaseBackupManager {
     }
 
     private fun restoreLatestBackupLocked(context: Context): Boolean {
-        val validBackups = findValidBackups(context)
-        // 优先选择仍包含用户数据的快照，避免最新一次空库快照把较早的历史快照“顶掉”。
-        val bestBackup = validBackups
-            .filterNot(::isDatabaseEmpty)
+        val bestBackup = findValidBackups(context)
             .maxByOrNull { it.lastModified() }
-            ?: validBackups.maxByOrNull { it.lastModified() }
             ?: return false
 
         val dbFile = context.getDatabasePath(DB_NAME)
@@ -1026,74 +994,6 @@ object DatabaseBackupManager {
             }
         } catch (e: Exception) {
             false
-        }
-    }
-
-    /**
-     * 只把真正的新空库视为可被旧快照替换的恢复目标。
-     *
-     * 旧版本升级时 SharedPreferences 可能没有 DATABASE_INITIALIZED_KEY；如果只看这个标记，
-     * 一个合法的、有历史流水的旧数据库就会被较旧备份覆盖，表现为“升级后历史数据清空”。
-     */
-    private fun isDatabaseEmpty(dbFile: File): Boolean {
-        return try {
-            SQLiteDatabase.openDatabase(
-                dbFile.absolutePath,
-                null,
-                SQLiteDatabase.OPEN_READONLY
-            ).use { database ->
-                val hasUserCategories = if (hasTable(database, "categories")) {
-                    val categoryWhere = when {
-                        hasColumn(database, "categories", "isDefault") &&
-                            hasColumn(database, "categories", "deletedAt") ->
-                            "isDefault != 1 OR deletedAt IS NOT NULL"
-                        hasColumn(database, "categories", "isDefault") ->
-                            "isDefault != 1"
-                        else -> null
-                    }
-                    countRows(database, "categories", categoryWhere) > 0L
-                } else {
-                    false
-                }
-
-                hasUserCategories || listOf(
-                    "records",
-                    "quick_entry_learning",
-                    "accounts",
-                    "account_snapshots"
-                ).filter { hasTable(database, it) }
-                    .any { countRows(database, it) > 0L }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Unable to inspect database contents before recovery: ${e.message}")
-            false
-        }
-    }
-
-    private fun countRows(
-        database: SQLiteDatabase,
-        tableName: String,
-        whereClause: String? = null
-    ): Long {
-        val query = buildString {
-            append("SELECT COUNT(*) FROM ")
-            append(tableName)
-            if (!whereClause.isNullOrBlank()) {
-                append(" WHERE ")
-                append(whereClause)
-            }
-        }
-        return database.rawQuery(query, null).use { cursor ->
-            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
-        }
-    }
-
-    private fun hasColumn(database: SQLiteDatabase, tableName: String, columnName: String): Boolean {
-        return database.rawQuery("PRAGMA table_info($tableName)", null).use { cursor ->
-            val nameIndex = cursor.getColumnIndex("name")
-            nameIndex >= 0 && generateSequence {
-                if (cursor.moveToNext()) cursor.getString(nameIndex) else null
-            }.any { it == columnName }
         }
     }
 

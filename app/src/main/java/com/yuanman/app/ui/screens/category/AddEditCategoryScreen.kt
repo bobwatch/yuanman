@@ -195,7 +195,7 @@ fun AddEditCategoryScreen(
                         value = uiState.name,
                         onValueChange = { viewModel.setName(it) },
                         label = { Text("分类名称") },
-                        placeholder = { Text("如：餐饮、数码、交通、工资") },
+                        placeholder = { Text("如: 餐饮、数码、交通、工资") },
                         singleLine = true,
                         supportingText = {
                             Text("${uiState.name.length}/8 字")
@@ -206,7 +206,7 @@ fun AddEditCategoryScreen(
                 }
             }
 
-            // 🌟 卡片 2: 子标签管理（宽敞明亮、拒绝拥挤）
+            // 🌟 卡片 2: 专属子标签管理（宽敞明亮、拒绝拥挤）
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -226,7 +226,7 @@ fun AddEditCategoryScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "子标签（${uiState.tagList.size}）",
+                            text = "专属子标签 (${uiState.tagList.size})",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Text(
@@ -300,7 +300,7 @@ fun AddEditCategoryScreen(
                         OutlinedTextField(
                             value = newTagInput,
                             onValueChange = { if (it.length <= 8) newTagInput = it },
-                            placeholder = { Text("输入新子标签（如：奶茶）") },
+                            placeholder = { Text("输入新子标签 (如: 奶茶)") },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
@@ -331,7 +331,7 @@ fun AddEditCategoryScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "推荐快速添加：",
+                                text = "💡 推荐快速添加：",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -389,7 +389,7 @@ fun AddEditCategoryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "选择图标（${filteredIcons.size}）",
+                        text = "选择图标 (${filteredIcons.size})",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
 
@@ -461,7 +461,7 @@ fun AddEditCategoryScreen(
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = iconInfo.name,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.5.sp,
                                     color = if (isSelected) Color(uiState.selectedColor) else MaterialTheme.colorScheme.outline,
                                     maxLines = 1
                                 )

@@ -43,9 +43,6 @@ interface QuickEntryLearningDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rule: QuickEntryLearningEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(rules: List<QuickEntryLearningEntity>)
-
     @Delete
     suspend fun delete(rule: QuickEntryLearningEntity)
 

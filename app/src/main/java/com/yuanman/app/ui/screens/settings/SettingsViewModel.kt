@@ -13,7 +13,6 @@ import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
-import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
@@ -26,8 +25,6 @@ import com.yuanman.app.utils.UpdateInfo
 import com.yuanman.app.utils.UpdateManager
 import com.yuanman.app.utils.UpdateState
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -42,7 +39,6 @@ data class SettingsUiState(
     val totalRecordCount: Int = 0,
     val allRecords: List<RecordWithCategory> = emptyList(),
     val allCategories: List<CategoryEntity> = emptyList(),
-    val lastBackupAt: Long = 0L,
     val isClearedSuccess: Boolean = false,
     val isLoading: Boolean = false
 )
@@ -60,23 +56,10 @@ private data class FeaturePrefs(
     val quickEntryEnabled: Boolean
 )
 
-private data class SettingsData(
-    val categories: List<CategoryEntity>,
-    val records: List<RecordWithCategory>,
-    val lastBackupAt: Long
-)
-
-data class PendingJsonRestore(
-    val json: String,
-    val preview: JsonBackupUtils.BackupPreview
-)
-
 class SettingsViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
-    private val accountRepository: AccountRepository,
-    private val database: AppDatabase,
     val syncManager: FamilySyncManager,
     val updateManager: UpdateManager
 ) : ViewModel() {
@@ -117,9 +100,10 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = combine(
         generalPrefsFlow,
         featurePrefsFlow,
-        settingsDataFlow,
+        allCategories,
+        allRecords,
         _isClearedSuccess
-    ) { general, feature, data, cleared ->
+    ) { general, feature, categories, records, cleared ->
         SettingsUiState(
             themeMode = general.theme,
             defaultRecordType = general.defaultType,
@@ -128,10 +112,9 @@ class SettingsViewModel(
             privacyMode = feature.privacy,
             hapticEnabled = feature.haptic,
             quickEntryEnabled = feature.quickEntryEnabled,
-            totalRecordCount = data.records.size,
-            allRecords = data.records,
-            allCategories = data.categories,
-            lastBackupAt = data.lastBackupAt,
+            totalRecordCount = records.size,
+            allRecords = records,
+            allCategories = categories,
             isClearedSuccess = cleared,
             isLoading = false
         )
@@ -383,31 +366,8 @@ class SettingsViewModel(
     fun restoreFromJson(jsonString: String, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val data = withContext(Dispatchers.IO) {
-                    JsonBackupUtils.parseFromJsonString(jsonString).also {
-                        com.yuanman.app.data.local.DatabaseBackupManager.autoBackup(
-                            com.yuanman.app.YuanmanApplication.instance
-                        )
-                    }
-                }
-                withContext(Dispatchers.IO) {
-                    database.withTransaction {
-                        val balanceBaselines = accountRepository.captureBalanceBaselinesInTransaction()
-                        val accountMerge = accountRepository.mergeSyncedAccountsInTransaction(
-                            remoteAccounts = data.accounts,
-                            remoteSnapshots = data.accountSnapshots
-                        )
-                        val remappedRecords = accountRepository.remapRecordAccountIds(
-                            records = data.records,
-                            remoteToLocalAccountIds = accountMerge.remoteToLocalAccountIds,
-                            includesAccounts = data.includesAccounts
-                        )
-                        categoryRepository.mergeSyncedDataInTransaction(data.categories, remappedRecords)
-                        accountRepository.recalculateBalancesInTransaction(balanceBaselines)
-                    }
-                }
-                categoryRepository.mergeQuickEntryLearning(data.quickEntryLearning)
-                data.preferences?.let { preferencesRepository.restoreSnapshot(it) }
+                val data = JsonBackupUtils.parseFromJsonString(jsonString)
+                categoryRepository.mergeSyncedData(data.categories, data.records)
                 recordRepository.notifyDataChanged()
                 // 完整备份 JSON 中若带 accountData 段（账户/计划等 DataStore 键）则一并逐键写回；
                 // 老备份文件无该段时 accountData 为空，跳过即可、不影响分类与账单恢复。
@@ -447,8 +407,6 @@ class SettingsViewModel(
         private val preferencesRepository: PreferencesRepository,
         private val recordRepository: RecordRepository,
         private val categoryRepository: CategoryRepository,
-        private val accountRepository: AccountRepository,
-        private val database: AppDatabase,
         private val syncManager: FamilySyncManager,
         private val updateManager: UpdateManager
     ) : ViewModelProvider.Factory {
@@ -458,8 +416,6 @@ class SettingsViewModel(
                 preferencesRepository,
                 recordRepository,
                 categoryRepository,
-                accountRepository,
-                database,
                 syncManager,
                 updateManager
             ) as T

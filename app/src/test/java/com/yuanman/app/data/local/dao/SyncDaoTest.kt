@@ -139,29 +139,12 @@ class SyncDaoTest {
         assertEquals(1L, dao.records.single().categoryId)
     }
 
-    @Test
-    fun `higher revision wins even when device clock is behind`() = runBlocking {
-        val dao = FakeSyncDao(
-            categories = mutableListOf(category(1L, "餐饮美食", "cat-a")),
-            records = mutableListOf(record(1L, 1L, "record-a", amount = 100L, updatedAt = 9_000L, revision = 1L))
-        )
-
-        dao.merge(
-            listOf(category(9L, "餐饮美食", "cat-a")),
-            listOf(record(9L, 9L, "record-a", amount = 250L, updatedAt = 1_000L, revision = 2L))
-        )
-
-        assertEquals(250L, dao.records.single().amount)
-        assertEquals(2L, dao.records.single().revision)
-    }
-
     private fun category(
         id: Long,
         name: String,
         syncId: String,
         type: String = "EXPENSE",
-        updatedAt: Long = 100L,
-        revision: Long = 0L
+        updatedAt: Long = 100L
     ) = CategoryEntity(
         id = id,
         name = name,
@@ -170,8 +153,7 @@ class SyncDaoTest {
         colorHex = 0L,
         createdAt = 100L,
         syncId = syncId,
-        updatedAt = updatedAt,
-        revision = revision
+        updatedAt = updatedAt
     )
 
     private fun record(
@@ -181,8 +163,7 @@ class SyncDaoTest {
         type: String = "EXPENSE",
         amount: Long = 1_000L,
         updatedAt: Long = 100L,
-        deletedAt: Long? = null,
-        revision: Long = 0L
+        deletedAt: Long? = null
     ) = RecordEntity(
         id = id,
         type = type,
@@ -193,7 +174,6 @@ class SyncDaoTest {
         paymentMethod = "现金",
         createdAt = 100L,
         updatedAt = updatedAt,
-        revision = revision,
         syncId = syncId,
         deletedAt = deletedAt
     )
@@ -237,7 +217,7 @@ class SyncDaoTest {
 
         override suspend fun softDeleteCategory(categoryId: Long, deletedAt: Long) {
             categories.replaceAll {
-                if (it.id == categoryId) it.copy(updatedAt = deletedAt, revision = it.revision + 1L, deletedAt = deletedAt) else it
+                if (it.id == categoryId) it.copy(updatedAt = deletedAt, deletedAt = deletedAt) else it
             }
         }
     }

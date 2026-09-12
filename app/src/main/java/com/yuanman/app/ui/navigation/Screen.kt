@@ -12,12 +12,10 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Account : Screen("account")
     object RecordList : Screen("record_list")
-    object Accounts : Screen("accounts")
     object Statistics : Screen("statistics")
     object AssetPanorama : Screen("asset_panorama")
     object CategoryManage : Screen("category_manage")
     object Settings : Screen("settings")
-    object AccountStatistics : Screen("account_statistics")
 
     object AddEditRecord : Screen("add_edit_record?recordId={recordId}&type={type}&categoryId={categoryId}") {
         fun createRoute(recordId: Long = 0L, type: RecordType? = null, categoryId: Long = 0L): String {

@@ -114,17 +114,6 @@ private val TAB_ROUTES = listOf(
     Screen.Settings.route
 )
 
-/**
- * 账户统计页返回时，经“账户 Tab 入口”SavedStateHandle 回传的待办动作键。
- *
- * 账户 Tab 与统计页各自通过 viewModel() 创建独立的 AccountsViewModel，转账/对账弹窗
- * 开关属于 VM 内存态：在统计页自己的 VM 上置位会随页面销毁而丢失（回主页后永不弹窗）。
- * 因此统计页的 CTA 只负责把意图写入下方账户入口的 SavedStateHandle，账户页每次进入
- * （含从统计页返回）时消费一次并立即清除，避免下次进入重复触发。
- */
-private const val KEY_PENDING_ACCOUNT_ACTION_TRANSFER_TO = "pending_account_action_transfer_to"
-private const val KEY_PENDING_ACCOUNT_ACTION_RECONCILE = "pending_account_action_reconcile"
-
 @Composable
 fun YuanmanNavGraph(
     navController: NavHostController,
