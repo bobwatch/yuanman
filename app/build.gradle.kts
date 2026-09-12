@@ -57,8 +57,10 @@ android {
     }
 
     buildTypes {
+        // CI 会签出 keystore 但没有 local.properties，因此只能按「凭据齐全」判定，
+        // 否则 debug 构建会套用密码为空的 release 签名配置而失败。
         debug {
-            if (keystoreFile.exists()) {
+            if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
@@ -68,7 +70,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (keystoreFile.exists()) {
+            if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
