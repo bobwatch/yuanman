@@ -205,7 +205,7 @@ fun CapitalBalanceHeroCard(
             }
         }
 
-        // 行 2：主数字（收敛至 24sp，若极端位数则等比下调）
+        // 行 2：主数字（收敛至 24sp，若极端位数则等比下调）+ 隐私切换眼睛紧随其后
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -230,6 +230,20 @@ fun CapitalBalanceHeroCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
+            if (onTogglePrivacy != null) {
+                Spacer(modifier = Modifier.width(6.dp))
+                IconButton(
+                    onClick = onTogglePrivacy,
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPrivacyMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (isPrivacyMode) "显示金额" else "隐藏金额",
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
         }
 
         // 行 3：微细分割线
@@ -244,7 +258,7 @@ fun CapitalBalanceHeroCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
-            // 左列：总资产（隐私小眼睛紧随金额之后，长金额自动截断）
+            // 左列：总资产
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "总资产",
@@ -252,36 +266,16 @@ fun CapitalBalanceHeroCard(
                     color = scheme.outline
                 )
                 Spacer(modifier = Modifier.height(3.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = assetText,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        ),
-                        color = scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (onTogglePrivacy != null) {
-                        Spacer(modifier = Modifier.width(5.dp))
-                        IconButton(
-                            onClick = onTogglePrivacy,
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isPrivacyMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (isPrivacyMode) "显示金额" else "隐藏金额",
-                                tint = scheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = assetText,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    ),
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             // 右列：待还负债与负债率
@@ -898,19 +892,29 @@ fun NetWorthTrendCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(155.dp)
                     .pointerInput(points) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                val stepX = if (points.size > 1) (size.width.toFloat() - axisGutterDp.toPx()) / (points.size - 1) else size.width.toFloat()
-                                val idx = ((offset.x - axisGutterDp.toPx()) / stepX).roundToInt().coerceIn(0, points.lastIndex)
-                                selectedPointIndex = idx
+                                if (points.isNotEmpty()) {
+                                    val stepX = if (points.size > 1) (size.width - axisGutterDp.toPx() - 28.dp.toPx()) / (points.size - 1) else 0f
+                                    val plotLeft = axisGutterDp.toPx() + 14.dp.toPx()
+                                    selectedPointIndex = points.indices.minByOrNull { i ->
+                                        val px = if (points.size > 1) plotLeft + i * stepX else size.width / 2f
+                                        abs(px - offset.x)
+                                    } ?: 0
+                                }
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                val stepX = if (points.size > 1) (size.width.toFloat() - axisGutterDp.toPx()) / (points.size - 1) else size.width.toFloat()
-                                val idx = ((change.position.x - axisGutterDp.toPx()) / stepX).roundToInt().coerceIn(0, points.lastIndex)
-                                selectedPointIndex = idx
+                                if (points.isNotEmpty()) {
+                                    val stepX = if (points.size > 1) (size.width - axisGutterDp.toPx() - 28.dp.toPx()) / (points.size - 1) else 0f
+                                    val plotLeft = axisGutterDp.toPx() + 14.dp.toPx()
+                                    selectedPointIndex = points.indices.minByOrNull { i ->
+                                        val px = if (points.size > 1) plotLeft + i * stepX else size.width / 2f
+                                        abs(px - change.position.x)
+                                    } ?: 0
+                                }
                             },
                             onDragEnd = { selectedPointIndex = null },
                             onDragCancel = { selectedPointIndex = null }
@@ -919,11 +923,16 @@ fun NetWorthTrendCard(
                     .pointerInput(points) {
                         detectTapGestures(
                             onPress = { offset ->
-                                val stepX = if (points.size > 1) (size.width.toFloat() - axisGutterDp.toPx()) / (points.size - 1) else size.width.toFloat()
-                                val idx = ((offset.x - axisGutterDp.toPx()) / stepX).roundToInt().coerceIn(0, points.lastIndex)
-                                selectedPointIndex = idx
-                                tryAwaitRelease()
-                                selectedPointIndex = null
+                                if (points.isNotEmpty()) {
+                                    val stepX = if (points.size > 1) (size.width - axisGutterDp.toPx() - 28.dp.toPx()) / (points.size - 1) else 0f
+                                    val plotLeft = axisGutterDp.toPx() + 14.dp.toPx()
+                                    selectedPointIndex = points.indices.minByOrNull { i ->
+                                        val px = if (points.size > 1) plotLeft + i * stepX else size.width / 2f
+                                        abs(px - offset.x)
+                                    } ?: 0
+                                    tryAwaitRelease()
+                                    selectedPointIndex = null
+                                }
                             }
                         )
                     }
@@ -931,80 +940,21 @@ fun NetWorthTrendCard(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    // 左侧预留纵轴刻度区，绘图区整体右移
+                    // 左侧预留纵轴刻度区，内缩 14dp 作为首尾数据点安全区（彻底避免原点与纵轴重叠）
                     val axisLeft = axisGutterDp.toPx()
-                    val paddingBottom = 26f
-                    val paddingTop = 16f
-                    val plotWidth = w - axisLeft
-                    val plotHeight = h - paddingTop - paddingBottom
-                    val stepX = if (points.size > 1) plotWidth / (points.size - 1) else plotWidth
-
-                    val path = Path()
-                    val fillPath = Path()
+                    val plotLeft = axisLeft + 14.dp.toPx()
+                    val plotRight = w - 14.dp.toPx()
+                    val paddingTop = 16.dp.toPx()
+                    val paddingBottom = 32.dp.toPx() // 底部预留 32dp 独立横轴刻度区，严禁折线侵入
+                    val plotWidth = (plotRight - plotLeft).coerceAtLeast(1f)
+                    val plotHeight = (h - paddingTop - paddingBottom).coerceAtLeast(1f)
+                    val stepX = if (points.size > 1) plotWidth / (points.size - 1) else 0f
 
                     val pointCoords = points.mapIndexed { index, point ->
-                        val x = axisLeft + index * stepX
+                        val x = if (points.size > 1) plotLeft + index * stepX else (plotLeft + plotRight) / 2f
                         val normalized = (point.netWorthCents - minVal).toFloat() / valueSpan.toFloat()
                         val y = paddingTop + (1f - normalized) * plotHeight
                         Offset(x, y)
-                    }
-
-                    pointCoords.forEachIndexed { i, pt ->
-                        if (i == 0) {
-                            path.moveTo(pt.x, pt.y)
-                            fillPath.moveTo(pt.x, h - paddingBottom)
-                            fillPath.lineTo(pt.x, pt.y)
-                        } else {
-                            path.lineTo(pt.x, pt.y)
-                            fillPath.lineTo(pt.x, pt.y)
-                        }
-                    }
-
-                    if (pointCoords.isNotEmpty()) {
-                        val last = pointCoords.last()
-                        fillPath.lineTo(last.x, h - paddingBottom)
-                        fillPath.close()
-
-                        // 渐变面积填充
-                        drawPath(fillPath, gradientBrush)
-
-                        // 折线
-                        drawPath(
-                            path,
-                            color = lineColor,
-                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
-                        )
-
-                        // 绘制探针参考虚线
-                        selectedPointIndex?.let { selIdx ->
-                            if (selIdx in pointCoords.indices) {
-                                val probePt = pointCoords[selIdx]
-                                drawLine(
-                                    color = lineColor.copy(alpha = 0.45f),
-                                    start = Offset(probePt.x, paddingTop),
-                                    end = Offset(probePt.x, h - paddingBottom),
-                                    strokeWidth = 1.5.dp.toPx(),
-                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-                                )
-                            }
-                        }
-
-                        // 绘制节点圆心（外圈 primary，内圈 surface）
-                        pointCoords.forEachIndexed { idx, pt ->
-                            val isSelected = (idx == selectedPointIndex)
-                            val radius = if (isSelected) 4.5.dp.toPx() else 3.dp.toPx()
-                            drawCircle(
-                                color = dotCenterColor,
-                                radius = radius,
-                                center = pt
-                            )
-                            drawCircle(
-                                color = lineColor,
-                                radius = radius,
-                                center = pt,
-                                style = Stroke(width = if (isSelected) 2.dp.toPx() else 1.5.dp.toPx())
-                            )
-                        }
                     }
 
                     // —— 纵轴虚线网格 + 刻度值 ——
@@ -1014,7 +964,7 @@ fun NetWorthTrendCard(
                         val normalized = (tick - minVal).toFloat() / valueSpan.toFloat()
                         val y = paddingTop + (1f - normalized) * plotHeight
                         drawLine(
-                            color = scheme.outline.copy(alpha = 0.16f),
+                            color = scheme.outline.copy(alpha = 0.14f),
                             start = Offset(axisLeft, y),
                             end = Offset(w, y),
                             strokeWidth = 1.dp.toPx(),
@@ -1033,23 +983,106 @@ fun NetWorthTrendCard(
                         }
                     }
 
-                    // —— 横轴月份刻度：对齐数据点实际位置，点过密时隔点显示 ——
+                    if (pointCoords.isNotEmpty()) {
+                        // 平滑三次贝塞尔折线与渐变面积填充
+                        val path = Path()
+                        val fillPath = Path()
+
+                        pointCoords.forEachIndexed { i, pt ->
+                            if (i == 0) {
+                                path.moveTo(pt.x, pt.y)
+                                fillPath.moveTo(pt.x, h - paddingBottom)
+                                fillPath.lineTo(pt.x, pt.y)
+                            } else {
+                                val prev = pointCoords[i - 1]
+                                val cx = (prev.x + pt.x) / 2f
+                                path.cubicTo(cx, prev.y, cx, pt.y, pt.x, pt.y)
+                                fillPath.cubicTo(cx, prev.y, cx, pt.y, pt.x, pt.y)
+                            }
+                        }
+
+                        val last = pointCoords.last()
+                        fillPath.lineTo(last.x, h - paddingBottom)
+                        fillPath.close()
+
+                        // 1. 柔和渐变面积
+                        drawPath(fillPath, gradientBrush)
+
+                        // 2. 主曲线
+                        drawPath(
+                            path,
+                            color = lineColor,
+                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                        )
+
+                        // 3. 探针垂直参考虚线
+                        selectedPointIndex?.let { selIdx ->
+                            if (selIdx in pointCoords.indices) {
+                                val probePt = pointCoords[selIdx]
+                                drawLine(
+                                    color = lineColor.copy(alpha = 0.45f),
+                                    start = Offset(probePt.x, paddingTop),
+                                    end = Offset(probePt.x, h - paddingBottom),
+                                    strokeWidth = 1.5.dp.toPx(),
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                                )
+                            }
+                        }
+
+                        // 4. 数据节点圆点（选中时呈呼吸光晕焦点）
+                        pointCoords.forEachIndexed { idx, pt ->
+                            val isSelected = (idx == selectedPointIndex)
+                            if (isSelected) {
+                                drawCircle(
+                                    color = lineColor.copy(alpha = 0.22f),
+                                    radius = 9.dp.toPx(),
+                                    center = pt
+                                )
+                                drawCircle(
+                                    color = lineColor,
+                                    radius = 5.dp.toPx(),
+                                    center = pt
+                                )
+                                drawCircle(
+                                    color = dotCenterColor,
+                                    radius = 2.8.dp.toPx(),
+                                    center = pt
+                                )
+                            } else {
+                                drawCircle(
+                                    color = dotCenterColor,
+                                    radius = 3.dp.toPx(),
+                                    center = pt
+                                )
+                                drawCircle(
+                                    color = lineColor,
+                                    radius = 3.dp.toPx(),
+                                    center = pt,
+                                    style = Stroke(width = 1.5.dp.toPx())
+                                )
+                            }
+                        }
+                    }
+
+                    // —— 横轴月份刻度：在独立的底部区域居中绘制，与首末原点及图表完全隔离 ——
                     axisTextPaint.textAlign = android.graphics.Paint.Align.CENTER
+                    axisTextPaint.textSize = 10.sp.toPx()
                     points.forEachIndexed { index, point ->
                         val show = when {
                             points.size <= 6 -> true
                             points.size <= 12 -> index % 2 == 0 || index == points.lastIndex
-                            else -> index % 4 == 0 || index == points.lastIndex
+                            else -> index % 3 == 0 || index == points.lastIndex
                         }
-                        if (show) {
+                        if (show && index in pointCoords.indices) {
                             val cx = pointCoords[index].x
                             val halfWidth = axisTextPaint.measureText(point.label) / 2f
-                            val minTextX = halfWidth + 2f
-                            val textX = cx.coerceIn(minTextX, (w - halfWidth - 2f).coerceAtLeast(minTextX))
+                            val minTextX = axisLeft + halfWidth
+                            val maxTextX = w - halfWidth
+                            val textX = cx.coerceIn(minTextX, maxTextX.coerceAtLeast(minTextX))
                             drawContext.canvas.nativeCanvas.drawText(
                                 point.label,
                                 textX,
-                                h - 6.dp.toPx(),
+                                h - 8.dp.toPx(),
                                 axisTextPaint
                             )
                         }

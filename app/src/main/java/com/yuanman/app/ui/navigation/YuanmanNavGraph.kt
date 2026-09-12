@@ -206,7 +206,10 @@ fun YuanmanNavGraph(
             if (abs(currentEff - baseRestingReveal.value) > 0.001f) {
                 baseRestingReveal.snapTo(currentEff)
             }
-            if (abs(baseRevealTarget - baseRestingReveal.value) > 0.001f) {
+            if (secondaryStack.isEmpty() && boundedProgress <= 0.001f) {
+                // 若无手势进度直接变空（硬性关闭），立即还原为全屏无遮罩，严禁裸露 0.94 缩小态与黑色遮罩闪屏
+                baseRestingReveal.snapTo(1f)
+            } else if (abs(baseRevealTarget - baseRestingReveal.value) > 0.001f) {
                 baseRestingReveal.animateTo(
                     targetValue = baseRevealTarget,
                     animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
@@ -469,7 +472,7 @@ fun YuanmanNavGraph(
                         onEdgeChange = { edge ->
                             if (isTop) activeSwipeEdge = edge
                         }
-                    ) {
+                    ) { requestBack ->
                         when (screen) {
                             is SecondaryScreen.AddEditRecord -> {
                                 val addEditViewModel: AddEditRecordViewModel = viewModel(
@@ -486,9 +489,7 @@ fun YuanmanNavGraph(
                                 )
                                 AddEditRecordScreen(
                                     viewModel = addEditViewModel,
-                                    onNavigateBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    },
+                                    onNavigateBack = requestBack,
                                     onNavigateToAddCategory = { type ->
                                         secondaryStack.add(SecondaryScreen.AddEditCategory(type = type))
                                     }
@@ -505,9 +506,7 @@ fun YuanmanNavGraph(
                                 )
                                 StatisticsScreen(
                                     viewModel = statsViewModel,
-                                    onNavigateBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    },
+                                    onNavigateBack = requestBack,
                                     onCategoryClick = { categoryId ->
                                         secondaryStack.add(SecondaryScreen.CategoryRecords(categoryId))
                                     }
@@ -523,9 +522,7 @@ fun YuanmanNavGraph(
                                 )
                                 AssetPanoramaScreen(
                                     viewModel = panoramaViewModel,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    },
+                                    onBack = requestBack,
                                     onNavigateToAccount = { accountId ->
                                         secondaryStack.add(SecondaryScreen.AccountDetail(accountId))
                                     }
@@ -541,9 +538,7 @@ fun YuanmanNavGraph(
                                 )
                                 PaycheckRunScreen(
                                     viewModel = paycheckViewModel,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onBack = requestBack
                                 )
                             }
 
@@ -556,9 +551,7 @@ fun YuanmanNavGraph(
                                 )
                                 AccountReconcileScreen(
                                     viewModel = reconcileViewModel,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onBack = requestBack
                                 )
                             }
 
@@ -574,9 +567,7 @@ fun YuanmanNavGraph(
                                 )
                                 QuickRecordSettingsScreen(
                                     viewModel = quickRecordViewModel,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onBack = requestBack
                                 )
                             }
 
@@ -588,9 +579,7 @@ fun YuanmanNavGraph(
                                 )
                                 CategoryManageScreen(
                                     viewModel = categoryViewModel,
-                                    onNavigateBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    },
+                                    onNavigateBack = requestBack,
                                     onNavigateToAddCategory = { type ->
                                         secondaryStack.add(SecondaryScreen.AddEditCategory(type = type))
                                     },
@@ -611,9 +600,7 @@ fun YuanmanNavGraph(
                                 )
                                 AddEditCategoryScreen(
                                     viewModel = addEditCategoryViewModel,
-                                    onNavigateBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onNavigateBack = requestBack
                                 )
                             }
 
@@ -627,9 +614,7 @@ fun YuanmanNavGraph(
                                 AccountDetailScreen(
                                     viewModel = accountDetailViewModel,
                                     accountId = screen.accountId,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onBack = requestBack
                                 )
                             }
 
@@ -643,9 +628,7 @@ fun YuanmanNavGraph(
                                 PlanDetailScreen(
                                     viewModel = planDetailViewModel,
                                     planId = screen.planId,
-                                    onBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    }
+                                    onBack = requestBack
                                 )
                             }
 
@@ -660,9 +643,7 @@ fun YuanmanNavGraph(
                                 )
                                 CategoryRecordsScreen(
                                     viewModel = categoryRecordsViewModel,
-                                    onNavigateBack = {
-                                        if (secondaryStack.isNotEmpty()) secondaryStack.removeLast()
-                                    },
+                                    onNavigateBack = requestBack,
                                     onNavigateToEdit = { recordId ->
                                         secondaryStack.add(SecondaryScreen.AddEditRecord(recordId = recordId))
                                     },

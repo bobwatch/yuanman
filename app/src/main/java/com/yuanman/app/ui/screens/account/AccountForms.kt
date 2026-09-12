@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,11 +47,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.ui.components.AccountIconHelper
 import com.yuanman.app.ui.components.BrandAccountIcon
 import com.yuanman.app.ui.components.BrandAccountIcons
 import com.yuanman.app.ui.components.CategoryIconView
@@ -111,13 +114,8 @@ fun AddEditAccountSheet(
         0xFF26A69AL  // 薄荷绿
     )
 
-    // 账户类别图标词表（品牌图标 = 微信支付/支付宝/银联，固有色渲染；其余单色矢量随主题色）
-    val availableIcons = listOf(
-        "wechat", "alipay", "unionpay",
-        "wallet", "part_time", "bank", "bonus", "savings", "salary",
-        "finance", "refund", "card_gift", "shopping", "digital", "housing",
-        "traffic", "other"
-    )
+    // 账户类别图标词表（精选 22 项细分账户资产图标，含主流支付品牌、卡包、理财、借贷等）
+    val availableIcons = AccountIconHelper.ALL_AVAILABLE_ACCOUNT_ICONS
 
     YuanmanModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
         Column(
@@ -293,6 +291,7 @@ fun AddEditAccountSheet(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                val isDark = isSystemInDarkTheme()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -301,13 +300,15 @@ fun AddEditAccountSheet(
                 ) {
                     availableIcons.forEach { iconKey ->
                         val isSelected = iconName == iconKey
+                        val unselectedTint = if (isDark) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f) else MaterialTheme.colorScheme.onSurfaceVariant
+                        val unselectedBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f)
                         Box(
                             modifier = Modifier
                                 .size(42.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    else unselectedBg
                                 )
                                 .border(
                                     width = if (isSelected) 2.dp else 0.dp,
@@ -319,11 +320,18 @@ fun AddEditAccountSheet(
                         ) {
                             if (BrandAccountIcons.isBrand(iconKey)) {
                                 BrandAccountIcon(iconKey, size = 22.dp)
+                            } else if (AccountIconHelper.isAccountIcon(iconKey)) {
+                                Icon(
+                                    imageVector = AccountIconHelper.getIcon(iconKey)!!,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else unselectedTint,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             } else {
                                 Icon(
                                     imageVector = CategoryIconHelper.getIcon(iconKey),
                                     contentDescription = null,
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else unselectedTint,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }

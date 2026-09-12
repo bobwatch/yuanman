@@ -237,6 +237,9 @@ fun RecordListScreen(
                             )
 
                             val isSearchActive = showSearchBar || uiState.searchQuery.isNotEmpty()
+                            val (currentYear, currentMonth) = remember { DateTimeUtils.getCurrentYearMonth() }
+                            val canGoNextMonth = uiState.selectedYear < currentYear ||
+                                (uiState.selectedYear == currentYear && uiState.selectedMonth < currentMonth)
 
                             // 1. 月份胶囊：‹ › 左右箭头翻月 / 胶囊上左右滑动翻月 / 点中间文字呼出月份选择器
                             Surface(
@@ -246,14 +249,14 @@ fun RecordListScreen(
                                 modifier = Modifier
                                     .height(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .pointerInput(Unit) {
+                                    .pointerInput(canGoNextMonth) {
                                         // 左右滑动翻月：左滑 → 下月，右滑 → 上月（超过阈值才触发）
                                         val flipThreshold = 36.dp.toPx()
                                         var totalDrag = 0f
                                         detectHorizontalDragGestures(
                                             onDragEnd = {
                                                 when {
-                                                    totalDrag <= -flipThreshold -> viewModel.nextMonth()
+                                                    totalDrag <= -flipThreshold -> if (canGoNextMonth) viewModel.nextMonth()
                                                     totalDrag >= flipThreshold -> viewModel.previousMonth()
                                                 }
                                                 totalDrag = 0f
@@ -299,13 +302,17 @@ fun RecordListScreen(
                                         modifier = Modifier
                                             .size(26.dp)
                                             .clip(CircleShape)
-                                            .clickable { viewModel.nextMonth() },
+                                            .clickable(enabled = canGoNextMonth) { viewModel.nextMonth() },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                             contentDescription = "下一个月",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (canGoNextMonth) {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+                                            },
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }

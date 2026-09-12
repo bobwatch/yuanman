@@ -18,10 +18,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,7 +100,7 @@ val LocalToastHostState = staticCompositionLocalOf<ToastHostState> {
 }
 
 /**
- * 🌟 顶部全局 Toast 宿主容器（绝不被底部 TabBar 遮挡，优雅自顶部自然落下）
+ * 🌟 顶部全局 Toast 宿主容器（置于顶层 Popup 视窗，浮于所有 BottomSheet、遮罩及页面之上）
  */
 @Composable
 fun TopToastHost(
@@ -104,21 +108,36 @@ fun TopToastHost(
     modifier: Modifier = Modifier
 ) {
     val toasts by state.toasts.collectAsStateWithLifecycle()
+    if (toasts.isEmpty()) return
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+
+    Popup(
+        alignment = Alignment.TopCenter,
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
     ) {
-        toasts.forEach { toast ->
-            key(toast.id) {
-                TopToastItem(
-                    toast = toast,
-                    onDismiss = { state.dismiss(toast.id) },
-                    onRemoved = { state.remove(toast.id) }
-                )
+        Column(
+            modifier = Modifier
+                .width(screenWidth)
+                .padding(top = statusBarTop + 8.dp)
+                .padding(horizontal = 16.dp)
+                .then(modifier),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            toasts.forEach { toast ->
+                key(toast.id) {
+                    TopToastItem(
+                        toast = toast,
+                        onDismiss = { state.dismiss(toast.id) },
+                        onRemoved = { state.remove(toast.id) }
+                    )
+                }
             }
         }
     }
@@ -131,41 +150,45 @@ private fun TopToastItem(
     onDismiss: () -> Unit,
     onRemoved: () -> Unit
 ) {
-    // 🌟 四种不同类型的独立质感配色方案与图标
-    val (containerColor, borderColor, badgeColor, accentColor, variantIcon) = when (toast.type) {
+    // 🌟 四种不同类型的独立高亮质感配色方案（高对比深底 + 强边框 + 发光投影 + 晶莹图标）
+    val (containerColor, borderColor, badgeColor, accentColor, glowColor, variantIcon) = when (toast.type) {
         ToastType.SUCCESS -> {
-            Tuple5(
-                Color(0xFF0B2920), // 翡翠墨绿暗底
-                Color(0xFF10B981).copy(alpha = 0.55f), // 翠绿边框
-                Color(0xFF10B981).copy(alpha = 0.22f), // 图标光晕
+            Tuple6(
+                Color(0xFF092419),                     // 墨玉深绿
+                Color(0xFF10B981).copy(alpha = 0.85f), // 翠绿高亮边框
+                Color(0xFF10B981).copy(alpha = 0.25f), // 图标光晕底色
                 Color(0xFF34D399),                     // 高亮翡翠绿
+                Color(0xFF10B981).copy(alpha = 0.45f), // 外部高亮发光投影
                 Icons.Filled.CheckCircle
             )
         }
         ToastType.ERROR -> {
-            Tuple5(
-                Color(0xFF2E1214), // 珊瑚绯红暗底
-                Color(0xFFEF4444).copy(alpha = 0.55f), // 赤红边框
-                Color(0xFFEF4444).copy(alpha = 0.22f), // 图标光晕
+            Tuple6(
+                Color(0xFF2B0E12),                     // 珊瑚赤红
+                Color(0xFFEF4444).copy(alpha = 0.85f), // 赤红高亮边框
+                Color(0xFFEF4444).copy(alpha = 0.25f), // 图标光晕底色
                 Color(0xFFF87171),                     // 高亮赤红
+                Color(0xFFEF4444).copy(alpha = 0.45f), // 外部高亮发光投影
                 Icons.Filled.ErrorOutline
             )
         }
         ToastType.WARNING -> {
-            Tuple5(
-                Color(0xFF2E1C0A), // 琥珀金棕暗底
-                Color(0xFFF59E0B).copy(alpha = 0.55f), // 金橙边框
-                Color(0xFFF59E0B).copy(alpha = 0.22f), // 图标光晕
+            Tuple6(
+                Color(0xFF281706),                     // 琥珀金棕
+                Color(0xFFF59E0B).copy(alpha = 0.85f), // 琥珀金边框
+                Color(0xFFF59E0B).copy(alpha = 0.25f), // 图标光晕底色
                 Color(0xFFFBBF24),                     // 高亮琥珀金
+                Color(0xFFF59E0B).copy(alpha = 0.45f), // 外部高亮发光投影
                 Icons.Filled.Warning
             )
         }
         ToastType.INFO -> {
-            Tuple5(
-                Color(0xFF0F2338), // 霁蓝夜空暗底
-                Color(0xFF38BDF8).copy(alpha = 0.55f), // 天青边框
-                Color(0xFF38BDF8).copy(alpha = 0.22f), // 图标光晕
+            Tuple6(
+                Color(0xFF0A1F36),                     // 霁蓝夜空
+                Color(0xFF38BDF8).copy(alpha = 0.85f), // 天青高亮边框
+                Color(0xFF38BDF8).copy(alpha = 0.25f), // 图标光晕底色
                 Color(0xFF38BDF8),                     // 高亮天青蓝
+                Color(0xFF38BDF8).copy(alpha = 0.45f), // 外部高亮发光投影
                 Icons.Filled.Info
             )
         }
@@ -230,11 +253,18 @@ private fun TopToastItem(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = containerColor,
-                        contentColor = Color(0xFFF9FAFB)
+                        contentColor = Color(0xFFFFFFFF)
                     ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, borderColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 14.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.45f),
+                            spotColor = glowColor
+                        )
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
@@ -243,6 +273,7 @@ private fun TopToastItem(
                         Surface(
                             shape = CircleShape,
                             color = badgeColor,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
                             modifier = Modifier.size(30.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -260,10 +291,10 @@ private fun TopToastItem(
                         Text(
                             text = toast.message,
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp
                             ),
-                            color = Color(0xFFF9FAFB),
+                            color = Color(0xFFFFFFFF),
                             modifier = Modifier.weight(1f)
                         )
 
@@ -290,10 +321,11 @@ private fun TopToastItem(
     }
 }
 
-private data class Tuple5<A, B, C, D, E>(
+private data class Tuple6<A, B, C, D, E, F>(
     val a: A,
     val b: B,
     val c: C,
     val d: D,
-    val e: E
+    val e: E,
+    val f: F
 )

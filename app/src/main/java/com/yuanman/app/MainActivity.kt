@@ -86,14 +86,8 @@ class MainActivity : ComponentActivity() {
                                 app = app
                             )
 
-                            // 🌟 全局顶部 Toast 悬浮层 (永不被底部 TabBar 遮挡)
-                            TopToastHost(
-                                state = toastHostState,
-                                modifier = Modifier
-                                    .statusBarsPadding()
-                                    .padding(top = 8.dp)
-                                    .align(Alignment.TopCenter)
-                            )
+                            // 🌟 全局顶部 Toast 悬浮层 (浮于所有 Sheet 与页面之上，自顶部自然落下)
+                            TopToastHost(state = toastHostState)
 
                             // 🌟 全局版本更新弹窗（支持启动后台检查自动弹出与取消后推迟1天）
                             AppUpdateDialog(

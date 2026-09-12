@@ -411,8 +411,11 @@ class RecordListViewModel(
     )
 
     fun selectMonth(year: Int, month: Int) {
-        _selectedYear.value = year
-        _selectedMonth.value = month
+        val (curY, curM) = currentYearMonth
+        val clampedYear = if (year > curY) curY else year
+        val clampedMonth = if (clampedYear == curY && month > curM) curM else month
+        _selectedYear.value = clampedYear
+        _selectedMonth.value = clampedMonth
         _selectedDay.value = null
     }
 
@@ -449,13 +452,19 @@ class RecordListViewModel(
     }
 
     fun nextMonth() {
-        var y = _selectedYear.value
-        var m = _selectedMonth.value + 1
-        if (m > 12) {
-            m = 1
-            y += 1
+        // 月份翻页只允许回看：以当前自然月为上限（与首页看板一致）
+        val y = _selectedYear.value
+        val m = _selectedMonth.value
+        if (y > currentYearMonth.first ||
+            (y == currentYearMonth.first && m >= currentYearMonth.second)
+        ) return
+        var ny = y
+        var nm = m + 1
+        if (nm > 12) {
+            nm = 1
+            ny += 1
         }
-        selectMonth(y, m)
+        selectMonth(ny, nm)
     }
 
     fun selectType(type: RecordType?) {

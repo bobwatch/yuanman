@@ -37,12 +37,10 @@ fun YuanmanModalBottomSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 6.dp,
-        // 让状态栏区域也落在统一遮罩下，打开 sheet 时不会顶部高亮。
-        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f),
-        // Keep the sheet surface behind the gesture/navigation area. Applying
-        // only the status-bar inset here avoids the visible strip of the
-        // underlying screen that appears on edge-to-edge gesture devices.
-        windowInsets = WindowInsets.statusBars,
+        // 全屏遮罩压暗：包含顶部状态栏区域，保持与父级页面一致弱化展示，避免状态栏突兀高亮
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.40f),
+        // windowInsets 设为 0，使遮罩自顶部 (0,0) 开始覆盖全屏（含状态栏），状态栏与页面一同被压暗弱化
+        windowInsets = WindowInsets(0, 0, 0, 0),
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         // Apply the gesture/navigation inset once, at the shared container

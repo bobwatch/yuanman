@@ -147,6 +147,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 
+    // Compose Icons: Simple Icons (官方品牌Logo), Tabler Icons, FontAwesome (丰富金融与资产图标)
+    implementation("br.com.devsrsouza.compose.icons:simple-icons:1.1.1")
+    implementation("br.com.devsrsouza.compose.icons:tabler-icons:1.1.1")
+    implementation("br.com.devsrsouza.compose.icons:font-awesome:1.1.1")
+
     // Room
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")

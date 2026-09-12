@@ -24,21 +24,19 @@ import kotlin.math.roundToLong
  * 低金额区档位密、高金额区档位疏），拖动过程大字号实时回显；
  * 打开时若已有预算（含历史手输的零头金额），未触碰滑杆前原值原样保留。
  */
-private val BUDGET_TIERS: List<Long> = buildList {
-    for (exp in 2..4) {
-        for (mult in listOf(1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0)) {
-            add((mult * 100.0 * 10.0.pow(exp - 2)).roundToLong())
-        }
-    }
-    add(100_000L)
-}
+private val BUDGET_TIERS: List<Long> = listOf(
+    0L,
+    500L, 1_000L, 1_500L, 2_000L, 2_500L, 3_000L, 4_000L, 5_000L, 6_000L, 7_000L, 8_000L, 10_000L,
+    12_000L, 15_000L, 20_000L, 25_000L, 30_000L, 40_000L, 50_000L, 60_000L, 80_000L, 100_000L
+)
 
 private val BUDGET_YUAN_FORMAT = DecimalFormat("#,##0")
 
 private fun tierIndexForBudget(cents: Long): Int {
-    if (cents <= 0L) return BUDGET_TIERS.indexOf(5_000L).coerceAtLeast(0) // 未设置时锚定常用档
+    if (cents <= 0L) return 0 // 未设置时停靠在最左端（0 档位）
     val yuan = cents / 100
-    return BUDGET_TIERS.indices.minBy { abs(BUDGET_TIERS[it] - yuan) }
+    val validIndices = 1..BUDGET_TIERS.lastIndex
+    return validIndices.minByOrNull { abs(BUDGET_TIERS[it] - yuan) } ?: 0
 }
 
 @Composable
@@ -131,7 +129,7 @@ fun BudgetSliderDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "¥${BUDGET_YUAN_FORMAT.format(BUDGET_TIERS.first())}",
+                        text = "未设置",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )

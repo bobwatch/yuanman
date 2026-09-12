@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +66,12 @@ private const val EDGE_RIGHT = 1
  * 6. 全场景适配 (一级 Tab 退出与二级页面返回同构)：
  *    通过 hasEnterAnimation 参数区分首屏与推入页面，退出后自动重置状态，保证后台恢复全屏无跳动。
  */
+/**
+ * 供二级页面左上角返回按钮获取父级容器的平滑退场触发器。
+ * 替代直接 removeLast() 造成的瞬间黑底/闪屏，统一走 200ms 加速滑出动效。
+ */
+val LocalPredictiveBackExit = compositionLocalOf<(() -> Unit)?> { null }
+
 @Composable
 fun PredictiveSwipeBackContainer(
     isTop: Boolean,
@@ -75,7 +83,7 @@ fun PredictiveSwipeBackContainer(
     edgeTouchWidth: Dp = 72.dp,
     minScale: Float = 0.90f,
     maxTrackingTranslationRatio: Float = 0.22f,
-    content: @Composable () -> Unit
+    content: @Composable (requestBack: () -> Unit) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
     val dragProgress = remember { Animatable(0f) }
@@ -91,6 +99,23 @@ fun PredictiveSwipeBackContainer(
         if (edge != gestureEdge) {
             gestureEdge = edge
             onEdgeChange(edge)
+        }
+    }
+
+    val requestBack: () -> Unit = {
+        if (!isExiting) {
+            isExiting = true
+            updateEdge(EDGE_LEFT)
+            coroutineScope.launch {
+                exitAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                )
+                onDismiss()
+                exitAnim.snapTo(0f)
+                dragProgress.snapTo(0f)
+                isExiting = false
+            }
         }
     }
 
@@ -293,7 +318,37 @@ fun PredictiveSwipeBackContainer(
                     shape = RoundedCornerShape(currentCornerRadius)
                 )
         ) {
-            content()
+            CompositionLocalProvider(LocalPredictiveBackExit provides requestBack) {
+                content(requestBack)
+            }
         }
+    }
+}
+
+@Composable
+fun PredictiveSwipeBackContainer(
+    isTop: Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    hasEnterAnimation: Boolean = true,
+    onProgressChange: (Float) -> Unit = {},
+    onEdgeChange: (Int) -> Unit = {},
+    edgeTouchWidth: Dp = 72.dp,
+    minScale: Float = 0.90f,
+    maxTrackingTranslationRatio: Float = 0.22f,
+    content: @Composable () -> Unit
+) {
+    PredictiveSwipeBackContainer(
+        isTop = isTop,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        hasEnterAnimation = hasEnterAnimation,
+        onProgressChange = onProgressChange,
+        onEdgeChange = onEdgeChange,
+        edgeTouchWidth = edgeTouchWidth,
+        minScale = minScale,
+        maxTrackingTranslationRatio = maxTrackingTranslationRatio
+    ) { _ ->
+        content()
     }
 }

@@ -56,18 +56,22 @@ fun MonthPickerModal(
     val coroutineScope = rememberCoroutineScope()
     val (currentYear, currentMonth) = remember { DateTimeUtils.getCurrentYearMonth() }
 
-    // 年份数据池：以当前年份为基准，默认支持回看近 12 年
+    // 年份数据池：以当前年份为基准，默认支持回看近 12 年，不展示未来年份
     val minYear = currentYear - 11
     val years = remember(currentYear) { (minYear..currentYear).toList() }
-    val months = remember { (1..12).toList() }
 
     var selectedYear by remember(initialYear) { mutableIntStateOf(initialYear.coerceIn(minYear, currentYear)) }
-    var selectedMonth by remember(initialMonth) { mutableIntStateOf(initialMonth.coerceIn(1, 12)) }
+    val months = remember(selectedYear, currentYear, currentMonth) {
+        if (selectedYear >= currentYear) (1..currentMonth).toList() else (1..12).toList()
+    }
+    var selectedMonth by remember(initialMonth, selectedYear) {
+        val maxMonth = if (selectedYear >= currentYear) currentMonth else 12
+        mutableIntStateOf(initialMonth.coerceIn(1, maxMonth))
+    }
 
     // 重置/回到本月的动画触发器
     var resetTrigger by remember { mutableIntStateOf(0) }
 
-    val isFutureMonth = selectedYear > currentYear || (selectedYear == currentYear && selectedMonth > currentMonth)
     val isCurrentMonth = selectedYear == currentYear && selectedMonth == currentMonth
     val primaryColor = MaterialTheme.colorScheme.primary
 
@@ -187,7 +191,15 @@ fun MonthPickerModal(
                             items = years,
                             selectedIndex = years.indexOf(selectedYear).coerceAtLeast(0),
                             resetTrigger = resetTrigger,
-                            onItemSelected = { selectedYear = years[it] },
+                            onItemSelected = { index ->
+                                if (index in years.indices) {
+                                    val newYear = years[index]
+                                    selectedYear = newYear
+                                    if (newYear >= currentYear && selectedMonth > currentMonth) {
+                                        selectedMonth = currentMonth
+                                    }
+                                }
+                            },
                             itemHeight = itemHeight,
                             itemLabel = { "$it 年" }
                         )
@@ -204,9 +216,13 @@ fun MonthPickerModal(
                     ) {
                         FiniteWheelColumn(
                             items = months,
-                            selectedIndex = (selectedMonth - 1).coerceIn(0, 11),
+                            selectedIndex = months.indexOf(selectedMonth).coerceAtLeast(0),
                             resetTrigger = resetTrigger,
-                            onItemSelected = { selectedMonth = months[it] },
+                            onItemSelected = { index ->
+                                if (index in months.indices) {
+                                    selectedMonth = months[index]
+                                }
+                            },
                             itemHeight = itemHeight,
                             itemLabel = { String.format("%02d 月", it) }
                         )
@@ -224,35 +240,24 @@ fun MonthPickerModal(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isFutureMonth) {
-                        Text(
-                            text = "未来月份暂无账单数据",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    } else {
-                        Text(
-                            text = "已选时间：${selectedYear} 年 ${String.format("%02d", selectedMonth)} 月",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                    Text(
+                        text = "已选时间：${selectedYear} 年 ${String.format("%02d", selectedMonth)} 月",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
 
                 Button(
                     onClick = {
-                        if (!isFutureMonth) {
-                            coroutineScope.launch {
-                                try {
-                                    sheetState.hide()
-                                } finally {
-                                    onMonthSelected(selectedYear, selectedMonth)
-                                    onDismiss()
-                                }
+                        coroutineScope.launch {
+                            try {
+                                sheetState.hide()
+                            } finally {
+                                onMonthSelected(selectedYear, selectedMonth)
+                                onDismiss()
                             }
                         }
                     },
-                    enabled = !isFutureMonth,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
@@ -316,7 +321,18 @@ private fun <T> FiniteWheelColumn(
     // 响应外部重置信号，如点击「回到本月」
     LaunchedEffect(resetTrigger) {
         if (resetTrigger > 0) {
-            listState.animateScrollToItem(selectedIndex.coerceIn(0, items.lastIndex))
+            val target = selectedIndex.coerceIn(0, items.lastIndex)
+            lastReportedIndex = target
+            listState.animateScrollToItem(target)
+        }
+    }
+
+    // 当外部选中项改变或列表项缩短（如切换到今年导致未来月份移除）时自动精准对齐
+    LaunchedEffect(selectedIndex, items.size) {
+        val target = selectedIndex.coerceIn(0, items.lastIndex)
+        if (target != lastReportedIndex || listState.firstVisibleItemIndex > items.lastIndex) {
+            lastReportedIndex = target
+            listState.scrollToItem(target)
         }
     }
 
