@@ -66,3 +66,7 @@ captures/
 
 # ZCode session artifacts
 .zcode/
+
+# Local Codex/build investigation artifacts
+.codex-build-cache/
+.tmp-*
