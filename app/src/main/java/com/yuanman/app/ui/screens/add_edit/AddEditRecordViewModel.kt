@@ -16,8 +16,13 @@ import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.ui.components.KeypadEngine
 import com.yuanman.app.utils.CrossMonthExpenseUtils
 import com.yuanman.app.utils.MoneyUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.yuanman.app.ui.screens.account.AccountUiModel
+import com.yuanman.app.ui.screens.account.PaycheckExecutor
+import com.yuanman.app.ui.screens.account.isSalaryCategoryName
+import com.yuanman.app.ui.screens.account.parseAccountsJson
 import java.math.BigDecimal
 import java.util.UUID
 
@@ -38,6 +43,9 @@ data class AddEditUiState(
     val hapticEnabled: Boolean = true,
     val quickEntryEnabled: Boolean = true,
     val quickEntryLearningRules: List<QuickEntryLearningEntity> = emptyList(),
+    val accounts: List<AccountUiModel> = emptyList(),
+    val defaultExpenseAccount: String = "",
+    val defaultIncomeAccount: String = "",
     val errorMessage: String? = null,
     val savedFeedbackMessage: String? = null,
     val isSavedSuccess: Boolean = false,
@@ -48,36 +56,82 @@ class AddEditRecordViewModel(
     private val recordId: Long,
     initialType: RecordType?,
     private val initialCategoryId: Long = 0L,
+    private val initialRecordTime: Long? = null,
     private val recordRepository: RecordRepository,
     private val categoryRepository: CategoryRepository,
     private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
+    companion object {
+        @Volatile
+        var cachedExpenseCategories: List<CategoryEntity> = emptyList()
+        @Volatile
+        var cachedIncomeCategories: List<CategoryEntity> = emptyList()
+    }
+
     private val _uiState = MutableStateFlow(
-        AddEditUiState(
-            isEditMode = recordId > 0L,
-            recordId = recordId,
-            type = initialType ?: RecordType.EXPENSE
-        )
+        run {
+            val type = initialType ?: RecordType.EXPENSE
+            val categories = if (type == RecordType.EXPENSE) cachedExpenseCategories else cachedIncomeCategories
+            val initialCat = if (initialCategoryId > 0L) {
+                categories.find { it.id == initialCategoryId }
+            } else {
+                categories.firstOrNull()
+            }
+            AddEditUiState(
+                isEditMode = recordId > 0L,
+                recordId = recordId,
+                type = type,
+                recordTime = initialRecordTime ?: System.currentTimeMillis(),
+                expenseCategories = cachedExpenseCategories,
+                incomeCategories = cachedIncomeCategories,
+                availableCategories = categories,
+                selectedCategory = initialCat,
+                quickRemarks = initialCat?.getTagList() ?: emptyList()
+            )
+        }
     )
     val uiState: StateFlow<AddEditUiState> = _uiState.asStateFlow()
 
-    private var cachedExpenseCategories: List<CategoryEntity> = emptyList()
-    private var cachedIncomeCategories: List<CategoryEntity> = emptyList()
+    // 工资到账自动分账执行器（v0.0.4.5）：保存「工资」类收入后按发薪规则自动分配
+    private val paycheckExecutor: PaycheckExecutor by lazy {
+        PaycheckExecutor(preferencesRepository, recordRepository)
+    }
+
     private var lastSelectedExpenseCategory: CategoryEntity? = null
     private var lastSelectedIncomeCategory: CategoryEntity? = null
 
     init {
-        // 加载偏好设置
-        viewModelScope.launch {
-            preferencesRepository.hapticFeedbackEnabled.collectLatest { enabled ->
-                _uiState.update { it.copy(hapticEnabled = enabled) }
-            }
-        }
+        // 合并偏好设置初始化到后台，避免进页瞬间多次并发 update 造成 UI 重组掉帧
+        viewModelScope.launch(Dispatchers.IO) {
+            val haptic = preferencesRepository.hapticFeedbackEnabled.firstOrNull() ?: true
+            val quick = preferencesRepository.quickEntryEnabled.firstOrNull() ?: false
+            val accJson = preferencesRepository.accountsData.firstOrNull()
+            val parsedAcc = parseAccountsJson(accJson)
+            val defExp = preferencesRepository.defaultExpenseAccount.firstOrNull().orEmpty()
+            val defInc = preferencesRepository.defaultIncomeAccount.firstOrNull().orEmpty()
+            val defMethod = preferencesRepository.defaultPaymentMethod.firstOrNull().orEmpty()
+            val defType = if (initialType == null && initialCategoryId <= 0L && recordId <= 0L) {
+                preferencesRepository.defaultRecordType.firstOrNull()
+            } else null
 
-        viewModelScope.launch {
-            preferencesRepository.quickEntryEnabled.collectLatest { enabled ->
-                _uiState.update { it.copy(quickEntryEnabled = enabled) }
+            _uiState.update { state ->
+                val newType = defType ?: state.type
+                val newMethod = if (state.paymentMethod.isBlank() || state.paymentMethod == PaymentMethod.defaultMethod()) {
+                    if (newType == RecordType.EXPENSE && defExp.isNotBlank()) defExp
+                    else if (newType == RecordType.INCOME && defInc.isNotBlank()) defInc
+                    else defMethod.ifBlank { state.paymentMethod }
+                } else state.paymentMethod
+
+                state.copy(
+                    hapticEnabled = haptic,
+                    quickEntryEnabled = quick,
+                    accounts = parsedAcc,
+                    defaultExpenseAccount = defExp,
+                    defaultIncomeAccount = defInc,
+                    type = newType,
+                    paymentMethod = newMethod
+                )
             }
         }
 
@@ -87,53 +141,57 @@ class AddEditRecordViewModel(
             }
         }
 
-        viewModelScope.launch {
-            if (recordId <= 0L) {
-                preferencesRepository.defaultPaymentMethod.firstOrNull()?.let { method ->
-                    _uiState.update { it.copy(paymentMethod = method) }
-                }
-                if (initialType == null && initialCategoryId <= 0L) {
-                    preferencesRepository.defaultRecordType.firstOrNull()?.let { type ->
-                        _uiState.update { it.copy(type = type) }
-                    }
-                }
-            }
-        }
-
-        // 若传入了指定初始分类，提前加载该分类以确定收支类型与选中态
-        if (recordId <= 0L && initialCategoryId > 0L) {
-            viewModelScope.launch {
-                val cat = categoryRepository.getCategoryById(initialCategoryId)
-                if (cat != null) {
-                    val catType = runCatching { RecordType.valueOf(cat.type) }.getOrDefault(RecordType.EXPENSE)
-                    _uiState.update {
-                        it.copy(
-                            type = catType,
-                            selectedCategory = cat,
-                            quickRemarks = cat.getTagList()
-                        )
-                    }
-                }
-            }
-        }
-
-        // 双向预加载并常驻缓存支出与收入分类，确保类型切换 0 延迟秒切
+        // 双向预加载并常驻缓存支出与收入分类（合并原子更新，避免多次重组与跳动）
         viewModelScope.launch {
             categoryRepository.getCategoriesByType(RecordType.EXPENSE).collectLatest { list ->
+                val prevList = cachedExpenseCategories
                 cachedExpenseCategories = list
-                _uiState.update { it.copy(expenseCategories = list) }
-                if (_uiState.value.type == RecordType.EXPENSE) {
-                    applyCategories(list)
+                _uiState.update { state ->
+                    if (state.type == RecordType.EXPENSE) {
+                        val cur = state.selectedCategory
+                        val newlyAdded = if (prevList.isNotEmpty() && list.size > prevList.size) {
+                            list.firstOrNull { item -> prevList.none { it.id == item.id } }
+                        } else null
+                        val match = newlyAdded ?: if (initialCategoryId > 0L && (cur == null || cur.id == initialCategoryId)) {
+                            list.find { it.id == initialCategoryId }
+                        } else null
+                        val sel = match ?: if (cur != null && list.any { it.id == cur.id }) cur else list.firstOrNull()
+                        state.copy(
+                            expenseCategories = list,
+                            availableCategories = list,
+                            selectedCategory = sel,
+                            quickRemarks = sel?.getTagList() ?: emptyList()
+                        )
+                    } else {
+                        state.copy(expenseCategories = list)
+                    }
                 }
             }
         }
 
         viewModelScope.launch {
             categoryRepository.getCategoriesByType(RecordType.INCOME).collectLatest { list ->
+                val prevList = cachedIncomeCategories
                 cachedIncomeCategories = list
-                _uiState.update { it.copy(incomeCategories = list) }
-                if (_uiState.value.type == RecordType.INCOME) {
-                    applyCategories(list)
+                _uiState.update { state ->
+                    if (state.type == RecordType.INCOME) {
+                        val cur = state.selectedCategory
+                        val newlyAdded = if (prevList.isNotEmpty() && list.size > prevList.size) {
+                            list.firstOrNull { item -> prevList.none { it.id == item.id } }
+                        } else null
+                        val match = newlyAdded ?: if (initialCategoryId > 0L && (cur == null || cur.id == initialCategoryId)) {
+                            list.find { it.id == initialCategoryId }
+                        } else null
+                        val sel = match ?: if (cur != null && list.any { it.id == cur.id }) cur else list.firstOrNull()
+                        state.copy(
+                            incomeCategories = list,
+                            availableCategories = list,
+                            selectedCategory = sel,
+                            quickRemarks = sel?.getTagList() ?: emptyList()
+                        )
+                    } else {
+                        state.copy(incomeCategories = list)
+                    }
                 }
             }
         }
@@ -147,11 +205,13 @@ class AddEditRecordViewModel(
                     val recType = RecordType.fromString(record.type)
                     val cat = recordWithCategory.category
                     val remarks = cat?.getTagList() ?: emptyList()
+                    val categories = if (recType == RecordType.EXPENSE) cachedExpenseCategories else cachedIncomeCategories
                     _uiState.update {
                         it.copy(
                             isEditMode = true,
                             type = recType,
                             expression = MoneyUtils.centsToYuanString(record.amount, withGrouping = false),
+                            availableCategories = if (categories.isNotEmpty()) categories else it.availableCategories,
                             selectedCategory = cat,
                             recordTime = record.recordTime,
                             remark = record.remark,
@@ -208,14 +268,40 @@ class AddEditRecordViewModel(
 
             val remarks = newSelected?.getTagList() ?: emptyList()
 
+            val currentMethod = _uiState.value.paymentMethod
+            val defExp = _uiState.value.defaultExpenseAccount
+            val defInc = _uiState.value.defaultIncomeAccount
+            val newPaymentMethod = if (!_uiState.value.isEditMode) {
+                if (type == RecordType.EXPENSE && (currentMethod == defInc || currentMethod.isBlank())) {
+                    defExp.ifBlank { currentMethod }
+                } else if (type == RecordType.INCOME && (currentMethod == defExp || currentMethod.isBlank() || currentMethod == PaymentMethod.defaultMethod())) {
+                    defInc.ifBlank { "" }
+                } else {
+                    currentMethod
+                }
+            } else {
+                currentMethod
+            }
+
             _uiState.update {
                 it.copy(
                     type = type,
                     availableCategories = targetList,
                     selectedCategory = newSelected,
                     quickRemarks = remarks,
-                    spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1
+                    spreadMonths = if (type == RecordType.EXPENSE) it.spreadMonths else 1,
+                    paymentMethod = newPaymentMethod
                 )
+            }
+        }
+    }
+
+    fun setDefaultPaymentAccount(accountName: String, isExpense: Boolean) {
+        viewModelScope.launch {
+            if (isExpense) {
+                preferencesRepository.setDefaultExpenseAccount(accountName)
+            } else {
+                preferencesRepository.setDefaultIncomeAccount(accountName)
             }
         }
     }
@@ -368,26 +454,52 @@ class AddEditRecordViewModel(
                 )
             }
 
-            if (state.isEditMode) recordRepository.updateRecord(records.first())
-            else recordRepository.insertRecords(records)
+            // 单笔插入时拿到记录 id（工资自动分账的幂等锚点）
+            var insertedRecordId = 0L
+            if (state.isEditMode) {
+                recordRepository.updateRecord(records.first())
+            } else if (records.size == 1) {
+                insertedRecordId = recordRepository.insertRecord(records.first())
+            } else {
+                recordRepository.insertRecords(records)
+            }
 
             if (state.remark.isNotBlank()) {
                 categoryRepository.learnQuickEntry(state.type, state.remark, category.syncId)
             }
 
+            // ---- v0.0.4.5：工资类收入保存后自动按发薪规则分账（开关/来源匹配在 PaycheckExecutor 内判定）----
+            var autoFeedback: String? = null
+            if (!state.isEditMode && insertedRecordId > 0L &&
+                state.type == RecordType.INCOME &&
+                isSalaryCategoryName(category.name)
+            ) {
+                autoFeedback = paycheckExecutor.onSalaryRecordSaved(
+                    recordId = insertedRecordId,
+                    amountCents = amountInCents,
+                    paymentMethod = state.paymentMethod
+                )
+            }
+
             if (continueNext) {
-                // 连记模式：清空金额与备注，重置时间为当前，弹出成功气泡
+                // 连记模式：清空金额与备注，重置时间为当前，弹出成功气泡（自动分账结果拼在尾部）
                 _uiState.update {
                     it.copy(
                         expression = "",
                         remark = "",
                         spreadMonths = 1,
                         recordTime = System.currentTimeMillis(),
-                        savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」✨ 可继续记下一笔"
+                        savedFeedbackMessage = "已记下「${category.name} ¥${MoneyUtils.centsToYuanString(amountInCents)}」✨ 可继续记下一笔" +
+                            (autoFeedback?.let { "；$it" } ?: "")
                     )
                 }
             } else {
-                _uiState.update { it.copy(isSavedSuccess = true) }
+                _uiState.update {
+                    it.copy(
+                        isSavedSuccess = true,
+                        savedFeedbackMessage = autoFeedback // 单笔保存：有自动分账结果时顺带 toast 提示
+                    )
+                }
             }
         }
     }
@@ -409,6 +521,7 @@ class AddEditRecordViewModel(
         private val recordId: Long = 0L,
         private val initialType: RecordType? = null,
         private val initialCategoryId: Long = 0L,
+        private val initialRecordTime: Long? = null,
         private val recordRepository: RecordRepository,
         private val categoryRepository: CategoryRepository,
         private val preferencesRepository: PreferencesRepository
@@ -419,6 +532,7 @@ class AddEditRecordViewModel(
                 recordId = recordId,
                 initialType = initialType,
                 initialCategoryId = initialCategoryId,
+                initialRecordTime = initialRecordTime,
                 recordRepository = recordRepository,
                 categoryRepository = categoryRepository,
                 preferencesRepository = preferencesRepository

@@ -17,6 +17,20 @@ object MoneyUtils {
     }
 
     /**
+     * 紧凑金额：整元省略小数位（"8,160"），有角分才保留两位（"8,160.50"）。
+     * 用于空间受限的小卡片（如攒钱计划小卡单行金额），其余场景一律走 centsToYuanString 两位小数。
+     */
+    fun centsToCompactYuan(cents: Long): String {
+        val yuan = cents / 100
+        val frac = (cents % 100).toInt()
+        return if (frac == 0) {
+            DecimalFormat("#,##0").format(yuan)
+        } else {
+            centsToYuanString(cents, withGrouping = true)
+        }
+    }
+
+    /**
      * 格式化展示金额，带人民币符号（如 "¥12.34"、"-¥12.34"、"+¥500.00"）
      */
     fun formatCurrency(

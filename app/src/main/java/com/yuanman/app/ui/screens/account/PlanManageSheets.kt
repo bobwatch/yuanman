@@ -2,6 +2,7 @@
 
 package com.yuanman.app.ui.screens.account
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,8 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -36,7 +38,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,14 +67,14 @@ import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
 
 /**
- * 攒钱计划 & 发薪分配 —— 计划操作面板 / 新建编辑表单 / 再存 / 撤回 / 发薪方案编辑
- * （设计文档 saving-plans-and-paycheck-v0.3.md §2.4 / §2.5）
+ * 攒钱计划 & 发薪分配 —— 计划快捷操作面板（长按）/ 计划表单（新建/编辑）/ 存一笔 / 取一笔 / 发薪方案编辑
+ * （设计文档 saving-plans-and-paycheck-v0.3.md §2.4 / §2.5；
+ *  动作名 v0.0.4+ 简化：「再存一笔 → 存一笔」「取出一笔（原撤回专款）→ 取一笔」；
+ *  长按面板 = 账户 Tab 计划小卡长按升起，与账户行「点击详情 / 长按操作」同构）
  *
- * - 操作面板行序：再存一笔 → 撤回专款 → 分隔线 → 编辑计划 → 删除计划（error 分区），
- *   动作统一「haptic → onDismiss() → 目标回调」（与 AccountActionPanels.kt runAction 同款）；
  * - 金额一律走 MoneyUtils 千分位；隐私掩码只针对「实时资金数字」（已圈 / 可用上限），
  *   表单输入框内为用户输入值、规则中的固定额 / 百分比为用户配置值，均不掩码；
- * - 计划表单 / 再存 / 撤回 / 方案编辑均为「即改即存」风格，保存与持久化由页面层调用方完成。
+ * - 计划表单 / 存、取 / 方案编辑均为「即改即存」风格，保存与持久化由页面层调用方完成。
  */
 
 /** 超额警示琥珀 —— 与账户页警示同值 Color(0xFFFF9800) */
@@ -182,7 +186,10 @@ private fun PlanColorPaletteRow(
     }
 }
 
-/** 账户 FilterChip：显示 名称（余额）；选中态前置色点 + 对勾 */
+/**
+ * 账户 FilterChip（专款账户单选用）：只展示 名称；选中态仅前置对勾（不带彩色圆点）。
+ * 选专款账户不展示余额 —— 金额属于「要圈的钱」，避免用户误把余额当上限而困惑。
+ */
 @Composable
 private fun AccountSelectChip(
     account: AccountUiModel,
@@ -195,21 +202,17 @@ private fun AccountSelectChip(
         shape = RoundedCornerShape(10.dp),
         leadingIcon = {
             if (selected) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PlanColorDot(colorHex = account.colorHex, size = 7.dp)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         },
         label = {
             Text(
-                text = "${account.name} (${MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true)})",
+                text = account.name,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -218,35 +221,49 @@ private fun AccountSelectChip(
 }
 
 // ---------------------------------------------------------------------------
-// §2.4 计划操作面板
+// 计划快捷操作面板（账户 Tab 计划小卡长按升起）
 // ---------------------------------------------------------------------------
 
 /**
- * 计划操作面板（设计文档 §2.4）：二级页计划卡点击升起。
- * 行序 = 再存一笔（primary）/ 撤回专款 / 分隔线 / 编辑计划 / 删除计划（error）。
+ * 计划快捷操作面板（账户 Tab 计划小卡长按升起）：
+ *  顶部 = 宽版计划预览卡（彩点 + 名称 + 已圈/目标 + 进度条；达标 → 计划色描边 ✓，超额 → 琥珀警示），
+ *         整卡点击 → 计划详情页（编辑/删除/存取记录在详情页同样可用）；
+ *  中部 = 存一笔（↓）/ 取一笔（↑）主按钮，带状态禁用与原因提示；
+ *  底部 = 编辑计划 / 删除计划（error 分区）入口。
+ * 动作统一「haptic → 关闭面板 → 目标回调」（与 AccountActionPanels.kt runAction 同款时序）。
  */
 @Composable
-fun PlanActionSheet(
+fun PlanQuickActionSheet(
     plan: SavingPlanUiModel,
-    holderName: String?,
-    isOverdrawn: Boolean,
+    holderBalanceCents: Long?,
+    depositMaxCents: Long,
     isDone: Boolean,
+    isOverdrawn: Boolean,
     isPrivacyMode: Boolean,
     onDismiss: () -> Unit,
     onDeposit: () -> Unit,
     onWithdraw: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
 
-    // 统一动作序列：触觉反馈 -> 关闭底包 -> 交由页面层打开对应弹层（AccountActionPanels.kt 同款）
     val runAction: (() -> Unit) -> Unit = { action ->
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onDismiss()
         action()
+    }
+
+    // 状态感知：无专款账户 / 无可圈余额 → 存禁用；已圈 = 0 → 取禁用
+    val canDeposit = holderBalanceCents != null && depositMaxCents > 0L
+    val canWithdraw = plan.earmarkedCents > 0L
+    val depositDisabledReason = when {
+        canDeposit -> null
+        holderBalanceCents == null -> "尚未设置专款账户，可在「详情」中修改"
+        else -> "专款账户暂无可圈余额（已被圈满或超额）"
     }
 
     YuanmanModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
@@ -255,55 +272,80 @@ fun PlanActionSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            // ---- 头部：色点 + 名称（达标 ✓）+ 专款账户 · 已圈 / 超额警示 ----
-            PlanSheetHeaderRow(plan = plan, isDone = isDone)
-            Spacer(modifier = Modifier.height(4.dp))
-            if (isOverdrawn) {
+            // ---- 宽版计划预览卡：点卡片 = 进详情 ----
+            PlanSheetPreviewCard(
+                plan = plan,
+                holderBalanceCents = holderBalanceCents,
+                isDone = isDone,
+                isOverdrawn = isOverdrawn,
+                isPrivacyMode = isPrivacyMode,
+                onClick = { runAction(onOpenDetail) }
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ---- 主操作：存一笔 / 取一笔（↓ 存入、↑ 取出，语义化箭头）----
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { runAction(onDeposit) },
+                    enabled = canDeposit,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("存一笔", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                }
+                OutlinedButton(
+                    onClick = { runAction(onWithdraw) },
+                    enabled = canWithdraw,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowUpward,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("取一笔", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                }
+            }
+            // 禁用原因（取 = 0 时语义自明，仅存被禁用时给一行提示）
+            if (depositDisabledReason != null) {
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "余额低于专款，请补回",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = PlanWarnAmber,
-                    maxLines = 1
-                )
-            } else {
-                Text(
-                    text = (holderName ?: "账户已删除") + " · 已圈 " +
-                        (if (isPrivacyMode) "¥ ••••" else "¥" + MoneyUtils.centsToYuanString(plan.earmarkedCents, withGrouping = true)),
+                    text = depositDisabledReason,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = scheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 1
                 )
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // ---- 操作区 ----
-            PlanActionSheetRow(
-                title = "再存一笔",
-                icon = Icons.Default.Add,
-                iconTint = scheme.primary,
-                onClick = { runAction(onDeposit) }
-            )
-            PlanActionSheetRow(
-                title = "撤回专款",
-                icon = Icons.Default.AccountBalanceWallet,
-                iconTint = scheme.onSurface,
-                onClick = { runAction(onWithdraw) }
-            )
 
             HorizontalDivider(
                 color = scheme.outlineVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(vertical = 4.dp)
             )
 
-            PlanActionSheetRow(
+            // ---- 管理入口：编辑 / 删除（与详情页顶栏同款动作，长按场景直达）----
+            PlanQuickActionRow(
                 title = "编辑计划",
                 icon = Icons.Default.Edit,
                 iconTint = scheme.onSurface,
                 onClick = { runAction(onEdit) }
             )
-            PlanActionSheetRow(
+            PlanQuickActionRow(
                 title = "删除计划",
                 icon = Icons.Default.Delete,
                 iconTint = scheme.error,
@@ -316,9 +358,136 @@ fun PlanActionSheet(
     }
 }
 
+/** 面板宽版计划预览卡：与计划小卡同语言（计划色/进度/达标✓/超额琥珀），点击进入详情 */
+@Composable
+private fun PlanSheetPreviewCard(
+    plan: SavingPlanUiModel,
+    holderBalanceCents: Long?,
+    isDone: Boolean,
+    isOverdrawn: Boolean,
+    isPrivacyMode: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    val planColor = Color(plan.colorHex)
+    val hasTarget = plan.targetAmountCents > 0L
+    val shortfallCents = (plan.earmarkedCents - (holderBalanceCents ?: 0L)).coerceAtLeast(0L)
+    val fraction = if (hasTarget) {
+        (plan.earmarkedCents.toFloat() / plan.targetAmountCents.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = scheme.surface,
+        border = BorderStroke(
+            1.dp,
+            when {
+                isOverdrawn -> PlanWarnAmber.copy(alpha = 0.5f)
+                isDone -> planColor.copy(alpha = 0.5f)
+                else -> scheme.outlineVariant.copy(alpha = 0.35f)
+            }
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(planColor)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = plan.name,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isDone && !isOverdrawn) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "已达标",
+                        tint = planColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = if (isPrivacyMode) "¥ ••••"
+                    else "¥" + MoneyUtils.centsToCompactYuan(plan.earmarkedCents),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = scheme.onSurface,
+                    maxLines = 1
+                )
+                if (isOverdrawn) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isPrivacyMode) "低于专款 ¥ ••••"
+                        else "低于专款 ¥" + MoneyUtils.centsToCompactYuan(shortfallCents),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = PlanWarnAmber,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else if (hasTarget) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isPrivacyMode) "目标 ¥ ••••"
+                        else "目标 ¥" + MoneyUtils.centsToCompactYuan(plan.targetAmountCents),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                        color = scheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            if (hasTarget) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(scheme.surfaceVariant)
+                ) {
+                    if (fraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction)
+                                .fillMaxHeight()
+                                .background(planColor)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** 面板操作行：24dp 前置图标 + 13.5sp Medium 标题（AccountActionPanels.kt 同款排版） */
 @Composable
-private fun PlanActionSheetRow(
+private fun PlanQuickActionRow(
     title: String,
     icon: ImageVector,
     iconTint: Color,
@@ -368,20 +537,28 @@ fun PlanFormSheet(
     accounts: List<AccountUiModel>,
     onDismiss: () -> Unit,
     onSave: (name: String, targetAmountCents: Long, holderAccountId: Long, colorHex: Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialName: String = "",
+    initialTargetAmountCents: Long = 0L,
+    initialColorHex: Long? = null
 ) {
     val scheme = MaterialTheme.colorScheme
 
-    var name by remember { mutableStateOf(planToEdit?.name ?: "") }
-    var targetYuan by remember {
+    var name by remember(planToEdit, initialName) {
+        mutableStateOf(planToEdit?.name ?: initialName)
+    }
+    var targetYuan by remember(planToEdit, initialTargetAmountCents) {
         mutableStateOf(
             if (planToEdit != null) {
                 val bd = BigDecimal(planToEdit.targetAmountCents).divide(BigDecimal(100))
                 bd.stripTrailingZeros().toPlainString()
+            } else if (initialTargetAmountCents > 0L) {
+                val bd = BigDecimal(initialTargetAmountCents).divide(BigDecimal(100))
+                bd.stripTrailingZeros().toPlainString()
             } else "0"
         )
     }
-    var selectedAccountId by remember {
+    var selectedAccountId by remember(planToEdit) {
         mutableStateOf(
             if (planToEdit != null && accounts.any { it.id == planToEdit.holderAccountId }) {
                 planToEdit.holderAccountId
@@ -390,7 +567,9 @@ fun PlanFormSheet(
             }
         )
     }
-    var colorHex by remember { mutableStateOf(planToEdit?.colorHex ?: 0xFF059669L) }
+    var colorHex by remember(planToEdit, initialColorHex) {
+        mutableStateOf(planToEdit?.colorHex ?: (initialColorHex ?: 0xFF059669L))
+    }
 
     val isEditing = planToEdit != null
     val nameOk = name.trim().isNotEmpty()
@@ -500,11 +679,11 @@ fun PlanFormSheet(
 }
 
 // ---------------------------------------------------------------------------
-// §2.4 再存一笔（金额输入 + 实时可用上限）
+// §2.4 存一笔（金额输入 + 实时可用上限）
 // ---------------------------------------------------------------------------
 
 /**
- * 再存一笔（设计文档 §2.4）：金额输入 + 实时可用上限展示。
+ * 存一笔：金额输入 + 实时可用上限展示。
  * 上限由调用方以 availableToEarmarkFor 计算传入；超上限按钮禁用并红字提示。
  */
 @Composable
@@ -540,7 +719,7 @@ fun PlanDepositSheet(
             OutlinedTextField(
                 value = amountYuan,
                 onValueChange = { amountYuan = it },
-                label = { Text("再存金额 (元)") },
+                label = { Text("存入金额 (元)") },
                 placeholder = { Text("0.00") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -550,9 +729,9 @@ fun PlanDepositSheet(
 
             Text(
                 text = if (overLimit) {
-                    "超过可再存上限"
+                    "超过可存上限"
                 } else {
-                    "可再存 " +
+                    "还可存 " +
                         (if (isPrivacyMode) "¥ ••••" else "¥" + MoneyUtils.centsToYuanString(maxCents, withGrouping = true))
                 },
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
@@ -567,7 +746,7 @@ fun PlanDepositSheet(
                     .fillMaxWidth()
                     .height(48.dp)
             ) {
-                Text("确认再存", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("存一笔", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -576,11 +755,11 @@ fun PlanDepositSheet(
 }
 
 // ---------------------------------------------------------------------------
-// §2.4 撤回专款（上限 = 该计划已圈，可整额撤回）
+// §2.4 取一笔（上限 = 该计划已圈，可整额取出；原「撤回专款 / 取出一笔」简化命名）
 // ---------------------------------------------------------------------------
 
 /**
- * 撤回专款（设计文档 §2.4）：金额输入，上限 = 该计划已圈额；「全部撤回」一键填整额。
+ * 取一笔：金额输入，上限 = 该计划已圈额；「全部取出」一键填整额。
  */
 @Composable
 fun PlanWithdrawSheet(
@@ -614,7 +793,7 @@ fun PlanWithdrawSheet(
             OutlinedTextField(
                 value = amountYuan,
                 onValueChange = { amountYuan = it },
-                label = { Text("撤回金额 (元)") },
+                label = { Text("取出金额 (元)") },
                 placeholder = { Text("0.00") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -624,16 +803,16 @@ fun PlanWithdrawSheet(
 
             Text(
                 text = if (overLimit) {
-                    "超过可撤回上限"
+                    "超过可取出上限"
                 } else {
-                    "可撤回 " +
+                    "可取出 " +
                         (if (isPrivacyMode) "¥ ••••" else "¥" + MoneyUtils.centsToYuanString(plan.earmarkedCents, withGrouping = true))
                 },
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = if (overLimit) scheme.error else scheme.onSurfaceVariant
             )
 
-            // 整额撤回辅助入口
+            // 整额取出辅助入口
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(
                     onClick = {
@@ -643,7 +822,7 @@ fun PlanWithdrawSheet(
                     contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
                     Text(
-                        text = "全部撤回",
+                        text = "全部取出",
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
@@ -661,7 +840,7 @@ fun PlanWithdrawSheet(
                     .fillMaxWidth()
                     .height(48.dp)
             ) {
-                Text("撤回", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("取一笔", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
 
             Spacer(modifier = Modifier.height(12.dp))

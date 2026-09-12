@@ -1,6 +1,8 @@
 package com.yuanman.app.ui.screens.account
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,12 +20,16 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -50,32 +56,33 @@ import com.yuanman.app.utils.MoneyUtils
 private val ReconcileAmber = Color(0xFFFF9800)
 
 /**
- * 账户操作面板：点击账户行后升起，含头部信息（图标 / 名称 / 类型 / 余额 / 本月出入 / 对账状态）
- * 与四项操作（转账还款 / 资金对账 / 编辑 / 删除，删除以分隔线隔开）。
+ * 账户操作面板：长按账户行后升起，包含账户卡片摘要、高频操作卡片、默认收支账户设定及删除。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountActionSheet(
     account: AccountUiModel,
     isPrivacyMode: Boolean,
+    isDefaultExpense: Boolean,
+    isDefaultIncome: Boolean,
     onDismiss: () -> Unit,
     onTransfer: (AccountUiModel) -> Unit,
     onReconcile: (AccountUiModel) -> Unit,
     onEdit: (AccountUiModel) -> Unit,
     onDelete: (AccountUiModel) -> Unit,
+    onToggleDefaultExpense: (Boolean) -> Unit,
+    onToggleDefaultIncome: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
 
-    // 统一动作序列：触觉反馈 -> 关闭底包 -> 交由页面层打开对应弹层
     val runAction: ((AccountUiModel) -> Unit) -> Unit = { action ->
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onDismiss()
         action(account)
     }
 
-    // 头部余额：隐私遮蔽 / 负值赤红（error）/ 正值常规色，千分位
     val isNegative = account.balanceCents < 0L
     val balanceText = when {
         isPrivacyMode -> "¥ ••••"
@@ -89,7 +96,7 @@ fun AccountActionSheet(
 
     val inYuan = MoneyUtils.centsToYuanString(account.inCents)
     val outYuan = MoneyUtils.centsToYuanString(account.outCents)
-    val reconcileStatus = accountReconcileStatus(account.lastReconciledAt)
+    val reconcileStatus = account.reconcileStatus
 
     val infoStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp)
 
@@ -97,167 +104,402 @@ fun AccountActionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // ---- 头部行1：图标 + 名称/类型 + 余额 ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            // ---- 1. 账户信息卡片（大图标、名称、标签、余额、月度收支与对账时效）----
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = scheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                CategoryIconView(
-                    iconName = account.iconName,
-                    colorHex = account.colorHex,
-                    size = 40.dp,
-                    iconSize = 20.dp
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = account.name,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        ),
-                        color = scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    // 类型名可空：为空时不渲染该行
-                    if (account.label.isNotBlank()) {
-                        Text(
-                            text = account.label,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = scheme.outline,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CategoryIconView(
+                            iconName = account.iconName,
+                            colorHex = account.colorHex,
+                            size = 46.dp,
+                            iconSize = 24.dp
                         )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = account.name,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    ),
+                                    color = scheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (isDefaultExpense) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = scheme.primary.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, scheme.primary.copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = "默认支出",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = scheme.primary,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                if (isDefaultIncome) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFF059669).copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, Color(0xFF059669).copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = "默认收入",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF059669),
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (account.label.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = account.label,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                    color = scheme.outline,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = balanceText,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp
+                                ),
+                                color = balanceColor,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "账户余额",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = scheme.outline.copy(alpha = 0.8f)
+                            )
+                        }
                     }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = balanceText,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    ),
-                    color = balanceColor,
-                    maxLines = 1
-                )
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.25f), thickness = 0.5.dp)
+                    Spacer(modifier = Modifier.height(10.dp))
 
-            // ---- 头部行2：本月入/出 + 对账时效 ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowUpward,
-                    contentDescription = null,
-                    tint = scheme.primary,
-                    modifier = Modifier.size(11.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "本月入 ¥$inYuan",
-                    style = infoStyle,
-                    color = scheme.outline
-                )
-                Text(text = "  ·  ", style = infoStyle, color = scheme.outline)
-                Icon(
-                    imageVector = Icons.Default.ArrowDownward,
-                    contentDescription = null,
-                    tint = scheme.error,
-                    modifier = Modifier.size(11.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "本月出 ¥$outYuan",
-                    style = infoStyle,
-                    color = scheme.outline
-                )
-                Text(text = "  ·  ", style = infoStyle, color = scheme.outline)
-                when (reconcileStatus.tone) {
-                    // 已核对：对勾主色
-                    ReconcileTone.FRESH -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.CheckCircle,
+                            imageVector = Icons.Default.ArrowUpward,
                             contentDescription = null,
                             tint = scheme.primary,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(11.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = reconcileStatus.text,
+                            text = "本月入 ¥$inYuan",
                             style = infoStyle,
-                            color = scheme.primary
+                            color = scheme.outline
                         )
-                    }
-                    // 逾期 / 从未核对：琥珀警示
-                    ReconcileTone.OVERDUE, ReconcileTone.NEVER -> {
+                        Text(text = "  ·  ", style = infoStyle, color = scheme.outline)
                         Icon(
-                            imageVector = Icons.Default.Warning,
+                            imageVector = Icons.Default.ArrowDownward,
                             contentDescription = null,
-                            tint = ReconcileAmber,
-                            modifier = Modifier.size(12.dp)
+                            tint = scheme.error,
+                            modifier = Modifier.size(11.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = reconcileStatus.text,
+                            text = "本月出 ¥$outYuan",
                             style = infoStyle,
-                            color = ReconcileAmber
+                            color = scheme.outline
                         )
-                    }
-                    // 上月已核对：灰字无图标
-                    ReconcileTone.NORMAL -> {
-                        Text(
-                            text = reconcileStatus.text,
-                            style = infoStyle,
-                            color = scheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        when (reconcileStatus.tone) {
+                            ReconcileTone.FRESH -> {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = scheme.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = reconcileStatus.text,
+                                    style = infoStyle,
+                                    color = scheme.primary
+                                )
+                            }
+                            ReconcileTone.OVERDUE, ReconcileTone.NEVER -> {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = ReconcileAmber,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = reconcileStatus.text,
+                                    style = infoStyle,
+                                    color = ReconcileAmber
+                                )
+                            }
+                            ReconcileTone.NORMAL -> {
+                                Text(
+                                    text = reconcileStatus.text,
+                                    style = infoStyle,
+                                    color = scheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // ---- 2. 高频操作按钮行（资金对账 / 转账还款 / 编辑账户）----
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AccountActionTile(
+                    title = "资金对账",
+                    subtitle = "校准实盘",
+                    icon = Icons.Default.AccountBalanceWallet,
+                    iconTint = scheme.primary,
+                    containerColor = scheme.primaryContainer.copy(alpha = 0.35f),
+                    modifier = Modifier.weight(1f),
+                    onClick = { runAction(onReconcile) }
+                )
+                AccountActionTile(
+                    title = "转账还款",
+                    subtitle = "资金流转",
+                    icon = Icons.Default.SwapHoriz,
+                    iconTint = scheme.secondary,
+                    containerColor = scheme.secondaryContainer.copy(alpha = 0.35f),
+                    modifier = Modifier.weight(1f),
+                    onClick = { runAction(onTransfer) }
+                )
+                AccountActionTile(
+                    title = "编辑账户",
+                    subtitle = "名称图标",
+                    icon = Icons.Default.Edit,
+                    iconTint = scheme.onSurfaceVariant,
+                    containerColor = scheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        // 编辑走「子表单叠在面板之上」：不先关闭父面板，
+                        // 取消编辑可回到面板继续其它操作（保存成功后才由页面层一并收起）
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onEdit(account)
+                    }
+                )
+            }
 
-            // ---- 操作区 ----
-            AccountActionRow(
-                title = "转账 / 还款",
-                icon = Icons.Default.SwapHoriz,
-                iconTint = scheme.secondary,
-                onClick = { runAction(onTransfer) }
-            )
-            AccountActionRow(
-                title = "资金对账",
-                icon = Icons.Default.AccountBalanceWallet,
-                iconTint = scheme.primary,
-                onClick = { runAction(onReconcile) }
-            )
-            AccountActionRow(
-                title = "编辑账户",
-                icon = Icons.Default.Edit,
-                iconTint = scheme.onSurface,
-                onClick = { runAction(onEdit) }
-            )
+            // ---- 3. 默认收支账户配置卡片 ----
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = scheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    AccountDefaultToggleRow(
+                        title = "设为默认支出账户",
+                        subtitle = "记账与闪电记账优先以此账户扣款",
+                        icon = Icons.Default.Star,
+                        iconTint = scheme.primary,
+                        checked = isDefaultExpense,
+                        onCheckedChange = { checked ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleDefaultExpense(checked)
+                        }
+                    )
+                    HorizontalDivider(
+                        color = scheme.outlineVariant.copy(alpha = 0.25f),
+                        thickness = 0.5.dp
+                    )
+                    AccountDefaultToggleRow(
+                        title = "设为默认收入账户",
+                        subtitle = "记录收入流水时优先归入此账户",
+                        icon = Icons.Default.Star,
+                        iconTint = Color(0xFF059669),
+                        checked = isDefaultIncome,
+                        onCheckedChange = { checked ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleDefaultIncome(checked)
+                        }
+                    )
+                }
+            }
 
-            // 危险操作与常规操作分区
-            HorizontalDivider(
-                color = scheme.outlineVariant.copy(alpha = 0.4f),
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
+            // ---- 4. 危险区：删除账户 ----
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = scheme.errorContainer.copy(alpha = 0.18f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { runAction(onDelete) }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = scheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "删除账户",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = scheme.error
+                    )
+                }
+            }
 
-            AccountActionRow(
-                title = "删除账户",
-                icon = Icons.Default.Delete,
-                iconTint = scheme.error,
-                titleColor = scheme.error,
-                onClick = { runAction(onDelete) }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
         }
+    }
+}
+
+/** 账户操作卡片（资金对账 / 转账 / 编辑） */
+@Composable
+private fun AccountActionTile(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    containerColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = containerColor,
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = MaterialTheme.colorScheme.outline,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/** 默认账户开关行 */
+@Composable
+private fun AccountDefaultToggleRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = iconTint
+            )
+        )
     }
 }
 
@@ -341,7 +583,7 @@ fun PendingReconcileSheet(
                     HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.3f))
                 }
 
-                val reconcileStatus = accountReconcileStatus(account.lastReconciledAt)
+                val reconcileStatus = account.reconcileStatus
                 val statusColor = if (reconcileStatus.tone == ReconcileTone.OVERDUE) {
                     ReconcileAmber
                 } else {

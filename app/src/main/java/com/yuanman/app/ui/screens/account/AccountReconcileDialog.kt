@@ -21,15 +21,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -37,6 +42,7 @@ import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.theme.ExpenseColorLight
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
+import kotlinx.coroutines.delay
 
 /**
  * 资金对账对话框（AccountReconcileDialog）—— 从旧 AccountComponents.kt 原样迁移，行为与文案不变：
@@ -51,14 +57,27 @@ fun AccountReconcileDialog(
     onConfirmReconcile: (actualBalanceCents: Long, applyCorrection: Boolean) -> Unit
 ) {
     val bookBalanceCents = account.balanceCents
-    var actualYuanInput by remember {
+    val initialYuan = remember(bookBalanceCents) {
+        BigDecimal(bookBalanceCents).divide(BigDecimal(100)).stripTrailingZeros().toPlainString()
+    }
+    var textFieldValue by remember {
         mutableStateOf(
-            BigDecimal(bookBalanceCents).divide(BigDecimal(100)).stripTrailingZeros().toPlainString()
+            TextFieldValue(
+                text = initialYuan,
+                selection = TextRange(0, initialYuan.length)
+            )
         )
+    }
+    val focusRequester = remember { FocusRequester() }
+
+    // 点击对账后立即进入编辑态，等待弹窗窗口挂载后自动请求焦点并调出软键盘
+    LaunchedEffect(Unit) {
+        delay(120)
+        focusRequester.requestFocus()
     }
 
     val actualCents = try {
-        BigDecimal(actualYuanInput.trim()).multiply(BigDecimal(100)).toLong()
+        BigDecimal(textFieldValue.text.trim()).multiply(BigDecimal(100)).toLong()
     } catch (e: Exception) {
         bookBalanceCents
     }
@@ -91,13 +110,13 @@ fun AccountReconcileDialog(
                         iconSize = 18.dp
                     )
                     Text(
-                        text = "月度资金对账 · ${account.name}",
+                        text = "资金对账 · ${account.name}",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
 
                 Text(
-                    text = "建议按月核对一次网银或对账单即可，保持轻松记账。若有微小利息、手续费或漏记，可一键自动校正期初基线。",
+                    text = "按你的对账周期与网银/账单核对一次真实余额。若有微小利息、手续费或漏记，可一键自动校正期初基线，不产生假流水。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -127,15 +146,17 @@ fun AccountReconcileDialog(
                     }
                 }
 
-                // 真实实际余额输入框
+                // 真实实际余额输入框（立即获取焦点进入编辑态）
                 OutlinedTextField(
-                    value = actualYuanInput,
-                    onValueChange = { actualYuanInput = it },
+                    value = textFieldValue,
+                    onValueChange = { textFieldValue = it },
                     label = { Text("实际真实余额 (元)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
                 )
 
                 // 差额比对提示框

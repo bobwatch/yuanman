@@ -1,12 +1,20 @@
 package com.yuanman.app.ui.screens.add_edit
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import com.yuanman.app.ui.screens.account.AccountUiModel
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -48,7 +56,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.components.CategoryIconView
@@ -58,6 +65,7 @@ import com.yuanman.app.ui.components.KeypadEngine
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.ui.components.YuanmanDatePickerSheet
 import com.yuanman.app.utils.DateTimeUtils
+import com.yuanman.app.utils.MoneyUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.math.RoundingMode
@@ -68,6 +76,7 @@ import java.util.Calendar
 fun AddEditRecordScreen(
     viewModel: AddEditRecordViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToAddCategory: ((RecordType) -> Unit)? = null,
     onNavigateToCategoryManage: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -96,12 +105,18 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 外部或快捷录入改变类型时，联动 Pager 平滑切页
+    // 外部或快捷录入改变类型时，联动 Pager 平滑切页（首次对齐无动画瞬间定位）
+    var isPagerInitialSynced by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.type) {
         val targetPage = if (uiState.type == RecordType.EXPENSE) 0 else 1
         if (pagerState.currentPage != targetPage && !pagerState.isScrollInProgress) {
-            pagerState.animateScrollToPage(targetPage)
+            if (!isPagerInitialSynced) {
+                pagerState.scrollToPage(targetPage)
+            } else {
+                pagerState.animateScrollToPage(targetPage)
+            }
         }
+        isPagerInitialSynced = true
     }
 
     // 当软键盘收起时，自动去除两端空白并持久化保存备注
@@ -153,22 +168,27 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 当选中的分类变化时，自动滚动使选中分类可见
+    // 当选中的分类变化时，仅在分类不在当前可见屏内时才平滑滚动；已在可视区域的分类绝不触发任何滚动动画
+    var isGridInitialLayoutDone by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.selectedCategory?.id, uiState.type) {
-        val selectedId = uiState.selectedCategory?.id
-        if (selectedId != null) {
-            if (uiState.type == RecordType.EXPENSE && uiState.expenseCategories.isNotEmpty()) {
-                val index = uiState.expenseCategories.indexOfFirst { it.id == selectedId }
-                if (index >= 0) {
-                    expenseGridState.animateScrollToItem(index)
-                }
-            } else if (uiState.type == RecordType.INCOME && uiState.incomeCategories.isNotEmpty()) {
-                val index = uiState.incomeCategories.indexOfFirst { it.id == selectedId }
-                if (index >= 0) {
-                    incomeGridState.animateScrollToItem(index)
+        val selectedId = uiState.selectedCategory?.id ?: return@LaunchedEffect
+        val isExpense = uiState.type == RecordType.EXPENSE
+        val categories = if (isExpense) uiState.expenseCategories else uiState.incomeCategories
+        val gridState = if (isExpense) expenseGridState else incomeGridState
+        val index = categories.indexOfFirst { it.id == selectedId }
+        if (index >= 0) {
+            val layoutInfo = gridState.layoutInfo
+            val visibleIndices = layoutInfo.visibleItemsInfo.map { it.index }
+            val isAlreadyVisible = visibleIndices.contains(index)
+            if (!isAlreadyVisible && visibleIndices.isNotEmpty()) {
+                if (!isGridInitialLayoutDone) {
+                    gridState.scrollToItem(index)
+                } else {
+                    gridState.animateScrollToItem(index)
                 }
             }
         }
+        isGridInitialLayoutDone = true
     }
 
     val isExpense = pagerState.currentPage == 0
@@ -178,101 +198,110 @@ fun AddEditRecordScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            if (uiState.isEditMode) {
-                // 编辑模式：与分类管理页头部一致 —— 返回箭头 + 靠左加粗标题
-                TopAppBar(
-                    modifier = Modifier.offset(y = (-4).dp),
-                    title = {
-                        Text(
-                            text = "编辑账单",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            CenterAlignedTopAppBar(
+                modifier = Modifier.offset(y = (-4).dp),
+                navigationIcon = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        IconButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = { showDeleteConfirm = true }) {
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = if (uiState.isEditMode) "编辑账单" else "新增账单",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                },
+                title = {
+                    // 🌟 顶部极简分段胶囊（支出 / 收入）
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 支出
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isExpense) MaterialTheme.colorScheme.error else Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(0)
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = "支出",
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isExpense) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isExpense) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // 收入
+                            Surface(
+                                shape = CircleShape,
+                                color = if (!isExpense) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(1)
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = "收入",
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                                    fontSize = 13.sp,
+                                    fontWeight = if (!isExpense) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (!isExpense) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                },
+                actions = {
+                    if (uiState.isEditMode) {
+                        IconButton(
+                            onClick = { showDeleteConfirm = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.error
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
-                )
-            } else {
-                CenterAlignedTopAppBar(
-                    modifier = Modifier.offset(y = (-4).dp),
-                    title = {
-                        // 🌟 顶部极简分段胶囊（支出 / 收入）
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(3.dp),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // 支出
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isExpense) MaterialTheme.colorScheme.error else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(0)
-                                            }
-                                        }
-                                ) {
-                                    Text(
-                                        text = "支出",
-                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isExpense) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isExpense) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                // 收入
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (!isExpense) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(1)
-                                            }
-                                        }
-                                ) {
-                                    Text(
-                                        text = "收入",
-                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                                        fontSize = 13.sp,
-                                        fontWeight = if (!isExpense) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (!isExpense) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                        }
-                    }
-                )
-            }
+                }
+            )
         }
     ) { innerPadding ->
         Column(
@@ -445,9 +474,10 @@ fun AddEditRecordScreen(
                         }
                     }
 
-                    // 末尾便捷「+ 自定义」管理入口
-                    if (onNavigateToCategoryManage != null) {
+                    // 末尾便捷「+ 自定义」新增分类入口
+                    if (onNavigateToAddCategory != null || onNavigateToCategoryManage != null) {
                         item(key = "manage_category_item_${page}") {
+                            val pageType = if (page == 0) RecordType.EXPENSE else RecordType.INCOME
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
@@ -455,7 +485,11 @@ fun AddEditRecordScreen(
                                     .clickable {
                                         keyboardController?.hide()
                                         focusManager.clearFocus()
-                                        onNavigateToCategoryManage()
+                                        if (onNavigateToAddCategory != null) {
+                                            onNavigateToAddCategory(pageType)
+                                        } else {
+                                            onNavigateToCategoryManage?.invoke()
+                                        }
                                     }
                                     .padding(vertical = 4.dp)
                             ) {
@@ -473,7 +507,7 @@ fun AddEditRecordScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Add,
-                                        contentDescription = "管理分类",
+                                        contentDescription = "新增分类",
                                         tint = MaterialTheme.colorScheme.outline,
                                         modifier = Modifier.size(22.dp)
                                     )
@@ -500,39 +534,45 @@ fun AddEditRecordScreen(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
             ) {
-                // 快捷推荐备注标签行（加大字号与点击区域）
-                if (uiState.quickRemarks.isNotEmpty()) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(uiState.quickRemarks) { tag ->
-                            val isSelected = uiState.remark.contains(tag)
+                // 快捷推荐备注标签行（平滑展开收起，杜绝高度突变挤压网格）
+                AnimatedVisibility(
+                    visible = uiState.quickRemarks.isNotEmpty(),
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(uiState.quickRemarks) { tag ->
+                                val isSelected = uiState.remark.contains(tag)
 
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) themeActiveColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                border = if (isSelected) BorderStroke(1.dp, themeActiveColor.copy(alpha = 0.6f)) else null,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { viewModel.selectQuickRemark(tag) }
-                            ) {
-                                Text(
-                                    text = tag,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) themeActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) themeActiveColor.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    border = if (isSelected) BorderStroke(1.dp, themeActiveColor.copy(alpha = 0.6f)) else null,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.selectQuickRemark(tag) }
+                                ) {
+                                    Text(
+                                        text = tag,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) themeActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    HorizontalDivider(
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                    )
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                        )
+                    }
                 }
 
                 // 属性配置区域：
@@ -588,7 +628,7 @@ fun AddEditRecordScreen(
                             hasPaymentMethod && hasSpread -> "${uiState.paymentMethod} · 分摊${uiState.spreadMonths}月"
                             hasPaymentMethod -> uiState.paymentMethod
                             hasSpread -> "分摊 ${uiState.spreadMonths} 个月"
-                            else -> "支付方式"
+                            else -> "支出账户"
                         }
 
                         val paymentIcon = if (isExpense) {
@@ -789,6 +829,7 @@ fun AddEditRecordScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp)
             ) {
@@ -798,7 +839,7 @@ fun AddEditRecordScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isExpense) "选择支付方式" else "选择入账账户",
+                        text = if (isExpense) "选择支出账户" else "选择入账账户",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -824,54 +865,75 @@ fun AddEditRecordScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                val currentDefault = if (isExpense) uiState.defaultExpenseAccount else uiState.defaultIncomeAccount
 
-                val methodsList = if (isExpense) PaymentMethod.EXPENSE_METHODS else PaymentMethod.INCOME_ACCOUNTS
+                // 合一账户列表（需求3）：自建账户在前的分组一
+                if (uiState.accounts.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "我的账户",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        ),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(methodsList) { method ->
-                        val isSelected = uiState.paymentMethod == method
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    viewModel.setPaymentMethod(method)
-                                    if (!isExpense) {
-                                        showPaymentSheet = false
-                                    }
-                                }
+                    uiState.accounts.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                Text(
-                                    text = method,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            pair.forEach { account ->
+                                AccountPaymentSelectCard(
+                                    account = account,
+                                    isSelected = uiState.paymentMethod == account.name,
+                                    isDefault = account.name == currentDefault,
+                                    onClick = {
+                                        viewModel.setPaymentMethod(account.name)
+                                        if (!isExpense) {
+                                            showPaymentSheet = false
+                                        }
+                                    },
+                                    onClickDefault = {
+                                        viewModel.setDefaultPaymentAccount(
+                                            if (account.name == currentDefault) "" else account.name,
+                                            isExpense
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
 
-                // 支出场景专属：跨月分摊 / 分期记账设置
+                // （已移除）「快速创建常用账户」区块：建账户统一在「账户」页进行，记账弹层只负责选择账户；
+                // 一个账户都没有时给出引导文案，避免弹层空白。
+                if (uiState.accounts.isEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "还没有资金账户：先创建账户后，即可在这里选择「${if (isExpense) "支出" else "入账"}账户」",
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // （默认账户设置已上收到每张账户卡的「默认 / 设默认」徽章，见 AccountPaymentSelectCard）
+
+                // 3. 支出场景专属：跨月分摊 / 分期记账设置
                 if (isExpense && !uiState.isEditMode) {
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     HorizontalDivider(
                         thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -887,7 +949,7 @@ fun AddEditRecordScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "跨月分摊 (选填)",
+                            text = "跨月分摊",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -899,7 +961,7 @@ fun AddEditRecordScreen(
                         color = MaterialTheme.colorScheme.outline
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     val spreadOptions = listOf(
                         1 to "单笔(不分摊)",
@@ -910,40 +972,42 @@ fun AddEditRecordScreen(
                         24 to "分摊 24 个月"
                     )
 
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(spreadOptions) { (months, label) ->
-                            val isSelected = uiState.spreadMonths == months
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(42.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { viewModel.setSpreadMonths(months) }
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.fillMaxSize()
+                    spreadOptions.chunked(3).forEach { chunk ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            chunk.forEach { (months, label) ->
+                                val isSelected = uiState.spreadMonths == months
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.setSpreadMonths(months) }
                                 ) {
-                                    Text(
-                                        text = label,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
                             }
+                            repeat(3 - chunk.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -957,3 +1021,86 @@ fun AddEditRecordScreen(
         onDismiss = { showDeleteConfirm = false }
     )
 }
+
+@Composable
+private fun AccountPaymentSelectCard(
+    account: AccountUiModel,
+    isSelected: Boolean,
+    isDefault: Boolean,
+    onClick: () -> Unit,
+    onClickDefault: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) scheme.primaryContainer.copy(alpha = 0.65f) else scheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, if (isSelected) scheme.primary else Color.Transparent),
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CategoryIconView(
+                iconName = account.iconName,
+                colorHex = account.colorHex,
+                size = 32.dp,
+                iconSize = 16.dp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = account.name,
+                        fontSize = 12.5.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = scheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    // 默认账户直接点徽章切换：默认态点一下取消，非默认态点一下设为默认
+                    // （不再需要先选中账户再滚到底部勾选）
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        onClick = onClickDefault,
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (isDefault) scheme.primary.copy(alpha = 0.15f)
+                        else scheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = if (isDefault) null
+                        else BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.6f))
+                    ) {
+                        Text(
+                            text = if (isDefault) "默认" else "设默认",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDefault) scheme.primary else scheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = "¥" + MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true),
+                    fontSize = 10.5.sp,
+                    color = scheme.outline,
+                    maxLines = 1
+                )
+            }
+            if (isSelected) {
+                Spacer(modifier = Modifier.width(2.dp))
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = scheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+

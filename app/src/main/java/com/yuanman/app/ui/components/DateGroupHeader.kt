@@ -7,6 +7,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -22,7 +23,14 @@ fun DateGroupHeader(
     totalIncome: Long,
     modifier: Modifier = Modifier
 ) {
-    val dateWithWeek = DateTimeUtils.formatMonthDayWithWeek(timestamp)
+    // 组头文本按输入缓存，避免组头随列表滚动反复重组时重复分配 Calendar / 格式化
+    val dateWithWeek = remember(timestamp) { DateTimeUtils.formatMonthDayWithWeek(timestamp) }
+    val expenseLabel = remember(totalExpense) {
+        if (totalExpense > 0L) MoneyUtils.centsToYuanString(totalExpense) else ""
+    }
+    val incomeLabel = remember(totalIncome) {
+        if (totalIncome > 0L) MoneyUtils.centsToYuanString(totalIncome) else ""
+    }
 
     Row(
         modifier = modifier
@@ -57,7 +65,7 @@ fun DateGroupHeader(
         ) {
             if (totalExpense > 0L) {
                 Text(
-                    text = "支 ¥${MoneyUtils.centsToYuanString(totalExpense)}",
+                    text = "支 ¥$expenseLabel",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline
@@ -66,7 +74,7 @@ fun DateGroupHeader(
             }
             if (totalIncome > 0L) {
                 Text(
-                    text = "收 ¥${MoneyUtils.centsToYuanString(totalIncome)}",
+                    text = "收 ¥$incomeLabel",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary

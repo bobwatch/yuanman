@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material3.*
@@ -33,6 +36,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +73,13 @@ fun RecordListScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val toast = LocalToastHostState.current
     val listState = rememberLazyListState()
+
+    // 页面可见性：组合期间激活明细 VM 的写库监听；切走 Tab（组合销毁）后停掉，
+    // 避免 VM 随状态保留时仍在后台重复执行分页/汇总查询
+    DisposableEffect(Unit) {
+        viewModel.setPageActive(true)
+        onDispose { viewModel.setPageActive(false) }
+    }
     var showSearchBar by remember { mutableStateOf(false) }
     var showMonthPicker by remember { mutableStateOf(false) }
     var showDatePickerSheet by remember { mutableStateOf(false) }
@@ -83,6 +94,16 @@ fun RecordListScreen(
     val searchFocusRequester = remember { FocusRequester() }
     // 🌟 筛选过滤区显隐：往回翻看（手指下滑、内容下移）超过阈值自动隐藏，往下翻浏览（手指上滑）或回到顶部自动恢复
     var showFilters by remember { mutableStateOf(true) }
+
+    // 明细「天筛选」同步给底部「记一笔」入口：选中哪天，就把哪天零点带进新增页（补记当天账）
+    LaunchedEffect(uiState.selectedYear, uiState.selectedMonth, uiState.selectedDay) {
+        RecordListAddBridge.selectedDayStartMillis = uiState.selectedDay?.let { day ->
+            java.util.Calendar.getInstance().apply {
+                clear()
+                set(uiState.selectedYear, uiState.selectedMonth - 1, day)
+            }.timeInMillis
+        }
+    }
 
     LaunchedEffect(pullRefreshState.isRefreshing) {
         if (pullRefreshState.isRefreshing) {
@@ -217,7 +238,7 @@ fun RecordListScreen(
 
                             val isSearchActive = showSearchBar || uiState.searchQuery.isNotEmpty()
 
-                            // 1. 统一风格的月份选择 Chip（32dp 高度，极简微胶囊）
+                            // 1. 月份胶囊：‹ › 左右箭头翻月 / 胶囊上左右滑动翻月 / 点中间文字呼出月份选择器
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -225,27 +246,69 @@ fun RecordListScreen(
                                 modifier = Modifier
                                     .height(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .clickable { showMonthPicker = true }
+                                    .pointerInput(Unit) {
+                                        // 左右滑动翻月：左滑 → 下月，右滑 → 上月（超过阈值才触发）
+                                        val flipThreshold = 36.dp.toPx()
+                                        var totalDrag = 0f
+                                        detectHorizontalDragGestures(
+                                            onDragEnd = {
+                                                when {
+                                                    totalDrag <= -flipThreshold -> viewModel.nextMonth()
+                                                    totalDrag >= flipThreshold -> viewModel.previousMonth()
+                                                }
+                                                totalDrag = 0f
+                                            },
+                                            onDragCancel = { totalDrag = 0f }
+                                        ) { change, dragAmount ->
+                                            change.consume()
+                                            totalDrag += dragAmount
+                                        }
+                                    }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp)
+                                    modifier = Modifier.padding(horizontal = 2.dp)
                                 ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .clip(CircleShape)
+                                            .clickable { viewModel.previousMonth() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                            contentDescription = "上一个月",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                     Text(
                                         text = "${uiState.selectedYear}年${uiState.selectedMonth}月",
                                         style = MaterialTheme.typography.labelMedium.copy(
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { showMonthPicker = true }
+                                            .padding(horizontal = 5.dp, vertical = 6.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .clip(CircleShape)
+                                            .clickable { viewModel.nextMonth() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = "下一个月",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
                                         )
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "选择月份",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    }
                                 }
                             }
 

@@ -17,6 +17,22 @@ import org.json.JSONObject
 // 模型
 // ---------------------------------------------------------------------------
 
+/** 计划事件类型：攒入（DEPOSIT）/ 取出（WITHDRAW） */
+enum class PlanEventKind { DEPOSIT, WITHDRAW }
+
+/**
+ * 计划事件（攒钱/取出流水）：earmark 每次增减都追加一条，供计划详情页展示与删除。
+ * 计划 JSON 内 events 按 at 升序存放；删除事件按相反方向调整 earmark（删除攒入 → 减、
+ * 删除取出 → 加回），earmark 仍为权威值（历史事件为 UI 审计痕迹）。
+ */
+data class PlanEventUiModel(
+    val id: Long,
+    val kind: PlanEventKind,
+    val amountCents: Long,
+    val at: Long = System.currentTimeMillis(),
+    val note: String? = null // 来源说明，如「发薪分配」「补回专款」
+)
+
 data class SavingPlanUiModel(
     val id: Long,
     val name: String,               // 用户自定名称，如「旅行基金」
@@ -25,7 +41,8 @@ data class SavingPlanUiModel(
     val earmarkedCents: Long,       // 已圈专款
     val colorHex: Long,
     val sortOrder: Int,
-    val createdAt: Long
+    val createdAt: Long,
+    val events: List<PlanEventUiModel> = emptyList() // 攒钱/取出流水（升序）
 )
 
 enum class PaycheckRuleKind {
@@ -51,16 +68,22 @@ data class PaycheckLastRunUiModel(
     val at: Long? = null,
     val amountCents: Long? = null,
     val actionCount: Int? = null,     // 实际执行的转账/进计划笔数（不含留存）
-    val remainingCents: Long? = null  // 留存来源账户金额
+    val remainingCents: Long? = null, // 留存来源账户金额
+    // ---- v0.0.4.5：自动分账痕迹（哪笔工资、从哪个账户、自动还是手动）----
+    val recordId: Long? = null,       // 触发执行的收入记录 id（手动补分无记录则为 null）
+    val sourceAccountId: Long? = null,
+    val sourceAccountName: String? = null,
+    val auto: Boolean = false         // true = 记账保存后自动执行
 )
 
-/** 本月收入候选（UI 供选择，不持久化）；支付方式匹配复用账户流水的同名启发式 */
+/** 工资类收入候选（发薪自动触发/手动补分用，不持久化）；支付方式匹配复用账户流水的同名启发式 */
 data class IncomeCandidateUiModel(
     val recordId: Long,
     val amountCents: Long,
     val note: String,
     val method: String,
     val at: Long,
+    val categoryName: String = "", // 收入分类名（自动触发按「工资/薪」类判定）
     val matchedAccountId: Long?,
     val matchedAccountName: String?
 )
@@ -261,17 +284,33 @@ fun planPaycheckActions(
 fun serializeSavingPlans(plans: List<SavingPlanUiModel>): String {
     val array = JSONArray()
     plans.forEach { p ->
-        array.put(
-            JSONObject()
-                .put("id", p.id)
-                .put("name", p.name)
-                .put("holderAccountId", p.holderAccountId)
-                .put("targetAmountCents", p.targetAmountCents)
-                .put("earmarkedCents", p.earmarkedCents)
-                .put("colorHex", p.colorHex)
-                .put("sortOrder", p.sortOrder)
-                .put("createdAt", p.createdAt)
-        )
+        val obj = JSONObject()
+            .put("id", p.id)
+            .put("name", p.name)
+            .put("holderAccountId", p.holderAccountId)
+            .put("targetAmountCents", p.targetAmountCents)
+            .put("earmarkedCents", p.earmarkedCents)
+            .put("colorHex", p.colorHex)
+            .put("sortOrder", p.sortOrder)
+            .put("createdAt", p.createdAt)
+        if (p.events.isNotEmpty()) {
+            obj.put(
+                "events",
+                JSONArray().apply {
+                    p.events.sortedBy { it.at }.forEach { e ->
+                        put(
+                            JSONObject()
+                                .put("id", e.id)
+                                .put("kind", e.kind.name)
+                                .put("amountCents", e.amountCents)
+                                .put("at", e.at)
+                                .put("note", e.note ?: JSONObject.NULL)
+                        )
+                    }
+                }
+            )
+        }
+        array.put(obj)
     }
     return array.toString()
 }
@@ -290,13 +329,33 @@ fun parseSavingPlans(json: String?): List<SavingPlanUiModel> {
                 earmarkedCents = o.optLong("earmarkedCents", 0L),
                 colorHex = o.optLong("colorHex", 0xFF059669L),
                 sortOrder = o.optInt("sortOrder", i + 1),
-                createdAt = o.optLong("createdAt", 0L)
+                createdAt = o.optLong("createdAt", 0L),
+                events = parsePlanEvents(o.optJSONArray("events"))
             )
         }
     } catch (e: Exception) {
         e.printStackTrace()
         emptyList()
     }
+}
+
+private fun parsePlanEvents(array: JSONArray?): List<PlanEventUiModel> {
+    if (array == null) return emptyList()
+    return (0 until array.length()).mapNotNull { i ->
+        runCatching {
+            val e = array.getJSONObject(i)
+            val kind = PlanEventKind.entries.firstOrNull { it.name == e.optString("kind") }
+                ?: return@mapNotNull null
+            PlanEventUiModel(
+                id = e.optLong("id", i.toLong() + 1L),
+                kind = kind,
+                amountCents = e.optLong("amountCents", 0L),
+                at = e.optLong("at", 0L),
+                note = if (e.has("note") && !e.isNull("note")) e.optString("note") else null
+            )
+        }.getOrNull()
+    }
+        .sortedBy { it.at }
 }
 
 fun serializePaycheckScheme(scheme: PaycheckSchemeUiModel): String =
@@ -347,6 +406,10 @@ fun serializePaycheckLastRun(run: PaycheckLastRunUiModel): String =
         .put("amountCents", run.amountCents ?: JSONObject.NULL)
         .put("actionCount", run.actionCount ?: JSONObject.NULL)
         .put("remainingCents", run.remainingCents ?: JSONObject.NULL)
+        .put("recordId", run.recordId ?: JSONObject.NULL)
+        .put("sourceAccountId", run.sourceAccountId ?: JSONObject.NULL)
+        .put("sourceAccountName", run.sourceAccountName ?: JSONObject.NULL)
+        .put("auto", run.auto)
         .toString()
 
 fun parsePaycheckLastRun(json: String?): PaycheckLastRunUiModel {
@@ -357,10 +420,37 @@ fun parsePaycheckLastRun(json: String?): PaycheckLastRunUiModel {
             at = if (o.has("at") && !o.isNull("at")) o.getLong("at") else null,
             amountCents = if (o.has("amountCents") && !o.isNull("amountCents")) o.getLong("amountCents") else null,
             actionCount = if (o.has("actionCount") && !o.isNull("actionCount")) o.getInt("actionCount") else null,
-            remainingCents = if (o.has("remainingCents") && !o.isNull("remainingCents")) o.getLong("remainingCents") else null
+            remainingCents = if (o.has("remainingCents") && !o.isNull("remainingCents")) o.getLong("remainingCents") else null,
+            recordId = if (o.has("recordId") && !o.isNull("recordId")) o.getLong("recordId") else null,
+            sourceAccountId = if (o.has("sourceAccountId") && !o.isNull("sourceAccountId")) o.getLong("sourceAccountId") else null,
+            sourceAccountName = if (o.has("sourceAccountName") && !o.isNull("sourceAccountName")) o.optString("sourceAccountName") else null,
+            auto = o.optBoolean("auto", false)
         )
     } catch (e: Exception) {
         e.printStackTrace()
         PaycheckLastRunUiModel()
     }
 }
+
+/** 执行历史（最新在前，保留最近 30 条） */
+fun serializePaycheckRunHistory(runs: List<PaycheckLastRunUiModel>): String =
+    JSONArray().apply {
+        runs.take(30).forEach { put(JSONObject(serializePaycheckLastRun(it))) }
+    }.toString()
+
+fun parsePaycheckRunHistory(json: String?): List<PaycheckLastRunUiModel> {
+    if (json.isNullOrBlank()) return emptyList()
+    return try {
+        val array = JSONArray(json)
+        (0 until array.length()).mapNotNull { i ->
+            runCatching { parsePaycheckLastRun(array.getJSONObject(i).toString()) }.getOrNull()
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+}
+
+/** 已自动分账收入 id（逗号分隔字符串 → 集合） */
+fun parseAppliedIncomeIds(json: String?): Set<Long> =
+    json.orEmpty().split(",").mapNotNull { it.trim().toLongOrNull() }.toSet()

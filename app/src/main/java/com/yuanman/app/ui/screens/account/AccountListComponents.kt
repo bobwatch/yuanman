@@ -1,8 +1,10 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.yuanman.app.ui.screens.account
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -141,14 +143,16 @@ fun AccountGroupHeader(
 }
 
 /**
- * 账户行卡（§4.2.3，瘦身版两行结构：名称+副行 | 余额+负余额还款钮）
- * 整卡点击 → 操作面板；负余额行内仅 [还款] 一个第二可点元素，长按/更多一律不做。
+ * 账户行卡（两行结构：名称+副行 | 余额+负余额还款钮）。
+ * 点击 → 账户详情页（onClick）；长按 → 账户操作面板（onLongClick）；
+ * 负余额行内仅 [还款] 一个第二可点元素。
  */
 @Composable
 fun AccountItemCard(
     account: AccountUiModel,
     isPrivacyMode: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     onQuickRepay: (AccountUiModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -162,7 +166,7 @@ fun AccountItemCard(
         border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier
@@ -196,7 +200,7 @@ fun AccountItemCard(
                 )
 
                 // 副行：label 非空先显示 label（outline），有状态再拼接「 · 」与状态（tone 映射色）
-                val reconcile = accountReconcileStatus(account.lastReconciledAt)
+                val reconcile = account.reconcileStatus
                 val subtitle = buildAnnotatedString {
                     if (account.label.isNotBlank()) {
                         withStyle(SpanStyle(color = scheme.outline)) { append(account.label) }

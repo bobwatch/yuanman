@@ -7,11 +7,13 @@ import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -29,7 +31,14 @@ data class AccountUiModel(
     val outCents: Long = 0L,
     val lastReconciledAt: Long? = null,
     val lastReconciledDiffCents: Long? = null,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    // ---- 对账周期 & 记录（v0.0.4+）：override 为空 = 跟随全局周期；skip 为「跳过本期提醒」截止 ----
+    val reconcileCycleOverride: ReconcileCycle? = null,
+    val reconcileTipSkipUntil: Long? = null,
+    val reconcileRecords: List<ReconcileRecordUiModel> = emptyList(),
+    // 派生（不持久化）：按生效周期计算的对账时效，组装阶段统一填充
+    val reconcileStatus: AccountReconcileStatus =
+        AccountReconcileStatus(text = "从未对账", tone = ReconcileTone.NEVER)
 )
 
 data class AccountGroupUiModel(
@@ -64,27 +73,15 @@ data class AccountUiState(
     val paycheckLastRun: PaycheckLastRunUiModel = PaycheckLastRunUiModel(),
     val incomeCandidates: List<IncomeCandidateUiModel> = emptyList(), // 本月收入记录 + 匹配账户
     val holderEarmarkTotal: Map<Long, Long> = emptyMap(),             // 账户 → 全部计划已圈和
-    val availableToEarmark: Map<Long, Long> = emptyMap()              // 账户 → 可再圈上限（≥0）
+    val availableToEarmark: Map<Long, Long> = emptyMap(),              // 账户 → 可再圈上限（≥0）
+    val globalReconcileCycle: ReconcileCycle = ReconcileCycle.DEFAULT, // 全局默认对账周期
+    val defaultExpenseAccount: String = "",
+    val defaultIncomeAccount: String = "",
+    // ---- v0.0.4.5：工资到账自动分账 ----
+    val paycheckAutoEnabled: Boolean = true,                // 自动分账总开关
+    val appliedIncomeRecordIds: Set<Long> = emptySet(),     // 已分账过的收入记录（幂等）
+    val paycheckRunHistory: List<PaycheckLastRunUiModel> = emptyList() // 历次分账记录（最新在前）
 )
-
-/**
- * 支付方式 → 账户命中启发式（v0.2 内联逻辑原样抽取，语义零变化；
- * 账户流水的按月聚合与本月的收入候选匹配共用，保证口径一致）。
- */
-private fun methodMatchesAccount(methodRaw: String, account: AccountUiModel): Boolean {
-    val method = methodRaw.trim()
-    return method.isNotBlank() && (
-        method == account.name ||
-            account.name.contains(method, ignoreCase = true) ||
-            (method.contains("微信") && account.name.contains("微信")) ||
-            (method.contains("支付宝") && account.name.contains("支付宝")) ||
-            ((method.contains("卡") || method.contains("银行")) && (account.name.contains("行") || account.name.contains("卡"))) ||
-            (method.contains("现金") && account.name.contains("现金"))
-        )
-}
-
-private fun findAccountForMethod(method: String, accounts: List<AccountUiModel>): AccountUiModel? =
-    accounts.firstOrNull { methodMatchesAccount(method, it) }
 
 class AccountViewModel(
     private val preferencesRepository: PreferencesRepository,
@@ -93,6 +90,14 @@ class AccountViewModel(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    // 手动补分/自动分账的一次性执行结果提示（页面 toast 消费后 clear）
+    private val _paycheckNotice = MutableStateFlow<String?>(null)
+    val paycheckNotice: StateFlow<String?> = _paycheckNotice.asStateFlow()
+
+    fun clearPaycheckNotice() {
+        _paycheckNotice.value = null
+    }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
     private val currentYear = currentYearMonth.first
@@ -103,12 +108,26 @@ class AccountViewModel(
     // 注：期初 + 仅当月流水的口径存在跨月漂移的已知风险，本期不修正口径（见设计文档 §8.5）
     private val recordsOfMonth = recordRepository.getRecordsByMonth(currentYear, currentMonth)
 
+    /** 当月流水（账户详情「收支记录明细」卡使用；过滤口径与账户聚合一致：按支付方式命中账户） */
+    val monthRecordsFlow: StateFlow<List<RecordWithCategory>> = recordsOfMonth
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val uiState: StateFlow<AccountUiState> = combine(
         combine(preferencesRepository.accountsData, preferencesRepository.privacyMode) { a, p -> a to p },
         combine(recordsOfMonth, _isRefreshing) { r, ref -> r to ref },
         combine(preferencesRepository.paycheckSchemeData, preferencesRepository.paycheckLastRunData) { s, l -> s to l },
-        preferencesRepository.savingPlansData
-    ) { baseA, baseB, baseC, plansJson ->
+        combine(preferencesRepository.savingPlansData, preferencesRepository.reconcileCycleData) { p, c -> p to c },
+        combine(
+            combine(preferencesRepository.defaultExpenseAccount, preferencesRepository.defaultIncomeAccount) { e, i -> e to i },
+            combine(
+                preferencesRepository.paycheckAutoEnabled,
+                preferencesRepository.paycheckAutoAppliedIds,
+                preferencesRepository.paycheckRunHistoryData
+            ) { enabled, appliedIds, history -> Triple(enabled, appliedIds, history) }
+        ) { defAccounts, autoInfo -> defAccounts to autoInfo }
+    ) { baseA, baseB, baseC, plansAndCycle, extraInfo ->
+        val defAccounts = extraInfo.first
+        val autoInfo = extraInfo.second
         assembleAccountUiState(
             accountsJson = baseA.first,
             privacyMode = baseA.second,
@@ -116,9 +135,18 @@ class AccountViewModel(
             refreshing = baseB.second,
             schemeJson = baseC.first,
             lastRunJson = baseC.second,
-            plansJson = plansJson
+            plansJson = plansAndCycle.first,
+            reconcileCycleJson = plansAndCycle.second,
+            defaultExpenseAccount = defAccounts.first,
+            defaultIncomeAccount = defAccounts.second,
+            paycheckAutoEnabled = autoInfo.first,
+            appliedIncomeIdsJson = autoInfo.second,
+            runHistoryJson = autoInfo.third
         )
-    }.stateIn(
+    }
+        // JSON 全量解析与账户/计划聚合计算移出主线程；stateIn 收集仍回到主线程
+        .flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = AccountUiState(isLoading = true)
@@ -131,44 +159,27 @@ class AccountViewModel(
         refreshing: Boolean,
         plansJson: String?,
         schemeJson: String?,
-        lastRunJson: String?
+        lastRunJson: String?,
+        reconcileCycleJson: String?,
+        defaultExpenseAccount: String,
+        defaultIncomeAccount: String,
+        paycheckAutoEnabled: Boolean,
+        appliedIncomeIdsJson: String?,
+        runHistoryJson: String?
     ): AccountUiState {
         val currentMonthRecords = monthRecords
+        val globalReconcileCycle = runCatching {
+            ReconcileCycle.fromJson(JSONObject(reconcileCycleJson))
+        }.getOrNull() ?: ReconcileCycle.DEFAULT
+        // 账户数据以用户实际创建为准：无数据（首启/清空）即为空列表，不再注入演示账户
         val rawAccounts = if (accountsJson.isNullOrBlank()) {
-            getDefaultSeedAccounts()
+            emptyList()
         } else {
-            parseAccountsJson(accountsJson).ifEmpty { getDefaultSeedAccounts() }
+            parseAccountsJson(accountsJson)
         }
 
-        // 按当月流水与支付方式匹配账户，聚合本月入账/出账
-        val enrichedAccounts = rawAccounts.map { account ->
-            var monthIn = 0L
-            var monthOut = 0L
-
-            currentMonthRecords.forEach { recordWithCat ->
-                val r = recordWithCat.record
-                val matches = methodMatchesAccount(r.paymentMethod, account)
-
-                if (matches) {
-                    if (r.type == "INCOME") {
-                        monthIn += r.amount
-                    } else if (r.type == "EXPENSE") {
-                        monthOut += r.amount
-                    }
-                }
-            }
-
-            // 当月无该账户流水时，回退保留账户自身已存的入/出分量
-            val finalIn = if (monthIn > 0L) monthIn else account.inCents
-            val finalOut = if (monthOut > 0L) monthOut else account.outCents
-            val effectiveBalance = account.openingBalanceCents + finalIn - finalOut
-
-            account.copy(
-                inCents = finalIn,
-                outCents = finalOut,
-                balanceCents = effectiveBalance
-            )
-        }
+        // 按当月流水与支付方式匹配账户，聚合本月入账/出账并派生对账字段（共享口径见 AccountDataCodec.kt）
+        val enrichedAccounts = enrichAccountsForMonth(rawAccounts, currentMonthRecords, globalReconcileCycle)
 
         // 统一按 sortOrder 升序排一次，保证列表 / 分布彩条 / 类型 chips 的呈现顺序一致且稳定
         val sortedAccounts = enrichedAccounts.sortedBy { it.sortOrder }
@@ -210,12 +221,14 @@ class AccountViewModel(
             emptyList()
         }
 
-        // ---- v0.3：计划/方案解析 + 本月收入候选 + 专款派生（UI 直接读取，口径见设计文档 §1）----
+        // ---- 计划/方案解析 + 本月工资类收入候选 + 专款派生（v0.0.4.5：候选仅「工资/薪」类收入）----
         val plans = parseSavingPlans(plansJson).sortedBy { it.sortOrder }
         val scheme = parsePaycheckScheme(schemeJson)
         val lastRun = parsePaycheckLastRun(lastRunJson)
+        val appliedIncomeRecordIds = parseAppliedIncomeIds(appliedIncomeIdsJson)
         val incomeCandidates = currentMonthRecords
             .filter { it.record.type == "INCOME" }
+            .filter { rw -> rw.category?.name?.let(::isSalaryCategoryName) == true }
             .map { rw ->
                 val r = rw.record
                 val matched = findAccountForMethod(r.paymentMethod, sortedAccounts)
@@ -225,6 +238,7 @@ class AccountViewModel(
                     note = r.remark,
                     method = r.paymentMethod,
                     at = r.recordTime,
+                    categoryName = rw.category?.name.orEmpty(),
                     matchedAccountId = matched?.id,
                     matchedAccountName = matched?.name
                 )
@@ -257,8 +271,26 @@ class AccountViewModel(
             paycheckLastRun = lastRun,
             incomeCandidates = incomeCandidates,
             holderEarmarkTotal = holderEarmarkTotal,
-            availableToEarmark = availableToEarmark
+            availableToEarmark = availableToEarmark,
+            globalReconcileCycle = globalReconcileCycle,
+            defaultExpenseAccount = defaultExpenseAccount,
+            defaultIncomeAccount = defaultIncomeAccount,
+            paycheckAutoEnabled = paycheckAutoEnabled,
+            appliedIncomeRecordIds = appliedIncomeRecordIds,
+            paycheckRunHistory = parsePaycheckRunHistory(runHistoryJson)
         )
+    }
+
+    fun setDefaultExpenseAccount(accountName: String) {
+        viewModelScope.launch {
+            preferencesRepository.setDefaultExpenseAccount(accountName)
+        }
+    }
+
+    fun setDefaultIncomeAccount(accountName: String) {
+        viewModelScope.launch {
+            preferencesRepository.setDefaultIncomeAccount(accountName)
+        }
     }
 
     fun togglePrivacyMode() {
@@ -316,6 +348,8 @@ class AccountViewModel(
      * 账面 = 期初 + 当月入 - 当月出，差额 = 实盘 - 账面。
      * applyCorrection 为 true 且差额非 0 时，将差额并入期初（openingBalance），
      * 后续流水自动平移基线，账面与实盘对齐，不产生假流水。
+     * 每次对账都会追加一条「对账记录」（ReconcileRecordUiModel），账户最近核对
+     * 时间/差额由最新一条记录派生；同时清除该账户的「跳过本期提醒」状态。
      */
     fun reconcileAccount(
         accountId: Long,
@@ -339,14 +373,91 @@ class AccountViewModel(
 
                 val newBalance = if (applyCorrection) actualBalanceCents else book
 
+                val nextRecordId = (target.reconcileRecords.maxOfOrNull { it.id } ?: 0L) + 1L
+                val newRecord = ReconcileRecordUiModel(
+                    id = nextRecordId,
+                    asOfDate = now,
+                    actualBalanceCents = actualBalanceCents,
+                    bookBalanceCents = book,
+                    diffCents = diff,
+                    corrected = applyCorrection && diff != 0L
+                )
+
                 currentAccounts[index] = target.copy(
                     openingBalanceCents = newOpening,
                     balanceCents = newBalance,
                     lastReconciledAt = now,
-                    lastReconciledDiffCents = diff
+                    lastReconciledDiffCents = diff,
+                    reconcileTipSkipUntil = null,
+                    reconcileRecords = (target.reconcileRecords + newRecord)
+                        .sortedByDescending { it.asOfDate }
                 )
                 persistAccounts(currentAccounts)
             }
+        }
+    }
+
+    /**
+     * 删除一条对账记录：账户最近核对时间/差额回退到剩余最新一条（无记录则回到「从未对账」）。
+     * 只影响提醒口径与审计痕迹，不撤销当时已并入期初的校正。
+     */
+    fun deleteReconcileRecord(accountId: Long, recordId: Long) {
+        viewModelScope.launch {
+            val currentAccounts = uiState.value.accounts.toMutableList()
+            val index = currentAccounts.indexOfFirst { it.id == accountId }
+            if (index < 0) return@launch
+            val target = currentAccounts[index]
+            val remaining = target.reconcileRecords.filterNot { it.id == recordId }
+            val head = remaining.firstOrNull()
+            currentAccounts[index] = target.copy(
+                lastReconciledAt = head?.asOfDate,
+                lastReconciledDiffCents = head?.diffCents,
+                reconcileRecords = remaining
+            )
+            persistAccounts(currentAccounts)
+        }
+    }
+
+    /** 设置全局默认对账周期（账户未自定义时生效） */
+    fun setGlobalReconcileCycle(cycle: ReconcileCycle) {
+        viewModelScope.launch {
+            preferencesRepository.saveReconcileCycleData(cycle.toJson().toString())
+        }
+    }
+
+    /** 设置账户自定义对账周期；cycle 为 null = 清除自定义、跟随全局 */
+    fun setAccountReconcileCycleOverride(accountId: Long, cycle: ReconcileCycle?) {
+        viewModelScope.launch {
+            val currentAccounts = uiState.value.accounts.toMutableList()
+            val index = currentAccounts.indexOfFirst { it.id == accountId }
+            if (index >= 0) {
+                currentAccounts[index] = currentAccounts[index].copy(reconcileCycleOverride = cycle)
+                persistAccounts(currentAccounts)
+            }
+        }
+    }
+
+    /**
+     * 跳过本期核对提醒：对指定的待核对账户静默到各自周期的期末（periodEndEpoch），
+     * 下一期开始时若仍未对账，提醒恢复。对账成功会自动清除跳过状态。
+     */
+    fun skipReconcileReminderFor(accountIds: List<Long>) {
+        if (accountIds.isEmpty()) return
+        viewModelScope.launch {
+            val s = uiState.value
+            val global = s.globalReconcileCycle
+            val now = System.currentTimeMillis()
+            val currentAccounts = s.accounts.toMutableList()
+            var changed = false
+            currentAccounts.indices.forEach { i ->
+                val acc = currentAccounts[i]
+                if (acc.id in accountIds) {
+                    val cycle = effectiveCycleFor(acc.reconcileCycleOverride, global)
+                    currentAccounts[i] = acc.copy(reconcileTipSkipUntil = periodEndEpoch(cycle, now))
+                    changed = true
+                }
+            }
+            if (changed) persistAccounts(currentAccounts)
         }
     }
 
@@ -443,7 +554,7 @@ class AccountViewModel(
         }
     }
 
-    /** 再存一笔（虚拟专款）：上限 = 账户余额 - 该账户全部已圈（UI 依状态禁用，VM 双保险收敛） */
+    /** 存一笔（虚拟专款，原名「再存一笔」）：上限 = 账户余额 - 该账户全部已圈（UI 依状态禁用，VM 双保险收敛）。追加 DEPOSIT 事件。 */
     fun depositToPlan(planId: Long, amountCents: Long) {
         if (amountCents <= 0L) return
         viewModelScope.launch {
@@ -459,12 +570,20 @@ class AccountViewModel(
             val actual = amountCents.coerceAtMost(cap)
             if (actual <= 0L) return@launch
             val plans = s.plans.toMutableList()
-            plans[idx] = plan.copy(earmarkedCents = plan.earmarkedCents + actual)
+            plans[idx] = plan.copy(
+                earmarkedCents = plan.earmarkedCents + actual,
+                events = plan.events + PlanEventUiModel(
+                    id = (plan.events.maxOfOrNull { it.id } ?: 0L) + 1L,
+                    kind = PlanEventKind.DEPOSIT,
+                    amountCents = actual,
+                    at = System.currentTimeMillis()
+                )
+            )
             persistPlans(plans)
         }
     }
 
-    /** 撤回专款：上限 = 该计划已圈额，可全部撤回 */
+    /** 取一笔（原「撤回专款 / 取出一笔」简化命名）：上限 = 该计划已圈额，可全部取出。追加 WITHDRAW 事件。 */
     fun withdrawFromPlan(planId: Long, amountCents: Long) {
         if (amountCents <= 0L) return
         viewModelScope.launch {
@@ -475,7 +594,39 @@ class AccountViewModel(
             val actual = amountCents.coerceAtMost(plan.earmarkedCents)
             if (actual <= 0L) return@launch
             val plans = s.plans.toMutableList()
-            plans[idx] = plan.copy(earmarkedCents = plan.earmarkedCents - actual)
+            plans[idx] = plan.copy(
+                earmarkedCents = plan.earmarkedCents - actual,
+                events = plan.events + PlanEventUiModel(
+                    id = (plan.events.maxOfOrNull { it.id } ?: 0L) + 1L,
+                    kind = PlanEventKind.WITHDRAW,
+                    amountCents = actual,
+                    at = System.currentTimeMillis()
+                )
+            )
+            persistPlans(plans)
+        }
+    }
+
+    /**
+     * 删除一条计划事件（攒钱/取出记录）：earmark 按相反方向回滚
+     * （删除攒入 → 减额；删除取出 → 加回，若超出专款账户余额则进入既有超额警示态）。
+     */
+    fun deletePlanEvent(planId: Long, eventId: Long) {
+        viewModelScope.launch {
+            val s = uiState.value
+            val idx = s.plans.indexOfFirst { it.id == planId }
+            if (idx < 0) return@launch
+            val plan = s.plans[idx]
+            val event = plan.events.firstOrNull { it.id == eventId } ?: return@launch
+            val adjust = when (event.kind) {
+                PlanEventKind.DEPOSIT -> -event.amountCents
+                PlanEventKind.WITHDRAW -> event.amountCents
+            }
+            val plans = s.plans.toMutableList()
+            plans[idx] = plan.copy(
+                earmarkedCents = (plan.earmarkedCents + adjust).coerceAtLeast(0L),
+                events = plan.events.filterNot { it.id == eventId }
+            )
             persistPlans(plans)
         }
     }
@@ -487,82 +638,31 @@ class AccountViewModel(
     }
 
     /**
-     * 发薪分配执行（引擎 E1-E7）：预览与执行共用同一纯函数 planPaycheckActions。
-     * 执行 = 账户间转账（in/out 语义，与手动转账一致）+ 计划 earmark 累加 + lastRun 落库；
-     * 不写收支流水、不影响对账基线。单协程顺序写三个 DataStore 键。
+     * 手动补分（引擎 E1-E7 见 SavingPlanModels）：委托共享 PaycheckExecutor 落库
+     * （自动/手动同一路径，不写收支流水、不影响对账基线）。
+     * 执行结果写入 [paycheckNotice] 由页面 toast 展示。
      */
-    fun executePaycheck(sourceAccountId: Long, amountCents: Long) {
+    fun executePaycheck(sourceAccountId: Long, amountCents: Long, recordId: Long? = null) {
         if (amountCents <= 0L) return
         viewModelScope.launch {
-            val s = uiState.value
-            val source = s.accounts.firstOrNull { it.id == sourceAccountId } ?: return@launch
-            val result = planPaycheckActions(amountCents, source, s.accounts, s.plans, s.paycheckScheme)
-
-            // 1) 转账户步（含自动清欠）→ 与 transfer() 相同的 in/out 语义；
-            //    TO_PLAN 跨账户专款同样真实转入专款账户，自持专款（专款账户==来源账户）不动钱
-            var accounts = s.accounts
-            val accountById = accounts.associateBy { it.id }.toMutableMap()
-            result.steps.forEach { step ->
-                if (step.amountCents <= 0L) return@forEach
-                when (step.kind) {
-                    PaycheckStepKind.TO_ACCOUNT, PaycheckStepKind.CLEAR_DEBT -> {
-                        val from = accountById[source.id] ?: return@forEach
-                        val to = accountById[step.targetId] ?: return@forEach
-                        accountById[source.id] = from.copy(
-                            outCents = from.outCents + step.amountCents,
-                            balanceCents = from.balanceCents - step.amountCents
-                        )
-                        accountById[to.id] = to.copy(
-                            inCents = to.inCents + step.amountCents,
-                            balanceCents = to.balanceCents + step.amountCents
-                        )
-                    }
-                    PaycheckStepKind.TO_PLAN -> {
-                        val plan = s.plans.firstOrNull { it.id == step.targetId } ?: return@forEach
-                        if (plan.holderAccountId == source.id) return@forEach // 自持：仅 earmark，不动钱
-                        val from = accountById[source.id] ?: return@forEach
-                        val holder = accountById[plan.holderAccountId] ?: return@forEach
-                        accountById[source.id] = from.copy(
-                            outCents = from.outCents + step.amountCents,
-                            balanceCents = from.balanceCents - step.amountCents
-                        )
-                        accountById[holder.id] = holder.copy(
-                            inCents = holder.inCents + step.amountCents,
-                            balanceCents = holder.balanceCents + step.amountCents
-                        )
-                    }
-                    PaycheckStepKind.REMAIN -> Unit
-                }
+            val summary = paycheckExecutor.runManual(sourceAccountId, amountCents, recordId)
+            _paycheckNotice.value = if (summary.executedCount > 0) {
+                "已按发薪规则分账 ${summary.executedCount} 笔动作"
+            } else {
+                "按当前规则没有可执行的动作（可能是来源余额不足或规则为空）"
             }
-            accounts = accounts.map { accountById[it.id] ?: it }
-
-            // 2) 进计划步 → earmark 累加
-            var plans = s.plans
-            result.steps
-                .filter { it.kind == PaycheckStepKind.TO_PLAN && it.amountCents > 0L }
-                .forEach { step ->
-                    val idx = plans.indexOfFirst { it.id == step.targetId }
-                    if (idx >= 0) {
-                        val mutable = plans.toMutableList()
-                        mutable[idx] = mutable[idx].copy(
-                            earmarkedCents = mutable[idx].earmarkedCents + step.amountCents
-                        )
-                        plans = mutable
-                    }
-                }
-
-            persistAccounts(accounts)
-            persistPlans(plans)
-            val run = PaycheckLastRunUiModel(
-                at = System.currentTimeMillis(),
-                amountCents = amountCents,
-                actionCount = result.steps.count {
-                    it.kind != PaycheckStepKind.REMAIN && it.amountCents > 0L
-                },
-                remainingCents = result.remainingCents
-            )
-            preferencesRepository.savePaycheckLastRunData(serializePaycheckLastRun(run))
         }
+    }
+
+    /** 工资到账自动分账总开关 */
+    fun setPaycheckAutoEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPaycheckAutoEnabled(enabled)
+        }
+    }
+
+    private val paycheckExecutor: PaycheckExecutor by lazy {
+        PaycheckExecutor(preferencesRepository, recordRepository)
     }
 
     private suspend fun persistPlans(plans: List<SavingPlanUiModel>) {
@@ -572,139 +672,6 @@ class AccountViewModel(
     private suspend fun persistAccounts(accounts: List<AccountUiModel>) {
         val json = serializeAccountsJson(accounts)
         preferencesRepository.saveAccountsData(json)
-    }
-
-    companion object {
-        // 首次启动的示例账户：仅为演示数据，label 等字段只是用户可自由改写/删除的示例字符串
-        fun getDefaultSeedAccounts(): List<AccountUiModel> {
-            val now = System.currentTimeMillis()
-            return listOf(
-                AccountUiModel(
-                    id = 1L,
-                    name = "微信支付",
-                    label = "流动活期",
-                    iconName = "wallet",
-                    colorHex = 0xFF059669L,
-                    openingBalanceCents = 328000L,
-                    balanceCents = 328000L,
-                    inCents = 240000L,
-                    outCents = 185000L,
-                    lastReconciledAt = now,
-                    lastReconciledDiffCents = 0L,
-                    sortOrder = 1
-                ),
-                AccountUiModel(
-                    id = 2L,
-                    name = "支付宝",
-                    label = "流动活期",
-                    iconName = "part_time",
-                    colorHex = 0xFF0284C7L,
-                    openingBalanceCents = 896000L,
-                    balanceCents = 896000L,
-                    inCents = 560000L,
-                    outCents = 320000L,
-                    lastReconciledAt = now - 86400000L,
-                    lastReconciledDiffCents = 0L,
-                    sortOrder = 2
-                ),
-                AccountUiModel(
-                    id = 3L,
-                    name = "招商银行储蓄卡",
-                    label = "储备资金",
-                    iconName = "bank",
-                    colorHex = 0xFFE53935L,
-                    openingBalanceCents = 5200000L,
-                    balanceCents = 5200000L,
-                    inCents = 1500000L,
-                    outCents = 240000L,
-                    lastReconciledAt = now - 172800000L,
-                    lastReconciledDiffCents = 0L,
-                    sortOrder = 3
-                ),
-                AccountUiModel(
-                    id = 4L,
-                    name = "花呗 / 信用卡",
-                    label = "信用借贷",
-                    iconName = "bonus",
-                    colorHex = 0xFFFF9800L,
-                    openingBalanceCents = -158000L,
-                    balanceCents = -158000L,
-                    inCents = 0L,
-                    outCents = 158000L,
-                    lastReconciledAt = null,
-                    lastReconciledDiffCents = null,
-                    sortOrder = 4
-                ),
-                AccountUiModel(
-                    id = 5L,
-                    name = "现钞零钱",
-                    label = "现钞零钱",
-                    iconName = "savings",
-                    colorHex = 0xFF607D8BL,
-                    openingBalanceCents = 65000L,
-                    balanceCents = 65000L,
-                    inCents = 0L,
-                    outCents = 8000L,
-                    lastReconciledAt = null,
-                    lastReconciledDiffCents = null,
-                    sortOrder = 5
-                )
-            )
-        }
-
-        private fun serializeAccountsJson(accounts: List<AccountUiModel>): String {
-            val array = JSONArray()
-            accounts.forEach { acc ->
-                val obj = JSONObject()
-                obj.put("id", acc.id)
-                obj.put("name", acc.name)
-                obj.put("label", acc.label)
-                obj.put("iconName", acc.iconName)
-                obj.put("colorHex", acc.colorHex)
-                obj.put("openingBalanceCents", acc.openingBalanceCents)
-                obj.put("balanceCents", acc.balanceCents)
-                obj.put("inCents", acc.inCents)
-                obj.put("outCents", acc.outCents)
-                if (acc.lastReconciledAt != null) {
-                    obj.put("lastReconciledAt", acc.lastReconciledAt)
-                }
-                if (acc.lastReconciledDiffCents != null) {
-                    obj.put("lastReconciledDiffCents", acc.lastReconciledDiffCents)
-                }
-                obj.put("sortOrder", acc.sortOrder)
-                array.put(obj)
-            }
-            return array.toString()
-        }
-
-        private fun parseAccountsJson(jsonStr: String): List<AccountUiModel> {
-            val result = mutableListOf<AccountUiModel>()
-            try {
-                val array = JSONArray(jsonStr)
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    result.add(
-                        AccountUiModel(
-                            id = obj.optLong("id", i.toLong() + 1L),
-                            name = obj.optString("name", "账户"),
-                            label = obj.optString("label", ""),
-                            iconName = obj.optString("iconName", "wallet"),
-                            colorHex = obj.optLong("colorHex", 0xFF059669L),
-                            openingBalanceCents = obj.optLong("openingBalanceCents", 0L),
-                            balanceCents = obj.optLong("balanceCents", 0L),
-                            inCents = obj.optLong("inCents", 0L),
-                            outCents = obj.optLong("outCents", 0L),
-                            lastReconciledAt = if (obj.has("lastReconciledAt")) obj.getLong("lastReconciledAt") else null,
-                            lastReconciledDiffCents = if (obj.has("lastReconciledDiffCents")) obj.getLong("lastReconciledDiffCents") else null,
-                            sortOrder = obj.optInt("sortOrder", i + 1)
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            return result
-        }
     }
 
     class Factory(

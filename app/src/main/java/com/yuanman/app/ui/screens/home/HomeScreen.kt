@@ -1,6 +1,7 @@
 package com.yuanman.app.ui.screens.home
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,9 +48,12 @@ import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.ui.screens.account.AccountUiModel
 import com.yuanman.app.ui.components.*
 import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.utils.DateTimeUtils
@@ -163,9 +167,15 @@ fun HomeScreen(
                         type = quickEntryType,
                         categories = uiState.quickEntryCategories,
                         learningRules = uiState.quickEntryLearningRules,
+                        accounts = uiState.accounts,
+                        defaultExpenseAccount = uiState.defaultExpenseAccount,
+                        defaultIncomeAccount = uiState.defaultIncomeAccount,
                         onTypeChange = { quickEntryType = it },
-                        onSubmit = { input, type, categoryOverride ->
-                            val saved = viewModel.saveQuickEntry(input, type, categoryOverride)
+                        onSetDefaultAccount = { acc, isExp ->
+                            viewModel.setDefaultPaymentAccount(acc, isExp)
+                        },
+                        onSubmit = { input, type, categoryOverride, accountOverride ->
+                            val saved = viewModel.saveQuickEntry(input, type, categoryOverride, accountOverride)
                             if (saved != null) {
                                 val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
                                 toast.success(
@@ -415,15 +425,21 @@ private fun QuickEntryStrip(
     type: RecordType,
     categories: List<CategoryEntity>,
     learningRules: List<QuickEntryLearningEntity>,
+    accounts: List<AccountUiModel>,
+    defaultExpenseAccount: String,
+    defaultIncomeAccount: String,
     onTypeChange: (RecordType) -> Unit,
-    onSubmit: (String, RecordType, CategoryEntity?) -> Boolean,
+    onSetDefaultAccount: (String, Boolean) -> Unit,
+    onSubmit: (String, RecordType, CategoryEntity?, String?) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by remember { mutableStateOf("") }
     // 用户点按解析徽章手动选定的分类；非空时优先于自动解析结果。
     var manualCategory by remember { mutableStateOf<CategoryEntity?>(null) }
+    var manualAccount by remember { mutableStateOf<String?>(null) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showAccountPicker by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
@@ -437,205 +453,275 @@ private fun QuickEntryStrip(
     } ?: preview?.category
     val isManualCategory = manualCategory != null
     val isExpense = type == RecordType.EXPENSE
+    val defaultAccountForType = if (isExpense) defaultExpenseAccount else defaultIncomeAccount
+    val effectiveAccount = manualAccount
+        ?: preview?.paymentMethod
+        ?: defaultAccountForType.takeIf { it.isNotBlank() }
+        ?: if (isExpense) "支出账户" else "入账账户"
+    val isManualAccount = manualAccount != null
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
     val isReady = preview != null
     val btnBgColor by animateColorAsState(
-        targetValue = if (isReady) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        targetValue = if (isReady) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         label = "btn_bg"
     )
     val btnIconColor by animateColorAsState(
-        targetValue = if (isReady) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        targetValue = if (isReady) Color.White else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
         label = "btn_icon"
     )
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 1.5.dp, shape = RoundedCornerShape(22.dp)),
-        shape = RoundedCornerShape(22.dp),
+            .shadow(elevation = 1.5.dp, shape = RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 5.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            // 1. 支 / 收 极简切换胶囊
-            QuickTypeTogglePill(
-                selectedType = type,
-                onTypeChange = { newType ->
-                    if (newType != type) manualCategory = null
-                    onTypeChange(newType)
-                }
-            )
-
-            // 2. 原生无框极简输入框
-            BasicTextField(
-                value = text,
-                onValueChange = { newText ->
-                    if (newText.isEmpty()) manualCategory = null
-                    text = newText
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 2.dp),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                cursorBrush = SolidColor(accent),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = if (isReady) ImeAction.Done else ImeAction.Default
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        if (isReady) {
-                            if (onSubmit(text, type, effectiveCategory)) {
-                                text = ""
-                                manualCategory = null
-                            }
-                        }
-                    }
-                ),
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (text.isEmpty()) {
-                            Text(
-                                text = "✨ 闪电记账 如: 咖啡15块",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f),
-                                    fontSize = 13.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        innerTextField()
-                    }
-                }
-            )
-
-            // 3. 实时智能解析徽章 (单行平铺，防止折行)
-            AnimatedVisibility(
-                visible = isReady,
-                enter = fadeIn() + expandHorizontally(),
-                exit = fadeOut() + shrinkHorizontally()
+            // === 第一行：类型切换 + 输入框 + 清除/关闭 ===
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (preview != null) {
-                    val cat = effectiveCategory
-                    val catColor = cat?.let { Color(it.colorHex) } ?: accent
-                    val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
+                // 1. 支 / 收 极简切换胶囊
+                QuickTypeTogglePill(
+                    selectedType = type,
+                    onTypeChange = { newType ->
+                        if (newType != type) {
+                            manualCategory = null
+                            manualAccount = null
+                        }
+                        onTypeChange(newType)
+                    }
+                )
 
-                    // 点按解析徽章即可修改分类（支持把识别错的分类换掉）
-                    Surface(
-                        onClick = {
-                            focusManager.clearFocus()
-                            showCategoryPicker = true
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isManualCategory) accent.copy(alpha = 0.17f) else accent.copy(alpha = 0.12f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isManualCategory) accent.copy(alpha = 0.55f) else accent.copy(alpha = 0.25f)
-                        ),
-                        modifier = Modifier.padding(horizontal = 2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Icon(
-                                imageVector = iconVector,
-                                contentDescription = null,
-                                tint = catColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = cat?.name ?: "账单",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = accent
-                                ),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            if (isManualCategory) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "点击修改分类",
-                                    tint = accent,
-                                    modifier = Modifier.size(10.dp)
-                                )
+                // 2. 原生无框极简输入框（独占整行剩余宽度）
+                BasicTextField(
+                    value = text,
+                    onValueChange = { newText ->
+                        if (newText.isEmpty()) manualCategory = null
+                        text = newText
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(accent),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = if (isReady) ImeAction.Done else ImeAction.Default
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (isReady) {
+                                val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
+                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                    text = ""
+                                    manualCategory = null
+                                    manualAccount = null
+                                }
                             }
-                            Text(
-                                text = "¥${preview.amountYuan.toPlainString()}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 11.sp,
-                                    color = accent
-                                ),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            preview.paymentMethod?.let { method ->
+                        }
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (text.isEmpty()) {
                                 Text(
-                                    text = "·$method",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.outline
+                                    text = "✨ 闪电记账 如: 咖啡15 / 午餐30微信",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                                        fontSize = 13.sp
                                     ),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    softWrap = false
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            innerTextField()
                         }
+                    }
+                )
+
+                // 3. 清空输入或关闭快捷条
+                if (text.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            text = ""
+                            manualCategory = null
+                            manualAccount = null
+                        },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "清空输入",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭快捷记账",
+                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
             }
 
-            // 4. 动态操作按钮 (一键保存 / 清空 / 关闭)
-            IconButton(
-                onClick = {
-                    if (isReady) {
-                        if (onSubmit(text, type, effectiveCategory)) {
-                            text = ""
-                            manualCategory = null
-                        }
-                    } else if (text.isNotEmpty()) {
-                        text = ""
-                        manualCategory = null
-                    } else {
-                        onClose()
-                    }
-                },
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(btnBgColor)
+            // === 第二行（输入内容后才展开）：账户胶囊 + 智能解析结果 + 记一笔按钮 ===
+            AnimatedVisibility(
+                visible = text.isNotEmpty(),
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(animationSpec = tween(160))
             ) {
-                Icon(
-                    imageVector = when {
-                        isReady -> Icons.Default.Check
-                        text.isNotEmpty() -> Icons.Default.Clear
-                        else -> Icons.Default.Close
-                    },
-                    contentDescription = if (isReady) "记下" else if (text.isNotEmpty()) "清空" else "关闭快捷记账",
-                    tint = btnIconColor,
-                    modifier = Modifier.size(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // 左侧：账户选择胶囊（点击呼出账户选择与设为默认）
+                QuickAccountSelectPill(
+                    accountName = effectiveAccount,
+                    isManual = isManualAccount,
+                    onClick = {
+                        focusManager.clearFocus()
+                        showAccountPicker = true
+                    }
                 )
+
+                // 右侧：实时智能解析徽章 + 记一笔保存按钮
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = isReady,
+                        enter = fadeIn() + expandHorizontally(),
+                        exit = fadeOut() + shrinkHorizontally()
+                    ) {
+                        if (preview != null) {
+                            val cat = effectiveCategory
+                            val catColor = cat?.let { Color(it.colorHex) } ?: accent
+                            val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
+
+                            Surface(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    showCategoryPicker = true
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isManualCategory) accent.copy(alpha = 0.16f) else catColor.copy(alpha = 0.12f),
+                                border = BorderStroke(
+                                    0.8.dp,
+                                    if (isManualCategory) accent.copy(alpha = 0.6f) else catColor.copy(alpha = 0.35f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = iconVector,
+                                        contentDescription = null,
+                                        tint = catColor,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = cat?.name ?: "账单",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    if (isManualCategory) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "点击修改分类",
+                                            tint = accent,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "¥${preview.amountYuan.toPlainString()}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 11.5.sp,
+                                            color = accent
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 记一笔保存按钮
+                    Surface(
+                        onClick = {
+                            if (isReady) {
+                                val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
+                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                    text = ""
+                                    manualCategory = null
+                                    manualAccount = null
+                                }
+                            }
+                        },
+                        enabled = isReady,
+                        shape = RoundedCornerShape(12.dp),
+                        color = btnBgColor,
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "记一笔",
+                                tint = btnIconColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "记一笔",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = btnIconColor
+                                )
+                            )
+                        }
+                    }
+                }
+                }
             }
         }
 
@@ -654,6 +740,28 @@ private fun QuickEntryStrip(
                     showCategoryPicker = false
                 },
                 onDismiss = { showCategoryPicker = false }
+            )
+        }
+
+        if (showAccountPicker) {
+            QuickAccountPickSheet(
+                accounts = accounts,
+                selectedAccountName = effectiveAccount,
+                defaultAccountName = defaultAccountForType,
+                isExpense = isExpense,
+                isManual = isManualAccount,
+                onPick = { chosen ->
+                    manualAccount = chosen
+                    showAccountPicker = false
+                },
+                onSetDefault = { accName, isExp ->
+                    onSetDefaultAccount(accName, isExp)
+                },
+                onRestoreAuto = {
+                    manualAccount = null
+                    showAccountPicker = false
+                },
+                onDismiss = { showAccountPicker = false }
             )
         }
     }
@@ -765,6 +873,227 @@ private fun QuickCategoryPickSheet(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickAccountSelectPill(
+    accountName: String,
+    isManual: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isManual) scheme.primary.copy(alpha = 0.12f) else scheme.surfaceVariant.copy(alpha = 0.65f),
+        border = BorderStroke(
+            0.6.dp,
+            if (isManual) scheme.primary.copy(alpha = 0.45f) else scheme.outlineVariant.copy(alpha = 0.4f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CreditCard,
+                contentDescription = null,
+                tint = if (isManual) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.75f),
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = accountName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = if (isManual) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 11.5.sp,
+                    color = if (isManual) scheme.primary else scheme.onSurfaceVariant
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                modifier = Modifier.widthIn(max = 120.dp)
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "选择账户",
+                tint = if (isManual) scheme.primary else scheme.outline,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickAccountPickSheet(
+    accounts: List<AccountUiModel>,
+    selectedAccountName: String,
+    defaultAccountName: String,
+    isExpense: Boolean,
+    isManual: Boolean,
+    onPick: (String) -> Unit,
+    onSetDefault: (String, Boolean) -> Unit,
+    onRestoreAuto: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val titleText = if (isExpense) "闪电记账 · 选择支出账户" else "闪电记账 · 选择入账账户"
+
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 4.dp)
+                .padding(bottom = 28.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = titleText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                )
+                if (isManual) {
+                    TextButton(
+                        onClick = onRestoreAuto,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) {
+                        Text("跟随默认", fontSize = 12.sp, color = scheme.primary)
+                    }
+                }
+            }
+
+            // 1. 我的资金账户
+            if (accounts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "我的资金账户",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    ),
+                    color = scheme.outline
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                accounts.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        pair.forEach { account ->
+                            val isSelected = selectedAccountName == account.name
+                            val isDefault = account.name == defaultAccountName
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) scheme.primaryContainer.copy(alpha = 0.55f) else scheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = BorderStroke(1.2.dp, if (isSelected) scheme.primary else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onPick(account.name) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CategoryIconView(
+                                        iconName = account.iconName,
+                                        colorHex = account.colorHex,
+                                        size = 30.dp,
+                                        iconSize = 15.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = account.name,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                color = scheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            // 默认账户直接点徽章切换：默认态点一下取消，非默认态点一下设为默认
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Surface(
+                                                onClick = {
+                                                    onSetDefault(if (isDefault) "" else account.name, isExpense)
+                                                },
+                                                shape = RoundedCornerShape(3.dp),
+                                                color = if (isDefault) {
+                                                    scheme.primary.copy(alpha = 0.15f)
+                                                } else {
+                                                    scheme.surfaceVariant.copy(alpha = 0.45f)
+                                                },
+                                                border = if (isDefault) {
+                                                    null
+                                                } else {
+                                                    BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.6f))
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = if (isDefault) "默认" else "设默认",
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDefault) scheme.primary else scheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "¥" + MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true),
+                                            fontSize = 10.sp,
+                                            color = scheme.outline,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = scheme.primary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // （默认账户设置已上收到每张账户卡的「默认 / 设默认」徽章，直接点按切换）
+            }
+
+            // 2.（已移除）「常用 / 其它方式」内置预设区块：支付方式 = 账户，预设字符串与账户列表冗余，
+            //    只保留账户选择；无账户时给出引导提示。
+            if (accounts.isEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "还没有资金账户：先创建账户后，即可在这里选择「${if (isExpense) "支出" else "入账"}账户」",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    color = scheme.outline,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
@@ -1217,6 +1546,19 @@ fun BitgetTransactionItem(
     val isExpense = record.type == RecordType.EXPENSE.name
     val primaryColor = MaterialTheme.colorScheme.primary
 
+    // 行内格式化只随输入变化重算：避免相邻行状态（如滑动开关）变化导致整行重组合时
+    // 反复 new BigDecimal / SimpleDateFormat，拖慢长列表滚动。
+    val amountText = remember(record.amount, isExpense) {
+        val yuan = MoneyUtils.centsToYuanString(record.amount)
+        if (isExpense) "-¥$yuan" else "+¥$yuan"
+    }
+    val subtitle = remember(record.remark, record.paymentMethod) {
+        listOf(record.remark, record.paymentMethod)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+    }
+    val timeText = remember(record.recordTime) { DateTimeUtils.formatTime(record.recordTime) }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1258,9 +1600,6 @@ fun BitgetTransactionItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                val subtitle = listOf(record.remark, record.paymentMethod)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
                 if (subtitle.isNotBlank()) {
                     Text(
                         text = subtitle,
@@ -1276,7 +1615,7 @@ fun BitgetTransactionItem(
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = if (isExpense) "-¥${MoneyUtils.centsToYuanString(record.amount)}" else "+¥${MoneyUtils.centsToYuanString(record.amount)}",
+                    text = amountText,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
@@ -1285,7 +1624,7 @@ fun BitgetTransactionItem(
                 )
 
                 Text(
-                    text = DateTimeUtils.formatTime(record.recordTime),
+                    text = timeText,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.outline
                 )

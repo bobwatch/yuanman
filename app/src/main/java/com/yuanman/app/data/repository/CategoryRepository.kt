@@ -1,7 +1,9 @@
 package com.yuanman.app.data.repository
 
+import android.content.Context
 import com.yuanman.app.data.local.AppDatabase
 import com.yuanman.app.data.local.DatabaseBackupManager
+import com.yuanman.app.data.local.StartupSeedState
 import com.yuanman.app.data.local.dao.CategoryDao
 import com.yuanman.app.data.local.dao.CategoryUsageCount
 import com.yuanman.app.data.local.dao.QuickEntryLearningDao
@@ -12,6 +14,7 @@ import com.yuanman.app.data.local.dao.SyncSnapshot
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordEntity
+import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.QuickEntryParser
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class CategoryRepository(
+    private val context: Context,
     private val categoryDao: CategoryDao,
     private val recordDao: RecordDao,
     private val syncDao: SyncDao,
@@ -127,6 +131,8 @@ class CategoryRepository(
 
     suspend fun clearQuickEntryLearning() = withContext(Dispatchers.IO) {
         quickEntryLearningDao.deleteUserRules()
+        // 用户主动清空学习数据：失效启动门控，下次启动按原语义从历史账单完整重建。
+        StartupSeedState.invalidate(context.applicationContext)
         DatabaseBackupManager.scheduleAutoBackupSoon()
     }
 
@@ -168,33 +174,48 @@ class CategoryRepository(
         backfillQuickEntryLearningInternal()
     }
 
+    /**
+     * 增量回填学习样本：只处理 updatedAt 晚于 [since] 的账单（配合启动门控，避免每次冷启动
+     * 都全表扫描历史流水），返回处理过的最新 updatedAt 作为下次游标。
+     */
+    suspend fun backfillQuickEntryLearningIncremental(since: Long): Long = withContext(Dispatchers.IO) {
+        var cursor = since
+        recordDao.getRecordsDirectSince(since).forEach { item ->
+            backfillRecordIfNeeded(item)
+            if (item.record.updatedAt > cursor) cursor = item.record.updatedAt
+        }
+        cursor
+    }
+
     private suspend fun backfillQuickEntryLearningInternal() {
-        recordDao.getAllRecordsDirect().forEach { item ->
-            val category = item.category ?: return@forEach
-            val phrase = QuickEntryParser.normalizeLearningText(item.record.remark)
-            if (phrase.isBlank()) return@forEach
-            // 历史账单的归类与同名纯预置规则不同时，用用户记账内容覆盖预置映射。
-            quickEntryLearningDao.deleteUnusedPresetsForPhrase(item.record.type, phrase, category.syncId)
-            val existing = quickEntryLearningDao.find(item.record.type, phrase, category.syncId)
-            if (existing == null) {
-                quickEntryLearningDao.upsert(
-                    QuickEntryLearningEntity(
-                        type = item.record.type,
-                        phrase = phrase,
-                        categorySyncId = category.syncId,
-                        sampleCount = 1,
-                        lastUsedAt = item.record.updatedAt
-                    )
-                )
-            } else if (existing.sampleCount == 0) {
-                // 历史账单命中系统预置词时，转为用户习惯并开始累计权重。
-                quickEntryLearningDao.increment(
-                    type = existing.type,
-                    phrase = existing.phrase,
-                    categorySyncId = existing.categorySyncId,
+        recordDao.getAllRecordsDirect().forEach { item -> backfillRecordIfNeeded(item) }
+    }
+
+    private suspend fun backfillRecordIfNeeded(item: RecordWithCategory) {
+        val category = item.category ?: return
+        val phrase = QuickEntryParser.normalizeLearningText(item.record.remark)
+        if (phrase.isBlank()) return
+        // 历史账单的归类与同名纯预置规则不同时，用用户记账内容覆盖预置映射。
+        quickEntryLearningDao.deleteUnusedPresetsForPhrase(item.record.type, phrase, category.syncId)
+        val existing = quickEntryLearningDao.find(item.record.type, phrase, category.syncId)
+        if (existing == null) {
+            quickEntryLearningDao.upsert(
+                QuickEntryLearningEntity(
+                    type = item.record.type,
+                    phrase = phrase,
+                    categorySyncId = category.syncId,
+                    sampleCount = 1,
                     lastUsedAt = item.record.updatedAt
                 )
-            }
+            )
+        } else if (existing.sampleCount == 0) {
+            // 历史账单命中系统预置词时，转为用户习惯并开始累计权重。
+            quickEntryLearningDao.increment(
+                type = existing.type,
+                phrase = existing.phrase,
+                categorySyncId = existing.categorySyncId,
+                lastUsedAt = item.record.updatedAt
+            )
         }
     }
 

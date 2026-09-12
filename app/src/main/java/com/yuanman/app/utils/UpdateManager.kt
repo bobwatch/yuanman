@@ -48,6 +48,9 @@ class UpdateManager(
     private val _hasUnseenUpdate = MutableStateFlow(false)
     val hasUnseenUpdate: StateFlow<Boolean> = _hasUnseenUpdate.asStateFlow()
 
+    private val _showUpdatePrompt = MutableStateFlow(false)
+    val showUpdatePrompt: StateFlow<Boolean> = _showUpdatePrompt.asStateFlow()
+
     val currentVersionName: String
         get() = try {
             BuildConfig.VERSION_NAME
@@ -88,6 +91,11 @@ class UpdateManager(
                         } else {
                             _updateState.value = UpdateState.Available(info)
                         }
+
+                        // 如果是手动检查，或者未在推迟期内，则弹出升级提示
+                        if (isManual || !isUpdatePostponed(info.versionName)) {
+                            _showUpdatePrompt.value = true
+                        }
                     } else {
                         _updateState.value = UpdateState.UpToDate
                     }
@@ -102,6 +110,45 @@ class UpdateManager(
         }
     }
 
+    fun requestUpdatePrompt() {
+        if (_updateState.value is UpdateState.Available || _updateState.value is UpdateState.ReadyToInstall) {
+            _showUpdatePrompt.value = true
+        }
+    }
+
+    fun dismissUpdatePrompt(postpone: Boolean = true) {
+        _showUpdatePrompt.value = false
+        if (postpone) {
+            val currentInfo = when (val state = _updateState.value) {
+                is UpdateState.Available -> state.info
+                is UpdateState.ReadyToInstall -> state.info
+                else -> null
+            }
+            postponeUpdate(currentInfo?.versionName)
+        }
+    }
+
+    fun postponeUpdate(versionName: String? = null, durationMs: Long = 24 * 60 * 60 * 1000L) {
+        updatePreferences.edit()
+            .putLong(POSTPONE_UPDATE_UNTIL, System.currentTimeMillis() + durationMs)
+            .putString(POSTPONED_VERSION, versionName ?: "")
+            .apply()
+    }
+
+    fun isUpdatePostponed(newVersionName: String? = null): Boolean {
+        val until = updatePreferences.getLong(POSTPONE_UPDATE_UNTIL, 0L)
+        val now = System.currentTimeMillis()
+        if (now >= until) return false
+        // 若发现了比当时取消时更新的版本，则不被旧版本的推迟所限制
+        if (newVersionName != null) {
+            val postponedVer = updatePreferences.getString(POSTPONED_VERSION, "") ?: ""
+            if (postponedVer.isNotBlank() && isNewer(newVersionName, postponedVer)) {
+                return false
+            }
+        }
+        return true
+    }
+
     fun markUpdateSeen(versionName: String) {
         updatePreferences.edit()
             .putString(LAST_SEEN_VERSION, versionName)
@@ -112,6 +159,7 @@ class UpdateManager(
     fun startDownload(info: UpdateInfo) {
         if (_updateState.value is UpdateState.Downloading) return
 
+        _showUpdatePrompt.value = false
         _updateState.value = UpdateState.Downloading(info, 0f, 0L, info.sizeBytes)
         scope.launch(Dispatchers.IO) {
             try {
@@ -161,6 +209,7 @@ class UpdateManager(
                 destFile.delete()
                 if (partialFile.renameTo(destFile)) {
                     _updateState.value = UpdateState.ReadyToInstall(info, destFile)
+                    _showUpdatePrompt.value = true
                 } else {
                     _updateState.value = UpdateState.Error("重命名安装包失败")
                 }
@@ -171,6 +220,7 @@ class UpdateManager(
     }
 
     fun installApk(apkFile: File) {
+        _showUpdatePrompt.value = false
         try {
             if (!apkFile.exists()) {
                 _updateState.value = UpdateState.Error("安装包文件不存在，请重新下载")
@@ -264,5 +314,7 @@ class UpdateManager(
         private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
         private const val UPDATE_PREFERENCES = "yuanman_update_preferences"
         private const val LAST_SEEN_VERSION = "last_seen_version"
+        private const val POSTPONE_UPDATE_UNTIL = "postpone_update_until"
+        private const val POSTPONED_VERSION = "postponed_version"
     }
 }

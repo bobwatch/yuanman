@@ -34,8 +34,10 @@ data class CategoryEntity(
         val trimmed = tags.trim()
         return if (trimmed.isNotEmpty()) {
             trimmed.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
+        } else if (isDefault) {
             com.yuanman.app.data.model.CategoryIconHelper.getPresetRemarks(name)
+        } else {
+            emptyList()
         }
     }
 }

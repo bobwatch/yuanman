@@ -23,7 +23,6 @@ fun CategoryIconView(
     iconSize: Dp = 24.dp
 ) {
     val bgColor = Color(colorHex)
-    val iconVector = CategoryIconHelper.getIcon(iconName)
 
     Box(
         modifier = modifier
@@ -32,11 +31,28 @@ fun CategoryIconView(
             .background(bgColor.copy(alpha = 0.15f)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = iconVector,
-            contentDescription = null,
-            tint = bgColor,
-            modifier = Modifier.size(iconSize)
-        )
+        if (BrandAccountIcons.isBrand(iconName)) {
+            // 品牌账户（微信/支付宝/银联）：固有配色渲染，不随主题色单色化
+            BrandAccountIcon(iconName, size = iconSize)
+        } else {
+            // 优先复用应用根组合中预置的进程级 painter（矢量节点树整个进程只建一次），
+            // 避免图标密集页面（分类网格等）每次进入都重新构建 painter 造成卡顿
+            val cachedPainter = IconPainterCache.get(iconName)
+            if (cachedPainter != null) {
+                Icon(
+                    painter = cachedPainter,
+                    contentDescription = null,
+                    tint = bgColor,
+                    modifier = Modifier.size(iconSize)
+                )
+            } else {
+                Icon(
+                    imageVector = CategoryIconHelper.getIcon(iconName),
+                    contentDescription = null,
+                    tint = bgColor,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+        }
     }
 }

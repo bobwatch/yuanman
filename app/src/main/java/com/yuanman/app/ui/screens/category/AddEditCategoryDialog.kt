@@ -48,7 +48,7 @@ fun AddEditCategoryDialog(
         mutableStateOf(categoryToEdit?.colorHex ?: CategoryIconHelper.PRESET_COLORS.first())
     }
     var tagList by remember(categoryToEdit) {
-        mutableStateOf(categoryToEdit?.getTagList() ?: CategoryIconHelper.getPresetRemarks(name).ifEmpty { listOf("默认标签") })
+        mutableStateOf(categoryToEdit?.getTagList() ?: emptyList())
     }
 
     var newTagInput by remember { mutableStateOf("") }
@@ -95,9 +95,6 @@ fun AddEditCategoryDialog(
                         if (it.length <= 8) {
                             name = it
                             errorText = null
-                            if (categoryToEdit == null && tagList.isEmpty()) {
-                                tagList = CategoryIconHelper.getPresetRemarks(it)
-                            }
                         }
                     },
                     label = { Text("分类名称") },

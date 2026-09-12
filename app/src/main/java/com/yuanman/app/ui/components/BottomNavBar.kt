@@ -32,7 +32,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.yuanman.app.ui.navigation.BottomNavTab
 import kotlinx.coroutines.coroutineScope
@@ -253,9 +252,16 @@ fun BottomNavBar(
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     if (currentRoute != targetRoute) {
                                         navController.navigate(targetRoute) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                inclusive = true
-                                                saveState = true
+                                            // 一级页 = 平行视图：每次切换都把「当前 tab」弹出（含保存状态）
+                                            // 再压入目标 tab，返回栈恒为单条目，返回键永不回溯到上一个 tab。
+                                            // 不能以 startDestination(首页) 为清栈边界：首页一旦被首次切走弹出，
+                                            // 之后 popUpTo 找不到它就会静默不清栈，历史逐次堆积导致返回层层回溯。
+                                            val leavingId = navController.currentBackStackEntry?.destination?.id
+                                            if (leavingId != null) {
+                                                popUpTo(leavingId) {
+                                                    inclusive = true
+                                                    saveState = true
+                                                }
                                             }
                                             launchSingleTop = true
                                             restoreState = true

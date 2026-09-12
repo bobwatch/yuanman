@@ -45,24 +45,22 @@ object CsvExportUtils {
         return sb.toString()
     }
 
-    private fun escapeCsvField(value: String): String {
-        val escaped = value.replace("\"", "\"\"")
-        return if (escaped.any { it == ',' || it == '\n' || it == '\r' || it == '"' }) {
-            "\"$escaped\""
-        } else {
-            escaped
-        }
-    }
-
     /**
      * 将 CSV 写入固定文件后调用系统分享面板。
      * 使用 FileProvider 传递 URI，避免部分分享目标无法接收 EXTRA_TEXT 的完整账单数据。
      */
     fun shareCsvContent(context: Context, records: List<RecordWithCategory>) {
-        val csvContent = generateCsvString(records)
+        shareCsvFile(context, EXPORT_FILE_NAME, generateCsvString(records), "导出并分享账单数据")
+    }
+
+    /**
+     * 通用 CSV 分享：把任意 CSV 文本（UTF-8 含 BOM）写入缓存目录后经系统分享面板导出，
+     * 供「账户与计划」等多表区块文件复用同一套 FileProvider 分享链路。
+     */
+    fun shareCsvFile(context: Context, fileName: String, csvContent: String, chooserTitle: String) {
         val exportDir = File(context.cacheDir, "exports")
         if (!exportDir.exists()) exportDir.mkdirs()
-        val exportFile = File(exportDir, EXPORT_FILE_NAME)
+        val exportFile = File(exportDir, fileName)
         FileOutputStream(exportFile, false).use { output ->
             output.write(csvContent.toByteArray(Charsets.UTF_8))
         }
@@ -74,13 +72,23 @@ object CsvExportUtils {
         val sendIntent: Intent = Intent().apply {
             action = Intent.ACTION_SEND
             putExtra(Intent.EXTRA_STREAM, contentUri)
-            putExtra(Intent.EXTRA_TITLE, EXPORT_FILE_NAME)
-            putExtra(Intent.EXTRA_SUBJECT, EXPORT_FILE_NAME)
+            putExtra(Intent.EXTRA_TITLE, fileName)
+            putExtra(Intent.EXTRA_SUBJECT, fileName)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             type = "text/csv"
         }
-        val shareIntent = Intent.createChooser(sendIntent, "导出并分享账单数据")
+        val shareIntent = Intent.createChooser(sendIntent, chooserTitle)
         shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(shareIntent)
+    }
+
+    /** CSV 字段转义（同一模块内供账户与计划表格导出复用） */
+    internal fun escapeCsvField(value: String): String {
+        val escaped = value.replace("\"", "\"\"")
+        return if (escaped.any { it == ',' || it == '\n' || it == '\r' || it == '"' }) {
+            "\"$escaped\""
+        } else {
+            escaped
+        }
     }
 }

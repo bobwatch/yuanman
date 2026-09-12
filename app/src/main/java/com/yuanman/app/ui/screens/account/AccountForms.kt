@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,10 +22,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -47,6 +51,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.ui.components.BrandAccountIcon
+import com.yuanman.app.ui.components.BrandAccountIcons
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
@@ -65,21 +71,29 @@ fun AddEditAccountSheet(
     accountToEdit: AccountUiModel?,
     existingTypes: List<String>,
     onDismiss: () -> Unit,
-    onSave: (name: String, label: String, iconName: String, colorHex: Long, openingBalanceCents: Long) -> Unit,
-    modifier: Modifier = Modifier
+    onSave: (name: String, label: String, iconName: String, colorHex: Long, balanceCents: Long) -> Unit,
+    modifier: Modifier = Modifier,
+    // 编辑态可选：对账周期下拉（账户自定义覆盖；null = 跟随全局）
+    globalCycle: ReconcileCycle = ReconcileCycle.DEFAULT,
+    onCycleSelect: ((ReconcileCycle?) -> Unit)? = null
 ) {
     var name by remember { mutableStateOf(accountToEdit?.name ?: "") }
     var label by remember { mutableStateOf(accountToEdit?.label ?: "") }
     var iconName by remember { mutableStateOf(accountToEdit?.iconName ?: "wallet") }
     var colorHex by remember { mutableStateOf(accountToEdit?.colorHex ?: 0xFF059669L) }
-    var openingYuan by remember {
+    var balanceYuan by remember {
         mutableStateOf(
             if (accountToEdit != null) {
-                val bd = BigDecimal(accountToEdit.openingBalanceCents).divide(BigDecimal(100))
+                val bd = BigDecimal(accountToEdit.balanceCents).divide(BigDecimal(100))
                 bd.stripTrailingZeros().toPlainString()
             } else "0"
         )
     }
+    // 对账周期下拉（仅编辑已有账户且提供回调时展示）
+    var cycleOverride by remember(accountToEdit) {
+        mutableStateOf(accountToEdit?.reconcileCycleOverride)
+    }
+    var cycleMenuExpanded by remember { mutableStateOf(false) }
 
     // 主题色盘：仅作视觉挑选，与类型无关
     val presetColors = listOf(
@@ -97,8 +111,9 @@ fun AddEditAccountSheet(
         0xFF26A69AL  // 薄荷绿
     )
 
-    // 账户类别图标词表（沿用旧词表，图标与类型语义解耦）
+    // 账户类别图标词表（品牌图标 = 微信支付/支付宝/银联，固有色渲染；其余单色矢量随主题色）
     val availableIcons = listOf(
+        "wechat", "alipay", "unionpay",
         "wallet", "part_time", "bank", "bonus", "savings", "salary",
         "finance", "refund", "card_gift", "shopping", "digital", "housing",
         "traffic", "other"
@@ -164,16 +179,112 @@ fun AddEditAccountSheet(
                 }
             }
 
-            // 期初余额
+            // 余额输入
             OutlinedTextField(
-                value = openingYuan,
-                onValueChange = { openingYuan = it },
-                label = { Text("期初余额 (元，信用卡欠款可输负数如 -1500)") },
+                value = balanceYuan,
+                onValueChange = { balanceYuan = it },
+                label = {
+                    Text(
+                        if (accountToEdit == null) "初始余额 (元，信用卡欠款可输负数如 -1500)"
+                        else "账户余额 (元，信用卡欠款可输负数如 -1500)"
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // 对账周期：下拉选择账户自定义覆盖（null = 跟随全局）；仅编辑已有账户时展示
+            if (accountToEdit != null && onCycleSelect != null) {
+                val cycleOptions = listOf(
+                    ReconcileCycle(1, ReconcileCycleUnit.WEEK),
+                    ReconcileCycle(2, ReconcileCycleUnit.WEEK),
+                    ReconcileCycle(1, ReconcileCycleUnit.MONTH),
+                    ReconcileCycle(1, ReconcileCycleUnit.QUARTER),
+                    ReconcileCycle(1, ReconcileCycleUnit.HALF_YEAR),
+                    ReconcileCycle(1, ReconcileCycleUnit.YEAR)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "对账周期（修改后立即生效）",
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            onClick = { cycleMenuExpanded = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = cycleOverride?.label ?: "跟随全局（${globalCycle.label}）",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "展开对账周期选项",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = cycleMenuExpanded,
+                            onDismissRequest = { cycleMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("跟随全局（${globalCycle.label}）") },
+                                leadingIcon = {
+                                    if (cycleOverride == null) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    cycleOverride = null
+                                    onCycleSelect(null)
+                                    cycleMenuExpanded = false
+                                }
+                            )
+                            cycleOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    leadingIcon = {
+                                        if (cycleOverride == option) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        cycleOverride = option
+                                        onCycleSelect(option)
+                                        cycleMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // 图标选择
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -206,12 +317,16 @@ fun AddEditAccountSheet(
                                 .clickable { iconName = iconKey },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = CategoryIconHelper.getIcon(iconKey),
-                                contentDescription = null,
-                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            if (BrandAccountIcons.isBrand(iconKey)) {
+                                BrandAccountIcon(iconKey, size = 22.dp)
+                            } else {
+                                Icon(
+                                    imageVector = CategoryIconHelper.getIcon(iconKey),
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -259,7 +374,7 @@ fun AddEditAccountSheet(
                 onClick = {
                     if (name.isNotBlank()) {
                         val cents = try {
-                            val bd = BigDecimal(openingYuan.trim())
+                            val bd = BigDecimal(balanceYuan.trim())
                             bd.multiply(BigDecimal(100)).toLong()
                         } catch (e: Exception) {
                             0L

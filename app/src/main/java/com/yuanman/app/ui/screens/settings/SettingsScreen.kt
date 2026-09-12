@@ -81,7 +81,6 @@ fun SettingsScreen(
     // 数据管理底部操作层（导出 / 导入 / 备份与恢复）
     var showDataManageSheet by remember { mutableStateOf(false) }
     var showThemeBottomSheet by remember { mutableStateOf(false) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
     var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
@@ -96,10 +95,15 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.restoreFromBackupFile(context, uri) { success, message ->
+            viewModel.restoreFromBackupFile(context, uri) { success, message, needsRestart ->
                 if (success) {
-                    restoreSuccessMessage = message
-                    showRestartAfterRestoreDialog = true
+                    if (needsRestart) {
+                        restoreSuccessMessage = message
+                        showRestartAfterRestoreDialog = true
+                    } else {
+                        // 账户数据 JSON 逐键写回 DataStore，无需重启即自动刷新
+                        toast.success(message)
+                    }
                 } else {
                     toast.error(message)
                 }
@@ -134,11 +138,6 @@ fun SettingsScreen(
         }
     }
 
-    // 进入设置页后静默检查一次，避免用户必须先点击才能知道有无新版本。
-    LaunchedEffect(Unit) {
-        viewModel.checkForUpdates(isManual = false)
-    }
-
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
             toast.success("全部数据已成功清空并恢复默认设置")
@@ -153,7 +152,6 @@ fun SettingsScreen(
         when (val state = updateState) {
             is UpdateState.ReadyToInstall -> {
                 if (prev is UpdateState.Downloading) {
-                    showUpdateDialog = true
                     toast.success("更新包已下载")
                 }
             }
@@ -238,10 +236,10 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                     )
 
-                    // 快捷记账二级页入口（总开关与分类学习管理迁至 QuickRecordSettingsScreen）
+                    // 记账习惯二级页入口（闪电记账条总开关与分类学习管理迁至 QuickRecordSettingsScreen）
                     SettingsRowItem(
                         icon = Icons.Outlined.Bolt,
-                        title = "快捷记账",
+                        title = "记账习惯",
                         subtitle = if (uiState.quickEntryEnabled) {
                             if (learningRules.isEmpty()) "已开启 · 智能匹配分类"
                             else "已开启 · 已积累 ${learningRules.size} 条习惯规则"
@@ -350,11 +348,11 @@ fun SettingsScreen(
                             when (val state = updateState) {
                                 is UpdateState.ReadyToInstall -> {
                                     viewModel.markUpdateSeen(state.info.versionName)
-                                    showUpdateDialog = true
+                                    viewModel.requestUpdatePrompt()
                                 }
                                 is UpdateState.Available -> {
                                     viewModel.markUpdateSeen(state.info.versionName)
-                                    showUpdateDialog = true
+                                    viewModel.requestUpdatePrompt()
                                 }
                                 is UpdateState.Downloading -> {
                                     toast.info("正在下载新版本安装包，请稍候...")
@@ -502,95 +500,6 @@ fun SettingsScreen(
         )
     }
 
-    // 🌟 新版本更新详情弹窗
-    if (showUpdateDialog) {
-        val info = when (val state = updateState) {
-            is UpdateState.Available -> state.info
-            is UpdateState.ReadyToInstall -> state.info
-            else -> null
-        }
-        val readyApk = (updateState as? UpdateState.ReadyToInstall)?.apkFile
-        if (info != null) {
-            AlertDialog(
-                onDismissRequest = { showUpdateDialog = false },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (readyApk != null) {
-                                "更新已就绪 v${info.versionName}"
-                            } else {
-                                "发现新版本 v${info.versionName}"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
-                },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (info.releaseTitle.isNotBlank()) {
-                            Text(
-                                text = info.releaseTitle,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        if (info.releaseNotes.isNotBlank()) {
-                            Text(
-                                text = info.releaseNotes,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            Text(
-                                text = "本次更新包含体验优化与问题修复。",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-
-                        if (info.sizeBytes > 0L) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "安装包大小: ${"%.1f".format(info.sizeBytes / 1024.0 / 1024.0)} MB",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (readyApk != null) {
-                                viewModel.installApk(readyApk)
-                                toast.info("正在打开安装器…")
-                            } else {
-                                viewModel.startDownload(info)
-                                toast.info("开始下载更新…")
-                            }
-                            showUpdateDialog = false
-                        }
-                    ) {
-                        Text(if (readyApk != null) "立即安装" else "下载更新")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("稍后")
-                    }
-                }
-            )
-        }
-    }
 
     // 🌟 主题外观底部选择弹层
     if (showThemeBottomSheet) {
@@ -716,6 +625,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -762,7 +672,7 @@ fun SettingsScreen(
                 SettingsRowItem(
                     icon = Icons.Outlined.Save,
                     title = "立即备份到文档",
-                    subtitle = "分类、账单与个人习惯保存至 文档/Yuanman，重装可自动还原",
+                    subtitle = "分类、账单、账户与计划及个人习惯保存至 文档/Yuanman，重装可自动还原",
                     isLoading = isBackingUp,
                     onClick = {
                         isBackingUp = true
@@ -781,7 +691,7 @@ fun SettingsScreen(
                 SettingsRowItem(
                     icon = Icons.Outlined.SettingsBackupRestore,
                     title = "从备份文件恢复",
-                    subtitle = "重装后可自动找回 文档/Yuanman 备份，也可手动选择文件还原",
+                    subtitle = "自动还原 文档/Yuanman 中分类、账单、账户与计划快照，也可手动选择备份文件",
                     isLoading = isRestoringBackup,
                     onClick = {
                         showDataManageSheet = false

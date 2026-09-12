@@ -67,10 +67,14 @@ fun AddEditCategoryScreen(
         }
     }
 
-    // 推荐但尚未添加的候选标签
-    val presetSuggestions = remember(uiState.name, uiState.tagList) {
-        val allPreset = CategoryIconHelper.getPresetRemarks(uiState.name.ifBlank { "通用" })
-        allPreset.filterNot { uiState.tagList.contains(it) }
+    // 推荐快速添加候选标签（仅编辑模式且有推荐时可用；新增分类不预置且不展示推荐）
+    val presetSuggestions = remember(uiState.isEditMode, uiState.name, uiState.tagList) {
+        if (!uiState.isEditMode) {
+            emptyList()
+        } else {
+            val allPreset = CategoryIconHelper.getPresetRemarks(uiState.name.ifBlank { "通用" })
+            allPreset.filterNot { uiState.tagList.contains(it) }
+        }
     }
 
     Scaffold(
@@ -235,7 +239,7 @@ fun AddEditCategoryScreen(
                     // 已有标签流式布局
                     if (uiState.tagList.isEmpty()) {
                         Text(
-                            text = "暂无专属子标签，可在下方输入或点击推荐标签添加",
+                            text = "暂无专属子标签，可在下方输入添加",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )

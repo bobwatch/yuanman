@@ -39,11 +39,16 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,10 +56,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,25 +67,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.LocalToastHostState
+import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
 
 /**
- * 发薪分配 二级页（设计文档 saving-plans-and-paycheck-v0.3.md §2.3 的页面形态）
+ * 发薪分配 二级页（v0.0.4.5：预分配规则形态）。
  *
- * 页面内完成发薪分配完整闭环，纯引擎与模型全部复用 SavingPlanModels.kt（同包）：
- *  - 顶部规范头部（返回 + 「发薪分配」），Scaffold contentWindowInsets = statusBars
- *  - 上次分配摘要卡（uiState.paycheckLastRun：时间 / 金额 / 笔数 / 留存）
- *  - 本月工资入账候选：优先展示已自动匹配来源账户的候选（E6）；手填金额或候选未命中时
- *    自选正余额账户 chips 作为来源
- *  - 金额输入：复刻 PaycheckFlowSheet 的轻量「候选 + 手动填写」实现（不引入 CustomKeypad）
- *  - 规则预览：与执行共用同一纯引擎 [planPaycheckActions]（E7，输入相同输出必然相同），
- *    受限 0 金额步骤整行降透明度，note 一律纯文案不含金额
- *  - 执行按钮 → viewModel.executePaycheck(...) → toast，LastRun 摘要随 uiState 自动刷新
+ * 产品模型：**规则提前配置好，工资到账即自动分配**——
+ *  1. 自动分账开关卡：保存「工资」类收入后自动按规则执行（默认开，可关）；
+ *  2. 分配规则卡：即改即存（SchemeEditorSheet），规则为空时自动分账仅做「剩余自动清欠」；
+ *  3. 分账记录卡：历次自动/手动执行摘要（金额 / 笔数 / 来源 / 留存）；
+ *  4. 手动补分：处理未自动分账的工资（支付方式没对上账户、或自动开关关闭期间记的账）。
  *
- * 金额展示一律走 MoneyUtils（千分位 2 位）；隐私模式下所有金额文本掩码「¥ ••••」
- * （账户名 / 计划名等名称不受影响）。无账户 → 空态引导；本页不新建 viewModel。
+ * 执行统一走共享 PaycheckExecutor（与记账保存后的自动触发同一路径），
+ * 预览/执行口径 E1-E7 见 SavingPlanModels。
  */
 @Composable
 fun PaycheckRunScreen(
@@ -90,88 +92,44 @@ fun PaycheckRunScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val toast = LocalToastHostState.current
+    val haptic = LocalHapticFeedback.current
     val colors = MaterialTheme.colorScheme
 
     val accounts = uiState.accounts
     val plans = uiState.plans
     val scheme = uiState.paycheckScheme
-    val isPrivacyMode = uiState.isPrivacyMode
-    val hasScheme = scheme.rules.isNotEmpty()
+    val privacy = uiState.isPrivacyMode
+    val appliedIds = uiState.appliedIncomeRecordIds
 
-    // ---- 表单状态（与 PaycheckFlowSheet 同款互斥口径）----
-    var selectedRecordId by remember { mutableStateOf<Long?>(null) }
-    var manualInput by remember { mutableStateOf("") }
-    var pickedSourceId by remember { mutableStateOf<Long?>(null) }
-
-    // 候选仅列已自动匹配来源账户的工资入账（优先级最高）；未匹配靠手动 + 自选来源兜底
-    val matchedCandidates = remember(uiState.incomeCandidates) {
-        uiState.incomeCandidates.filter { it.matchedAccountId != null }
-    }
-    val selectedCandidate = matchedCandidates.firstOrNull { it.recordId == selectedRecordId }
-    val accountNameById = remember(accounts) { accounts.associate { it.id to it.name } }
-
-    val manualAmountCents = remember(manualInput) { parseManualYuanToCents(manualInput) }
-    val amountCents = selectedCandidate?.amountCents ?: manualAmountCents
-
-    // 来源账户：候选命中账户优先（E6）；未命中 / 手填 / 命中账户已不在列表 → 用户自选
-    val matchedSourceId = selectedCandidate?.matchedAccountId
-    val sourceAccount = accounts.firstOrNull { it.id == (matchedSourceId ?: pickedSourceId) }
-    val showSourcePick = amountCents > 0L && (matchedSourceId == null || sourceAccount == null)
-    val positiveAccounts = remember(accounts) { accounts.filter { it.balanceCents > 0L } }
-
-    // E7：预览与执行共用同一纯引擎；金额 / 来源未就绪时不预览
-    val preview = remember(amountCents, sourceAccount, accounts, plans, scheme) {
-        if (sourceAccount != null && amountCents > 0L) {
-            planPaycheckActions(amountCents, sourceAccount, accounts, plans, scheme)
-        } else {
-            null
+    // ---- 一次性执行结果 toast ----
+    val notice by viewModel.paycheckNotice.collectAsState()
+    LaunchedEffect(notice) {
+        notice?.let { msg ->
+            if (msg.startsWith("按当前规则")) toast.info(msg) else toast.success(msg)
+            viewModel.clearPaycheckNotice()
         }
     }
 
-    val runPaycheck: () -> Unit = {
-        val source = sourceAccount
-        if (source != null && amountCents > 0L && hasScheme) {
-            viewModel.executePaycheck(source.id, amountCents)
-            toast.success("已按方案分配 " + MoneyUtils.formatCurrency(amountCents))
-            // 复位表单便于连续分配；顶部 LastRun 摘要卡随 uiState 自动刷新
-            selectedRecordId = null
-            manualInput = ""
-            pickedSourceId = null
-        }
-    }
-
-    val onSelectCandidate: (Long) -> Unit = { recordId ->
-        selectedRecordId = recordId
-        manualInput = ""
-    }
-    val onManualInputChange: (String) -> Unit = { input ->
-        manualInput = input
-        if (input.isNotBlank()) selectedRecordId = null
-    }
+    var showSchemeEdit by remember { mutableStateOf(false) }
+    var showManualSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            // 规范头部（与 CategoryManageScreen / AddEditRecordScreen 同式）：左上返回钮 + 靠左标题
             TopAppBar(
                 modifier = Modifier.offset(y = (-4).dp),
                 title = {
                     Text(
                         text = "发薪分配",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
@@ -183,7 +141,6 @@ fun PaycheckRunScreen(
                 .padding(innerPadding)
         ) {
             if (accounts.isEmpty()) {
-                // ---- 无账户空态：给引导不发散（对应 PaycheckFlowSheet 空态）----
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -191,7 +148,7 @@ fun PaycheckRunScreen(
                 ) {
                     EmptyStateView(
                         title = "请先创建资金账户",
-                        description = "创建微信、支付宝、储蓄卡等账户后，工资到账即可按方案自动分账",
+                        description = "创建账户后，保存「工资」类收入即可按规则自动分账",
                         icon = Icons.Outlined.AccountBalanceWallet,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -201,295 +158,298 @@ fun PaycheckRunScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 6.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // ---- 上次分配摘要 ----
-                    PaycheckLastRunCard(
-                        lastRun = uiState.paycheckLastRun,
-                        isPrivacyMode = isPrivacyMode,
-                        modifier = Modifier.padding(top = 6.dp)
+                    // ---- 1. 自动分账开关 ----
+                    AutoSplitToggleCard(
+                        enabled = uiState.paycheckAutoEnabled,
+                        onToggle = { viewModel.setPaycheckAutoEnabled(it) },
+                        modifier = Modifier.fillMaxWidth()
                     )
 
-                    // ---- 金额 + 来源卡 ----
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-                        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "分配金额与来源",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
-                                ),
-                                color = colors.onSurfaceVariant
-                            )
-
-                            // ---- 本月工资入账候选（自动匹配）----
-                            Text(
-                                text = "本月工资入账",
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                                color = colors.onSurfaceVariant
-                            )
-                            if (matchedCandidates.isEmpty()) {
-                                Text(
-                                    text = "本月暂无工资入账记录，可手动填写下方金额",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = colors.outline,
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
-                            } else {
-                                matchedCandidates.forEachIndexed { index, candidate ->
-                                    if (index > 0) {
-                                        HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.3f))
-                                    }
-                                    PaycheckCandidateRow(
-                                        candidate = candidate,
-                                        sourceName = candidate.matchedAccountName
-                                            ?: accountNameById[candidate.matchedAccountId],
-                                        isSelected = candidate.recordId == selectedRecordId,
-                                        isPrivacyMode = isPrivacyMode,
-                                        onClick = { onSelectCandidate(candidate.recordId) }
-                                    )
-                                }
-                            }
-
-                            HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.3f))
-
-                            // ---- 或手动填写本次到手金额 ----
-                            Text(
-                                text = "或手动填写本次到手金额",
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                                color = colors.onSurfaceVariant
-                            )
-                            OutlinedTextField(
-                                value = manualInput,
-                                onValueChange = onManualInputChange,
-                                label = { Text("金额 (元)") },
-                                placeholder = { Text("0.00") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            // ---- 来源账户自选（候选未命中 / 手填时出现，E6）----
-                            if (showSourcePick) {
-                                Text(
-                                    text = "来源账户",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                                    color = colors.onSurfaceVariant
-                                )
-                                if (positiveAccounts.isEmpty()) {
-                                    Text(
-                                        text = "没有余额为正的账户，暂时无法分配",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = colors.error,
-                                        modifier = Modifier.padding(vertical = 2.dp)
-                                    )
-                                } else {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        positiveAccounts.forEach { acc ->
-                                            FilterChip(
-                                                selected = acc.id == pickedSourceId,
-                                                onClick = { pickedSourceId = acc.id },
-                                                shape = RoundedCornerShape(10.dp),
-                                                label = {
-                                                    Text(
-                                                        text = acc.name,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // ---- 实时小字：来源 + 可分配金额（隐私掩码）----
-                            if (amountCents > 0L) {
-                                Text(
-                                    text = when {
-                                        sourceAccount != null ->
-                                            "来源：${sourceAccount.name} · 可分配 ${displayMoney(amountCents, isPrivacyMode)}"
-                                        else -> "请先选择来源账户"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = if (sourceAccount != null) colors.onSurfaceVariant else colors.outline,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                    // ---- 2. 分配规则（即改即存）----
+                    PaycheckRuleCard(
+                        scheme = scheme,
+                        accountsById = accounts.associateBy { it.id },
+                        plansById = plans.associateBy { it.id },
+                        onEdit = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showSchemeEdit = true
                         }
-                    }
+                    )
 
-                    // ---- 分配预览卡 ----
-                    if (hasScheme) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = colors.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-                            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "分配预览",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.5.sp
-                                        ),
-                                        color = colors.onSurfaceVariant,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = "${scheme.rules.size} 条规则 · " +
-                                            if (scheme.autoClearDebts) "剩余自动清欠" else "未自动清欠",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                        color = colors.outline,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                when {
-                                    preview == null -> Text(
-                                        text = "选择金额并确认来源账户后，这里会按方案展示将执行的动作",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = colors.outline,
-                                        modifier = Modifier.padding(vertical = 8.dp)
-                                    )
-                                    preview.steps.isEmpty() -> Text(
-                                        text = "按当前方案没有可执行的动作",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = colors.outline,
-                                        modifier = Modifier.padding(vertical = 8.dp)
-                                    )
-                                    else -> {
-                                        preview.steps.forEachIndexed { index, step ->
-                                            if (index > 0) {
-                                                HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.3f))
-                                            }
-                                            PaycheckRunStepRow(step = step, isPrivacyMode = isPrivacyMode)
-                                        }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // ---- 3. 分账记录 ----
+                    PaycheckHistoryCard(
+                        history = uiState.paycheckRunHistory,
+                        isPrivacyMode = privacy
+                    )
 
-                    // ---- 方案为空引导 + 执行钮 ----
-                    if (!hasScheme) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = colors.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-                            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "还没有分配方案",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = colors.onSurface
-                                )
-                                Text(
-                                    text = "先到「攒钱计划」页添加几条分配规则（转账户 / 攒进计划），再回来一键分账",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = colors.outline
-                                )
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = runPaycheck,
-                        enabled = amountCents > 0L && sourceAccount != null && hasScheme,
+                    // ---- 4. 手动补分（处理没自动分掉的工资）----
+                    OutlinedButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showManualSheet = true
+                        },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
                     ) {
                         Text(
-                            text = "确认分配 ${displayMoney(amountCents, isPrivacyMode)}",
+                            text = "手动补分（处理未自动分账的工资）",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            fontSize = 14.sp,
+                            color = colors.primary
                         )
                     }
+                    Text(
+                        text = "一般无需手动操作：保存「工资」入账后已自动按规则分账。这里用于支付方式没对上账户等特殊情况。",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = colors.outline
+                    )
+                }
+            }
+        }
+    }
 
-                    Spacer(modifier = Modifier.height(18.dp)) // 底部预留
+    // ---- 方案编辑（即改即存）----
+    if (showSchemeEdit) {
+        SchemeEditorSheet(
+            accounts = accounts,
+            plans = plans,
+            scheme = scheme,
+            onDismiss = { showSchemeEdit = false },
+            onSchemeChange = { edited -> viewModel.savePaycheckScheme(edited) }
+        )
+    }
+
+    // ---- 手动补分 sheet ----
+    if (showManualSheet) {
+        PaycheckManualSheet(
+            candidates = uiState.incomeCandidates.filterNot { it.recordId in appliedIds },
+            accounts = accounts,
+            isPrivacyMode = privacy,
+            onDismiss = { showManualSheet = false },
+            onConfirm = { sourceId, amountCents, recordId ->
+                viewModel.executePaycheck(sourceId, amountCents, recordId)
+                showManualSheet = false
+            }
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 区块组件
+// ---------------------------------------------------------------------------
+
+/** 自动分账开关卡：工资到账自动按规则执行 */
+@Composable
+private fun AutoSplitToggleCard(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Savings,
+                contentDescription = null,
+                tint = if (enabled) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "工资到账自动分账",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp
+                    ),
+                    color = colors.onSurface,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (enabled) {
+                        "保存「工资」类收入后，自动按下方的分配规则分到各账户与计划"
+                    } else {
+                        "已关闭：保存工资不会自动分账，可在下方手动补分"
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = colors.outline,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/** 分配规则卡：规则列表摘要 + 调整入口；空规则给「去设置」 */
+@Composable
+private fun PaycheckRuleCard(
+    scheme: PaycheckSchemeUiModel,
+    accountsById: Map<Long, AccountUiModel>,
+    plansById: Map<Long, SavingPlanUiModel>,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val hasRules = scheme.rules.isNotEmpty()
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "分配规则",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    ),
+                    color = colors.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onEdit) {
+                    Text(
+                        text = if (hasRules) "调整规则" else "去设置",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = colors.primary
+                    )
+                }
+            }
+
+            when {
+                hasRules -> {
+                    scheme.rules.forEachIndexed { index, rule ->
+                        if (index > 0) {
+                            HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.25f))
+                        }
+                        PaycheckRuleLine(
+                            rule = rule,
+                            accountsById = accountsById,
+                            plansById = plansById
+                        )
+                    }
+                    HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.25f))
+                    Text(
+                        text = if (scheme.autoClearDebts) {
+                            "执行后如有剩余，自动还清负余额账户"
+                        } else {
+                            "剩余自动清欠已关闭"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = colors.outline,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "规则 = 工资到账后依次执行的动作，比如：先转 ¥5,000 到储蓄卡、再按 30% 攒进「旅行基金」。",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = colors.outline,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                    )
+                    Text(
+                        text = if (scheme.autoClearDebts) {
+                            "未设置规则时：自动分账只做「还清负余额账户」，剩余留在工资账户"
+                        } else {
+                            "未设置规则，且剩余自动清欠已关闭：工资保存后不会产生任何分账"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = colors.outline,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
                 }
             }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// 纯展示辅助（无状态；与 PaycheckFlowSheet 同款小段实现，允许少量重复）
-// ---------------------------------------------------------------------------
+/** 单条规则描述行（转/攒 + 金额或百分比 → 目标） */
+@Composable
+private fun PaycheckRuleLine(
+    rule: PaycheckRuleUiModel,
+    accountsById: Map<Long, AccountUiModel>,
+    plansById: Map<Long, SavingPlanUiModel>,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val isToAccount =
+        rule.kind == PaycheckRuleKind.TO_ACCOUNT_FIXED || rule.kind == PaycheckRuleKind.TO_ACCOUNT_PCT
+    val isPct = rule.kind == PaycheckRuleKind.TO_ACCOUNT_PCT || rule.kind == PaycheckRuleKind.TO_PLAN_PCT
+    val amountText = if (isPct) {
+        "${rule.percentBps / 100}%"
+    } else {
+        "¥" + MoneyUtils.centsToYuanString(rule.amountCents, withGrouping = true)
+    }
+    val targetName = if (isToAccount) {
+        accountsById[rule.targetId]?.name ?: "已删除账户"
+    } else {
+        plansById[rule.targetId]?.name ?: "已删除计划"
+    }
+    val verb = if (isToAccount) "转" else "攒"
 
-/** 隐私掩码文案（与账户操作面板同一形式） */
-private const val PRIVACY_MASK = "¥ ••••"
-
-/** 展示金额：隐私 → 掩码；否则千分位 2 位（MoneyUtils 口径） */
-private fun displayMoney(cents: Long, isPrivacyMode: Boolean): String =
-    if (isPrivacyMode) PRIVACY_MASK else MoneyUtils.formatCurrency(cents)
-
-/** 手填金额解析：BigDecimal → 分（与 AccountForms.kt / PaycheckFlowSheet 同款），非法输入当 0 */
-private fun parseManualYuanToCents(yuanInput: String): Long {
-    if (yuanInput.isBlank()) return 0L
-    return try {
-        val bd = BigDecimal(yuanInput.trim())
-        bd.multiply(BigDecimal(100)).toLong()
-    } catch (e: Exception) {
-        0L
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (isToAccount) Icons.Default.SwapHoriz else Icons.Default.Savings,
+            contentDescription = null,
+            tint = if (isToAccount) colors.secondary else colors.primary,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = "$verb $amountText → $targetName",
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+            color = colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
-// ---------------------------------------------------------------------------
-// 上次分配摘要卡
-// ---------------------------------------------------------------------------
-
-/**
- * 上次分配摘要卡：执行过 → 主行金额 + 「M月d日 HH:mm · N 笔动作 · 留存」；
- * 未执行过 → 引导文案。金额在隐私态掩码。
- */
+/** 分账记录卡：历次自动/手动执行摘要 */
 @Composable
-private fun PaycheckLastRunCard(
-    lastRun: PaycheckLastRunUiModel,
+private fun PaycheckHistoryCard(
+    history: List<PaycheckLastRunUiModel>,
     isPrivacyMode: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -500,71 +460,127 @@ private fun PaycheckLastRunCard(
         colors = CardDefaults.cardColors(containerColor = colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
         border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            if (lastRun.at == null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "上次发薪分配",
+                    text = "分账记录",
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp
-                    ),
-                    color = colors.onSurfaceVariant
-                )
-                Text(
-                    text = "还没有执行过分配。完成下方选择后一键按方案分账，结果会记录在这里",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = colors.outline
-                )
-            } else {
-                val amountText = if (isPrivacyMode) {
-                    PRIVACY_MASK
-                } else {
-                    "¥" + MoneyUtils.centsToYuanString(lastRun.amountCents ?: 0L, withGrouping = true)
-                }
-                val actionCount = lastRun.actionCount ?: 0
-                val remainingCents = lastRun.remainingCents
-                val remainText = if (remainingCents != null && remainingCents > 0L) {
-                    val remainAmount = if (isPrivacyMode) {
-                        PRIVACY_MASK
-                    } else {
-                        "¥" + MoneyUtils.centsToYuanString(remainingCents, withGrouping = true)
-                    }
-                    " · 留存 $remainAmount"
-                } else {
-                    ""
-                }
-
-                Text(
-                    text = "上次发薪分配",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp
-                    ),
-                    color = colors.onSurfaceVariant
-                )
-                Text(
-                    text = "$amountText · $actionCount 笔动作",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        fontSize = 13.sp
                     ),
                     color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = DateTimeUtils.formatDateTime(lastRun.at) + remainText,
+                    text = if (history.isEmpty()) "还没有执行过" else "共 ${history.size} 次",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = colors.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 1
+                )
+            }
+
+            if (history.isEmpty()) {
+                Text(
+                    text = "保存「工资」类收入自动分账后，结果会记录在这里（自动/手动都算）",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = colors.outline,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                history.forEachIndexed { index, run ->
+                    if (index > 0) {
+                        HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.25f))
+                    }
+                    PaycheckHistoryRow(run = run, isPrivacyMode = isPrivacyMode)
+                }
+            }
+        }
+    }
+}
+
+/** 单条执行记录：时间 · 金额 · N 笔动作 + 自动/手动徽标 + 来源/留存副行 */
+@Composable
+private fun PaycheckHistoryRow(
+    run: PaycheckLastRunUiModel,
+    isPrivacyMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+
+    val amountText = if (isPrivacyMode) {
+        "¥ ••••"
+    } else {
+        "¥" + MoneyUtils.centsToYuanString(run.amountCents ?: 0L, withGrouping = true)
+    }
+    val remainText = run.remainingCents?.let { remaining ->
+        if (remaining > 0L) {
+            " · 留卡 " + (if (isPrivacyMode) "¥ ••••" else "¥" + MoneyUtils.centsToYuanString(remaining, withGrouping = true))
+        } else {
+            ""
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$amountText · ${run.actionCount ?: 0} 笔动作",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = DateTimeUtils.formatDateTime(run.at ?: 0L) + remainText,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                color = colors.outline,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        if (run.auto) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = colors.primary.copy(alpha = 0.12f)
+            ) {
+                Text(
+                    text = "自动",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        } else {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = colors.surfaceVariant.copy(alpha = 0.7f)
+            ) {
+                Text(
+                    text = "手动",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
         }
@@ -572,57 +588,252 @@ private fun PaycheckLastRunCard(
 }
 
 // ---------------------------------------------------------------------------
-// 候选行 / 预览行
+// 手动补分 sheet
 // ---------------------------------------------------------------------------
 
-/** 工资入账候选行：金额 + note + 副行日期/来源；选中态右侧 primary CheckCircle */
+/** 隐私掩码文案 */
+private const val PRIVACY_MASK = "¥ ••••"
+
+private fun displayMoney(cents: Long, isPrivacyMode: Boolean): String =
+    if (isPrivacyMode) PRIVACY_MASK else MoneyUtils.formatCurrency(cents)
+
+private fun parseManualYuanToCents(yuanInput: String): Long {
+    if (yuanInput.isBlank()) return 0L
+    return try {
+        val bd = BigDecimal(yuanInput.trim())
+        bd.multiply(BigDecimal(100)).toLong()
+    } catch (e: Exception) {
+        0L
+    }
+}
+
+/**
+ * 手动补分 sheet：列出本月尚未自动分账的「工资」入账（未匹配的需选来源账户），
+ * 或手填一笔没记账的工资金额；确认后走共享 PaycheckExecutor。
+ */
 @Composable
-private fun PaycheckCandidateRow(
-    candidate: IncomeCandidateUiModel,
-    sourceName: String?,
-    isSelected: Boolean,
+private fun PaycheckManualSheet(
+    candidates: List<IncomeCandidateUiModel>,
+    accounts: List<AccountUiModel>,
     isPrivacyMode: Boolean,
-    onClick: () -> Unit
+    onDismiss: () -> Unit,
+    onConfirm: (sourceAccountId: Long, amountCents: Long, recordId: Long?) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
 
+    var selectedRecordId by remember { mutableStateOf<Long?>(null) }
+    var manualInput by remember { mutableStateOf("") }
+    var pickedSourceId by remember { mutableStateOf<Long?>(null) }
+
+    val selectedCandidate = candidates.firstOrNull { it.recordId == selectedRecordId }
+    val manualAmountCents = parseManualYuanToCents(manualInput)
+    val amountCents = selectedCandidate?.amountCents ?: manualAmountCents
+
+    val matchedSourceId = selectedCandidate?.matchedAccountId
+    val sourceAccount = accounts.firstOrNull { it.id == (matchedSourceId ?: pickedSourceId) }
+    val showSourcePick = amountCents > 0L && (matchedSourceId == null || sourceAccount == null)
+    val positiveAccounts = remember(accounts) { accounts.filter { it.balanceCents > 0L } }
+    val canConfirm = amountCents > 0L && sourceAccount != null
+
+    val runManual: () -> Unit = {
+        if (canConfirm) {
+            onConfirm(sourceAccount!!.id, amountCents, selectedRecordId)
+        }
+    }
+
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "手动补分",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            )
+            Text(
+                text = "按当前分配规则执行一次；用于没被自动分账的工资（未匹配账户 / 自动开关关闭期间）。",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = colors.outline
+            )
+
+            // ---- 待处理工资（本月未自动分账）----
+            if (candidates.isEmpty()) {
+                Text(
+                    text = "本月没有待处理的工资入账（都已自动分账，或本月还没有工资记录）",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = colors.outline,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            } else {
+                Text(
+                    text = "选一笔本月工资",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    color = colors.onSurfaceVariant
+                )
+                candidates.forEachIndexed { index, candidate ->
+                    if (index > 0) {
+                        HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.3f))
+                    }
+                    ManualCandidateRow(
+                        candidate = candidate,
+                        isSelected = candidate.recordId == selectedRecordId,
+                        isPrivacyMode = isPrivacyMode,
+                        onClick = {
+                            selectedRecordId = candidate.recordId
+                            manualInput = ""
+                            pickedSourceId = candidate.matchedAccountId
+                        }
+                    )
+                }
+            }
+
+            HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.3f))
+
+            // ---- 或手填一笔（没记账的工资）----
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "或手填到手金额",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedRecordId != null) {
+                    TextButton(onClick = { selectedRecordId = null }) {
+                        Text(
+                            text = "改用金额",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = colors.primary
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = manualInput,
+                onValueChange = {
+                    manualInput = it
+                    if (it.isNotBlank()) selectedRecordId = null
+                },
+                label = { Text("金额 (元)") },
+                placeholder = { Text("例如 12000") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // ---- 来源账户（候选未匹配 / 手填时需要）----
+            if (showSourcePick) {
+                Text(
+                    text = "这笔钱在哪个账户",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    color = colors.onSurfaceVariant
+                )
+                if (positiveAccounts.isEmpty()) {
+                    Text(
+                        text = "没有余额为正的账户，暂时无法分账",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = colors.error,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        positiveAccounts.forEach { acc ->
+                            FilterChip(
+                                selected = acc.id == pickedSourceId,
+                                onClick = { pickedSourceId = acc.id },
+                                shape = RoundedCornerShape(10.dp),
+                                label = {
+                                    Text(
+                                        text = acc.name,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ---- 确认行 ----
+            val readyHint = when {
+                amountCents <= 0L -> "先选一笔工资或填好金额"
+                sourceAccount == null -> "选一下这笔钱在哪个账户"
+                else -> "将用「${sourceAccount.name}」按规则分账 ${displayMoney(amountCents, isPrivacyMode)}"
+            }
+            Button(
+                onClick = runManual,
+                enabled = canConfirm,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text(
+                    text = "按规则分账 " + displayMoney(amountCents.coerceAtLeast(0L), isPrivacyMode),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+            Text(
+                text = readyHint,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                color = if (canConfirm) colors.outline else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+}
+
+/** 手动补分候选行：工资日期 · 金额 · 匹配状态；未匹配提示需选来源 */
+@Composable
+private fun ManualCandidateRow(
+    candidate: IncomeCandidateUiModel,
+    isSelected: Boolean,
+    isPrivacyMode: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val matched = candidate.matchedAccountId != null
+
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = displayMoney(candidate.amountCents, isPrivacyMode),
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    ),
-                    color = colors.onSurface,
-                    maxLines = 1
-                )
-                // remark 为空则省
-                if (candidate.note.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = candidate.note,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            Text(
+                text = displayMoney(candidate.amountCents, isPrivacyMode),
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = colors.onSurface,
+                maxLines = 1
+            )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "${DateTimeUtils.formatMonthDay(candidate.at)} · " +
-                    (sourceName?.let { "$it · 工资入账" } ?: "已自动匹配来源账户"),
+                text = DateTimeUtils.formatMonthDay(candidate.at) + " · " +
+                    (if (matched) "${candidate.matchedAccountName} · 工资入账" else "未匹配到账户，需选来源"),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                color = colors.outline,
+                color = if (matched) colors.outline else colors.error,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -635,96 +846,6 @@ private fun PaycheckCandidateRow(
                     contentDescription = null,
                     tint = colors.primary,
                     modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 预览动作行：转 / 攒 / 留存前缀 + 图标语义色 + 可选的引擎 note 副行；
- * 受限行（note 非空）整行降透明度；引擎 note 纯文案不含金额，0 金额步骤不画 ¥0.00。
- */
-@Composable
-private fun PaycheckRunStepRow(step: PaycheckStepUi, isPrivacyMode: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    val constrained = !step.note.isNullOrBlank()
-
-    val prefix: String
-    val icon: ImageVector?
-    val iconTint: Color
-    when (step.kind) {
-        PaycheckStepKind.TO_PLAN -> {
-            prefix = "攒"
-            icon = Icons.Default.Savings
-            iconTint = colors.primary
-        }
-        PaycheckStepKind.TO_ACCOUNT, PaycheckStepKind.CLEAR_DEBT -> {
-            prefix = "转"
-            icon = Icons.Default.SwapHoriz
-            iconTint = colors.secondary
-        }
-        PaycheckStepKind.REMAIN -> {
-            prefix = "留存"
-            icon = null
-            iconTint = colors.outline
-        }
-    }
-
-    val amountText = displayMoney(step.amountCents, isPrivacyMode)
-    val mainText = when {
-        step.kind == PaycheckStepKind.REMAIN -> "留存 $amountText"
-        step.amountCents <= 0L -> "$prefix → ${step.caption}" // 受限 0 金额：不展示 ¥0.00
-        else -> "$prefix $amountText → ${step.caption}"
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 9.dp)
-            .alpha(if (constrained) 0.62f else 1f),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(modifier = Modifier.width(26.dp), contentAlignment = Alignment.Center) {
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(14.dp)
-                )
-            } else {
-                // 留存：无图标，用 4dp 圆点占位
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .clip(CircleShape)
-                        .background(iconTint)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = mainText,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                ),
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            // 受限原因副行（留存行的引擎 note 即行语义，不重复展示）
-            val noteText = step.note
-            if (noteText != null && noteText.isNotBlank() && step.kind != PaycheckStepKind.REMAIN) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "（$noteText）",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                    color = colors.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

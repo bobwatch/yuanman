@@ -16,7 +16,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +27,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,32 +38,34 @@ import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.LocalToastHostState
 import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
+import com.yuanman.app.utils.MoneyUtils
 
 /**
- * 沅满记账 · 账户 Tab（设计文档 account-tab-redesign-v0.2 + saving-plans-and-paycheck-v0.3）
+ * 沅满记账 · 账户 Tab
  *
- * 编排层职责（设计文档 §9 文件映射 / v0.3 §2.1 / redesign v0.2 §6）：
- * 1. 顶部资产快照 Header（AccountSnapshotHero，自身处理状态栏内边距）：右上「更多」菜单
- *    承载 发薪分配 / 账户核对 两个二级入口（经 onOpenPaycheckRun / onOpenAccountReconcile 注入，
- *    未注入则菜单不出现）；隐私小眼睛内联于总资产金额后。
- * 2. 待核对提醒：仅当存在 OVERDUE / NEVER 账户时出现（§4.5）的 32dp 紧凑横条，
- *    点击升起待核对底包，行尾 (X) 可在本页面实例内关闭（rememberSaveable 本地状态，不持久化）
- * 3. 滚动区顶部 = 攒钱计划区块（区块头 + 横向小卡行 / 空计划宽幽灵卡；点击均经 onOpenSavingPlans
- *    跳二级页「攒钱计划」）；发薪分配入口已迁入右上角「更多」菜单（redesign v0.2 §6.4）
- * 4. 资金账户区块：区块头（「资金账户」+ 右侧「＋ 新建账户」钮，新建入口自列表底部上移）
- *    + 分组账户清单（组头：首账户色竖条 + 组合计 / 账户卡）
- * 5. 交互闭环：账户卡 → 操作面板 → 转账（按余额符号定方向）/ 对账 / 编辑 / 删除
- *    （删除被计划圈为专款账户时拦截，v0.3 §3 边界表）
+ * 编排层职责：
+ * 1. 顶部资产快照 Header（AccountSnapshotHero）：净资产大数字右侧内联隐私小眼睛；
+ *    总资产行行尾 = 发薪分配 / 账户核对两个入口胶囊（经回调注入，未注入则不渲染）。
+ * 2. 待核对提醒横条：作为列表首 item **随内容滚动**（不吸顶）；行尾 (X) 二次确认
+ *    「跳过本期核对」后按周期静默（每账户各自周期期末恢复，持久化）。
+ * 3. 滚动区 = 攒钱计划区块（区块头右钮「＋ 新建计划」+ 横向小卡行 / 空计划宽幽灵卡，
+ *    点击即开新建表单；计划小卡：点击 → 计划详情二级页、长按 → 快捷操作面板
+ *    [存一笔/取一笔/编辑/删除]）+ 资金账户区块
+ *    （区块头「＋ 新建账户」+ 分组账户清单）。
+ * 4. 账户行交互：**点击 → 账户详情二级页**（展示对账记录/周期/操作）；**长按 → 账户操作面板**
+ *    （转账还款 / 资金对账 / 编辑 / 删除）；负余额行内保留 [还款] 快捷钮。
  *
- * 本文件不含任何类型内容判断：label 只透传字符串，还款由余额符号驱动（§11 决策日志 8/9）。
+ * 本文件不含任何类型内容判断：label 只透传字符串，还款由余额符号驱动。
  */
 @Composable
 fun AccountScreen(
     viewModel: AccountViewModel,
     modifier: Modifier = Modifier,
-    onOpenSavingPlans: (() -> Unit)? = null,
+    onOpenAccountDetail: ((accountId: Long) -> Unit)? = null,
+    onOpenPlanDetail: ((planId: Long) -> Unit)? = null,
     onOpenPaycheckRun: (() -> Unit)? = null,
-    onOpenAccountReconcile: (() -> Unit)? = null
+    onOpenAccountReconcile: (() -> Unit)? = null,
+    onOpenAssetPanorama: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -75,15 +79,29 @@ fun AccountScreen(
     var transferFromId by remember { mutableStateOf<Long?>(null) }
     var transferToId by remember { mutableStateOf<Long?>(null) }
     var accountToReconcile by remember { mutableStateOf<AccountUiModel?>(null) }
-    var accountInMenu by remember { mutableStateOf<AccountUiModel?>(null) }
+    var accountInMenu by remember { mutableStateOf<AccountUiModel?>(null) } // 长按 → 操作面板
     var showPendingSheet by remember { mutableStateOf(false) }
     var accountToDelete by remember { mutableStateOf<AccountUiModel?>(null) }
-    // 待核对横条关闭态：本页面实例 / 会话内不再显示（不持久化，见 redesign v0.2 §6.2）
-    var reconcileReminderDismissed by rememberSaveable { mutableStateOf(false) }
+    // 计划弹层：长按面板 → 存一笔/取一笔/编辑/删除（点击小卡则进详情页；头部「新建计划」直接开新建表单）
+    var planInMenu by remember { mutableStateOf<SavingPlanUiModel?>(null) }
+    var planDepositTarget by remember { mutableStateOf<SavingPlanUiModel?>(null) }
+    var planWithdrawTarget by remember { mutableStateOf<SavingPlanUiModel?>(null) }
+    var planFormVisible by remember { mutableStateOf(false) }
+    var planFormEdit by remember { mutableStateOf<SavingPlanUiModel?>(null) } // 非空 = 编辑该计划
+    var planPresetName by remember { mutableStateOf("") }
+    var planPresetTargetCents by remember { mutableStateOf(0L) }
+    var planPresetColorHex by remember { mutableStateOf<Long?>(null) }
+    var planToDelete by remember { mutableStateOf<SavingPlanUiModel?>(null) }
+    // 「跳过本期核对」二次确认
+    var showSkipConfirm by remember { mutableStateOf(false) }
 
-    // ---- 派生数据（判定口径只出自共享 accountReconcileStatus）----
+    // ---- 派生数据（待核对 = 生效周期下 OVERDUE/NEVER 且未跳过本期；判定只出自共享口径）----
+    val nowMs = remember { System.currentTimeMillis() }
     val pendingAccounts = remember(uiState.accounts) {
-        uiState.accounts.filter { accountReconcileStatus(it.lastReconciledAt).isPending() }
+        uiState.accounts.filter { account ->
+            account.reconcileStatus.isPending() &&
+                (account.reconcileTipSkipUntil ?: 0L) <= nowMs
+        }
     }
     // 表单「已用类型」快捷 chips 数据源：全账户既有类型字符串，按账户列表首次出现排序
     val existingTypeLabels = remember(uiState.accounts) {
@@ -94,7 +112,7 @@ fun AccountScreen(
     // 专款账户余额查询表（计划卡超额判定）
     val accountsById = remember(uiState.accounts) { uiState.accounts.associateBy { it.id } }
 
-    // ---- 下拉刷新：与旧版一致的轻量自绘指示器 ----
+    // ---- 下拉刷新：轻量自绘指示器（保持既有行为）----
     val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
 
     LaunchedEffect(pullRefreshState.isRefreshing) {
@@ -110,12 +128,50 @@ fun AccountScreen(
         }
     }
 
-    // 打开攒钱计划二级页（导航层注入；未注入时不响应）
-    val openSavingPlans: () -> Unit = {
+    // ---- 导航/动作闭包 ----
+    val openAccountDetail: (AccountUiModel) -> Unit = { account ->
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        onOpenSavingPlans?.invoke()
+        onOpenAccountDetail?.invoke(account.id)
     }
-
+    val openPlanDetail: (SavingPlanUiModel) -> Unit = { plan ->
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onOpenPlanDetail?.invoke(plan.id)
+    }
+    val openPaycheckRun: () -> Unit = {
+        onOpenPaycheckRun?.invoke() // 触觉反馈由 hero 入口胶囊自带，避免双重
+    }
+    val openAccountReconcile: () -> Unit = {
+        onOpenAccountReconcile?.invoke()
+    }
+    val openAssetPanorama: () -> Unit = {
+        onOpenAssetPanorama?.invoke()
+    }
+    // 打开新建计划表单：账户为空时不可建，给弱引导
+    val openPlanCreate: () -> Unit = {
+        if (uiState.accounts.isEmpty()) {
+            toast.info("请先创建资金账户，再新建攒钱计划")
+        } else {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            planFormEdit = null
+            planPresetName = ""
+            planPresetTargetCents = 0L
+            planPresetColorHex = null
+            planFormVisible = true
+        }
+    }
+    // 打开新建计划表单（带预置心愿灵感参数）
+    val openPlanCreateWithPreset: (String, Long, Long) -> Unit = { name, targetCents, colorHex ->
+        if (uiState.accounts.isEmpty()) {
+            toast.info("请先创建资金账户，再新建攒钱计划")
+        } else {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            planFormEdit = null
+            planPresetName = name
+            planPresetTargetCents = targetCents
+            planPresetColorHex = colorHex
+            planFormVisible = true
+        }
+    }
     // 打开转账底包：方向由目标账户余额符号决定（负 → 还款：to=该账户；非负 → 转账：from=该账户）
     val openTransferFor: (AccountUiModel) -> Unit = { account ->
         if (account.balanceCents < 0L) {
@@ -128,9 +184,15 @@ fun AccountScreen(
         showTransferSheet = true
     }
 
+    // 确认「跳过本期」：对待核对账户按各自周期期末静默
+    val confirmSkipReconcile: () -> Unit = {
+        showSkipConfirm = false
+        viewModel.skipReconcileReminderFor(pendingAccounts.map { it.id })
+        toast.info("已跳过本期核对提醒，可在账户页随时手动对账")
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
-        // ---- 1. 净资产快照 Header（AppHeaderSurface 底纹，内部处理状态栏内边距；
-        //       右上「更多」菜单入口经 onOpenPaycheckRun / onOpenAccountReconcile 注入）----
+        // ---- 1. 净资产快照 Header（眼睛内联净资产行；发薪/核对入口胶囊在总资产行行尾）----
         AccountSnapshotHero(
             totalBalanceCents = uiState.totalBalanceCents,
             totalAssetCents = uiState.totalAssetCents,
@@ -138,21 +200,12 @@ fun AccountScreen(
             distributionSegments = uiState.distributionSegments,
             isPrivacyMode = uiState.isPrivacyMode,
             onTogglePrivacy = { viewModel.togglePrivacyMode() },
-            onOpenPaycheckRun = onOpenPaycheckRun,
-            onOpenAccountReconcile = onOpenAccountReconcile
+            onOpenPaycheckRun = onOpenPaycheckRun?.let { { openPaycheckRun() } },
+            onOpenAccountReconcile = onOpenAccountReconcile?.let { { openAccountReconcile() } },
+            onOpenAssetPanorama = onOpenAssetPanorama?.let { { openAssetPanorama() } }
         )
 
-        // ---- 2. 待核对提醒横条（32dp 紧凑条；横向 16dp 边距由本层统一包裹；(X) 本地关闭）----
-        if (pendingAccounts.isNotEmpty() && !reconcileReminderDismissed) {
-            ReconcileReminderBanner(
-                pendingCount = pendingAccounts.size,
-                onClick = { showPendingSheet = true },
-                onDismiss = { reconcileReminderDismissed = true },
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)
-            )
-        }
-
-        // ---- 3. 账户清单区（下拉刷新手势作用域）----
+        // ---- 2. 账户清单区（下拉刷新手势作用域；待核对横幅为列表首项，随内容滚动）----
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -160,20 +213,20 @@ fun AccountScreen(
                 .nestedScroll(pullRefreshState.nestedScrollConnection)
         ) {
             if (uiState.accounts.isEmpty()) {
-                // 空态：顶部保留计划区块（弱提示禁用 ghost，§3），下方可滚动保证下拉手势可达
+                // 空态：无账户时隐藏攒钱计划区块（无账户即无可建计划），下方可滚动保证下拉手势可达
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    PlansSectionHeader(
-                        onManageClick = openSavingPlans
-                    )
-                    PlansWideGhostCard(
-                        enabled = false,
-                        onClick = {},
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp)
-                    )
+                    if (pendingAccounts.isNotEmpty()) {
+                        ReconcileReminderBanner(
+                            pendingCount = pendingAccounts.size,
+                            onClick = { showPendingSheet = true },
+                            onDismiss = { showSkipConfirm = true },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)
+                        )
+                    }
                     EmptyStateView(
                         title = "暂无资金账户",
                         description = "创建微信、支付宝、储蓄卡等账户，开始精细化资金管理",
@@ -193,22 +246,39 @@ fun AccountScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp) // 底部 96 避让悬浮导航 Dock
                 ) {
-                    // ---- v0.3 区块：攒钱计划（发薪分配入口已迁入 hero「更多」菜单，§6.4）----
+                    // ---- 待核对提醒横条：列表首项，随滚动消失（不吸顶）----
+                    if (pendingAccounts.isNotEmpty()) {
+                        item(key = "reconcile_banner") {
+                            ReconcileReminderBanner(
+                                pendingCount = pendingAccounts.size,
+                                onClick = { showPendingSheet = true },
+                                onDismiss = { showSkipConfirm = true },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 4.dp)
+                            )
+                        }
+                    }
+
+                    // ---- 攒钱计划区块 ----
                     item(key = "plans_header") {
-                        PlansSectionHeader(
-                            onManageClick = openSavingPlans
-                        )
+                        PlansSectionHeader(onNewPlanClick = openPlanCreate)
                     }
                     if (uiState.plans.isEmpty()) {
-                        // 空计划态：一行宽幽灵卡 → 二级页内新建（§2.1）
-                        item(key = "plans_wide_ghost") {
-                            PlansWideGhostCard(
-                                enabled = true,
-                                onClick = openSavingPlans,
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp)
+                        // 空计划态：灵感心愿卡片流（与有计划时的横排卡片同规格 152×108dp，0 像素跳版）
+                        item(key = "plans_empty_row") {
+                            PlansEmptyRow(
+                                onNewPlanClick = openPlanCreate,
+                                onSelectInspiration = { preset ->
+                                    openPlanCreateWithPreset(
+                                        preset.name,
+                                        preset.targetAmountCents,
+                                        preset.colorHex
+                                    )
+                                },
+                                modifier = Modifier.padding(bottom = 6.dp)
                             )
                         }
                     } else {
+                        // 计划横排小卡（末尾无「新建」小卡，新建入口收敛到区块头按钮）
                         item(key = "plans_mini_row") {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
@@ -222,17 +292,18 @@ fun AccountScreen(
                                         isDone = plan.targetAmountCents > 0L &&
                                             plan.earmarkedCents >= plan.targetAmountCents,
                                         isPrivacyMode = uiState.isPrivacyMode,
-                                        onClick = openSavingPlans
+                                        onClick = { openPlanDetail(plan) },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            planInMenu = plan
+                                        }
                                     )
-                                }
-                                item(key = "plans_ghost_mini") {
-                                    PlansGhostMiniCard(onClick = openSavingPlans)
                                 }
                             }
                         }
                     }
 
-                    // ---- 资金账户区块：区块头（标题 + 「＋ 新建账户」，入口自列表底部上移 §6.8）----
+                    // ---- 资金账户区块：区块头（标题 + 「＋ 新建账户」）----
                     item(key = "accounts_section_header") {
                         AccountSectionHeader(
                             onAddClick = {
@@ -245,7 +316,6 @@ fun AccountScreen(
 
                     // ---- 账户分组流：组头 / 账户卡 ----
                     uiState.groups.forEach { group ->
-                        // 分组组头：组名（空 label 显示「未分组」）+ 组合计；竖条取组内首账户色
                         item(key = "group_header_${group.label}") {
                             AccountGroupHeader(
                                 groupLabel = group.label,
@@ -255,7 +325,6 @@ fun AccountScreen(
                             )
                         }
 
-                        // 组内账户卡
                         items(
                             items = group.accounts,
                             key = { it.id }
@@ -264,8 +333,9 @@ fun AccountScreen(
                                 AccountItemCard(
                                     account = account,
                                     isPrivacyMode = uiState.isPrivacyMode,
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onClick = { openAccountDetail(account) },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         accountInMenu = account
                                     },
                                     onQuickRepay = { repayTarget ->
@@ -293,20 +363,106 @@ fun AccountScreen(
         }
     }
 
-    // ---- 弹层 1：账户操作面板（账户卡点击升起）----
+    // ---- 弹层 1：账户操作面板（长按账户行升起；点击行则进账户详情页）----
     accountInMenu?.let { targetAccount ->
         AccountActionSheet(
             account = targetAccount,
             isPrivacyMode = uiState.isPrivacyMode,
+            isDefaultExpense = targetAccount.name == uiState.defaultExpenseAccount,
+            isDefaultIncome = targetAccount.name == uiState.defaultIncomeAccount,
             onDismiss = { accountInMenu = null },
             onTransfer = { account -> openTransferFor(account) },
             onReconcile = { account -> accountToReconcile = account },
             onEdit = { account -> accountToEdit = account },
-            onDelete = { account -> accountToDelete = account }
+            onDelete = { account -> accountToDelete = account },
+            onToggleDefaultExpense = { isDefault ->
+                viewModel.setDefaultExpenseAccount(if (isDefault) targetAccount.name else "")
+            },
+            onToggleDefaultIncome = { isDefault ->
+                viewModel.setDefaultIncomeAccount(if (isDefault) targetAccount.name else "")
+            }
         )
     }
 
-    // ---- 弹层 2：待核对账户底包（横幅点击升起，行尾「去对账」直达该账户对账框）----
+    // ---- 弹层 2：计划快捷操作面板（计划小卡长按升起；点击小卡则进计划详情页）----
+    planInMenu?.let { targetPlan ->
+        val holder = accountsById[targetPlan.holderAccountId]
+        PlanQuickActionSheet(
+            plan = targetPlan,
+            holderBalanceCents = holder?.balanceCents,
+            depositMaxCents = availableToEarmarkFor(
+                targetPlan.holderAccountId,
+                holder?.balanceCents ?: 0L,
+                uiState.plans
+            ),
+            isDone = targetPlan.targetAmountCents > 0L &&
+                targetPlan.earmarkedCents >= targetPlan.targetAmountCents,
+            isOverdrawn = holder != null && planIsOverdrawn(targetPlan, holder.balanceCents),
+            isPrivacyMode = uiState.isPrivacyMode,
+            onDismiss = { planInMenu = null },
+            onDeposit = { planDepositTarget = targetPlan },
+            onWithdraw = { planWithdrawTarget = targetPlan },
+            onEdit = {
+                planFormEdit = targetPlan
+                planFormVisible = true
+            },
+            onDelete = { planToDelete = targetPlan },
+            onOpenDetail = {
+                planInMenu = null
+                openPlanDetail(targetPlan)
+            }
+        )
+    }
+
+    // ---- 弹层：存一笔（长按面板进入；上限 = 账户可再圈余额）----
+    planDepositTarget?.let { targetPlan ->
+        PlanDepositSheet(
+            plan = targetPlan,
+            maxCents = availableToEarmarkFor(
+                targetPlan.holderAccountId,
+                accountsById[targetPlan.holderAccountId]?.balanceCents ?: 0L,
+                uiState.plans
+            ),
+            isPrivacyMode = uiState.isPrivacyMode,
+            onDismiss = { planDepositTarget = null },
+            onConfirm = { cents ->
+                viewModel.depositToPlan(targetPlan.id, cents)
+                planDepositTarget = null
+                toast.success("已存 ¥" + MoneyUtils.centsToYuanString(cents, withGrouping = true))
+            }
+        )
+    }
+
+    // ---- 弹层：取一笔（长按面板进入；上限 = 该计划已圈额）----
+    planWithdrawTarget?.let { targetPlan ->
+        PlanWithdrawSheet(
+            plan = targetPlan,
+            isPrivacyMode = uiState.isPrivacyMode,
+            onDismiss = { planWithdrawTarget = null },
+            onConfirm = { cents ->
+                viewModel.withdrawFromPlan(targetPlan.id, cents)
+                planWithdrawTarget = null
+                toast.success("已取 ¥" + MoneyUtils.centsToYuanString(cents, withGrouping = true))
+            }
+        )
+    }
+
+    // ---- 弹窗：删除计划确认（长按面板进入）----
+    planToDelete?.let { targetPlan ->
+        ConfirmDeleteDialog(
+            visible = true,
+            title = "删除计划",
+            message = "确定要删除攒钱计划「${targetPlan.name}」吗？删除后专款释放，攒钱/取出记录一并删除，不可撤销",
+            onConfirm = {
+                viewModel.deletePlan(targetPlan.id)
+                planToDelete = null
+                toast.success("计划已删除")
+            },
+            onDismiss = { planToDelete = null }
+        )
+    }
+
+    // ---- 弹层 3：待核对账户底包（横幅点击升起，行尾「去对账」直达该账户对账框）----
     if (showPendingSheet && pendingAccounts.isNotEmpty()) {
         PendingReconcileSheet(
             pendingAccounts = pendingAccounts,
@@ -318,7 +474,31 @@ fun AccountScreen(
         )
     }
 
-    // ---- 弹层 3：月度资金对账对话框 ----
+    // ---- 弹窗 4：「跳过本期核对」二次确认 ----
+    if (showSkipConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSkipConfirm = false },
+            title = { Text("跳过本期核对提醒？") },
+            text = {
+                Text(
+                    "本期将不再提醒「${pendingAccounts.size} 个账户待核对」，下一期开始前不会再次打扰；" +
+                        "你也可以随时进入账户页手动对账。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmSkipReconcile) {
+                    Text("跳过本期")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSkipConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // ---- 弹层 5：月度资金对账对话框 ----
     accountToReconcile?.let { targetAccount ->
         AccountReconcileDialog(
             account = targetAccount,
@@ -333,7 +513,7 @@ fun AccountScreen(
         )
     }
 
-    // ---- 弹层 4：快速转账 / 还款（支持方向预填）----
+    // ---- 弹层 6：快速转账 / 还款（支持方向预填）----
     if (showTransferSheet) {
         QuickTransferSheet(
             accounts = uiState.accounts,
@@ -354,7 +534,7 @@ fun AccountScreen(
         )
     }
 
-    // ---- 弹层 5：新建 / 编辑账户 ----
+    // ---- 弹层 7：新建 / 编辑账户 ----
     if (showAddSheet || accountToEdit != null) {
         AddEditAccountSheet(
             accountToEdit = accountToEdit,
@@ -363,35 +543,79 @@ fun AccountScreen(
                 showAddSheet = false
                 accountToEdit = null
             },
-            onSave = { name, label, iconName, colorHex, openingCents ->
+            onSave = { name, label, iconName, colorHex, balanceCents ->
                 if (accountToEdit != null) {
-                    val updated = accountToEdit!!.copy(
+                    val target = accountToEdit!!
+                    val diff = balanceCents - target.balanceCents
+                    val updated = target.copy(
                         name = name,
                         label = label,
                         iconName = iconName,
                         colorHex = colorHex,
-                        openingBalanceCents = openingCents
+                        openingBalanceCents = target.openingBalanceCents + diff,
+                        balanceCents = balanceCents
                     )
                     viewModel.updateAccount(updated)
                     toast.success("账户「$name」已更新")
                 } else {
-                    viewModel.createAccount(name, label, iconName, colorHex, openingCents)
+                    viewModel.createAccount(name, label, iconName, colorHex, balanceCents)
                     toast.success("新账户「$name」创建成功")
                 }
                 showAddSheet = false
                 accountToEdit = null
+                // 从长按面板进入的编辑：保存成功后一并收起父面板（取消时面板保留）
+                accountInMenu = null
             }
         )
     }
 
-    // ---- 弹窗 6：删除确认 ----
+    // ---- 弹层 8：新建 / 编辑攒钱计划表单（头部新建 = 空；长按面板编辑 = 非空；支持预置心愿预填）----
+    if (planFormVisible) {
+        PlanFormSheet(
+            planToEdit = planFormEdit,
+            accounts = uiState.accounts,
+            initialName = planPresetName,
+            initialTargetAmountCents = planPresetTargetCents,
+            initialColorHex = planPresetColorHex,
+            onDismiss = {
+                planFormVisible = false
+                planFormEdit = null
+                planPresetName = ""
+                planPresetTargetCents = 0L
+                planPresetColorHex = null
+            },
+            onSave = { name, targetCents, holderId, colorHex ->
+                if (planFormEdit != null) {
+                    viewModel.updatePlan(
+                        planFormEdit!!.copy(
+                            name = name,
+                            targetAmountCents = targetCents,
+                            holderAccountId = holderId,
+                            colorHex = colorHex
+                        )
+                    )
+                    toast.success("计划已更新")
+                } else {
+                    viewModel.createPlan(name, targetCents, holderId, colorHex)
+                    toast.success("计划「$name」创建成功")
+                }
+                planFormVisible = false
+                planFormEdit = null
+                planPresetName = ""
+                planPresetTargetCents = 0L
+                planPresetColorHex = null
+            }
+        )
+    }
+
+    // ---- 弹窗 9：删除账户确认（含被计划占用拦截守卫）----
     ConfirmDeleteDialog(
         visible = accountToDelete != null,
         title = "删除账户",
         message = "确定要删除账户「${accountToDelete?.name}」吗？",
         onConfirm = {
             accountToDelete?.let { target ->
-                // 守卫：被攒钱计划圈为专款账户时拒绝删除（设计文档 §3 边界表）
+                // 守卫：被攒钱计划圈为专款账户时拒绝删除
                 val occupying = uiState.plans.firstOrNull { it.holderAccountId == target.id }
                 if (occupying != null) {
                     toast.info("「${target.name}」是攒钱计划「${occupying.name}」的专款账户，请先处理该计划")
