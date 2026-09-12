@@ -41,11 +41,21 @@ object JsonBackupUtils {
     const val PREF_PAYCHECK_AUTO_ENABLED = "paycheck_auto_enabled"
     /** 已自动分账过的收入记录 id（逗号分隔字符串，幂等守卫） */
     const val PREF_PAYCHECK_AUTO_APPLIED_IDS = "paycheck_auto_applied_ids"
+    const val PREF_THEME_MODE = "theme_mode"
+    const val PREF_MONTHLY_BUDGET = "monthly_budget"
+    const val PREF_MONTHLY_BUDGETS = "monthly_budgets"
+    const val PREF_DEFAULT_PAYMENT_METHOD = "default_payment_method"
+    const val PREF_DEFAULT_EXPENSE_ACCOUNT = "default_expense_account"
+    const val PREF_DEFAULT_INCOME_ACCOUNT = "default_income_account"
+    const val PREF_QUICK_ENTRY_ENABLED = "quick_entry_enabled"
+    const val PREF_PRIVACY_MODE = "privacy_mode"
+    const val PREF_HAPTIC_FEEDBACK_ENABLED = "haptic_feedback_enabled"
+    const val PREF_CUSTOM_TAGS = "custom_tags"
 
     /** 备份 JSON 顶层放账户数据的字段名（与 categories / records 平级；老备份无此段） */
     const val ACCOUNT_DATA_JSON_KEY = "accountData"
 
-    /** 全部账户相关键（顺序即恢复顺序） */
+    /** 全部账户与偏好相关键（顺序即恢复顺序） */
     private val ACCOUNT_PREF_KEYS = listOf(
         PREF_ACCOUNTS_DATA,
         PREF_SAVING_PLANS_DATA,
@@ -54,7 +64,17 @@ object JsonBackupUtils {
         PREF_PAYCHECK_RUN_HISTORY_DATA,
         PREF_RECONCILE_CYCLE_DATA,
         PREF_PAYCHECK_AUTO_ENABLED,
-        PREF_PAYCHECK_AUTO_APPLIED_IDS
+        PREF_PAYCHECK_AUTO_APPLIED_IDS,
+        PREF_THEME_MODE,
+        PREF_MONTHLY_BUDGET,
+        PREF_MONTHLY_BUDGETS,
+        PREF_DEFAULT_PAYMENT_METHOD,
+        PREF_DEFAULT_EXPENSE_ACCOUNT,
+        PREF_DEFAULT_INCOME_ACCOUNT,
+        PREF_QUICK_ENTRY_ENABLED,
+        PREF_PRIVACY_MODE,
+        PREF_HAPTIC_FEEDBACK_ENABLED,
+        PREF_CUSTOM_TAGS
     )
 
     data class BackupData(
@@ -289,6 +309,15 @@ object JsonBackupUtils {
         putIfPresent(PREF_RECONCILE_CYCLE_DATA, preferencesRepository.reconcileCycleData.first())
         putIfPresent(PREF_PAYCHECK_AUTO_APPLIED_IDS, preferencesRepository.paycheckAutoAppliedIds.first())
         result[PREF_PAYCHECK_AUTO_ENABLED] = if (preferencesRepository.paycheckAutoEnabled.first()) "true" else "false"
+        putIfPresent(PREF_THEME_MODE, preferencesRepository.themeMode.first().name)
+        putIfPresent(PREF_MONTHLY_BUDGETS, preferencesRepository.monthlyBudgetsRaw.first())
+        putIfPresent(PREF_DEFAULT_PAYMENT_METHOD, preferencesRepository.defaultPaymentMethod.first())
+        putIfPresent(PREF_DEFAULT_EXPENSE_ACCOUNT, preferencesRepository.defaultExpenseAccount.first())
+        putIfPresent(PREF_DEFAULT_INCOME_ACCOUNT, preferencesRepository.defaultIncomeAccount.first())
+        result[PREF_QUICK_ENTRY_ENABLED] = if (preferencesRepository.quickEntryEnabled.first()) "true" else "false"
+        result[PREF_PRIVACY_MODE] = if (preferencesRepository.privacyMode.first()) "true" else "false"
+        result[PREF_HAPTIC_FEEDBACK_ENABLED] = if (preferencesRepository.hapticFeedbackEnabled.first()) "true" else "false"
+        putIfPresent(PREF_CUSTOM_TAGS, preferencesRepository.customTags.first().joinToString(","))
         return result
     }
 
@@ -361,6 +390,49 @@ object JsonBackupUtils {
                     } else {
                         skipped++
                     }
+                }
+                PREF_THEME_MODE -> runCatching {
+                    preferencesRepository.setThemeMode(com.yuanman.app.data.model.ThemeMode.valueOf(value))
+                    restored++
+                }.onFailure { skipped++ }
+                PREF_MONTHLY_BUDGET -> {
+                    value.toLongOrNull()?.let {
+                        preferencesRepository.setMonthlyBudget(it)
+                        restored++
+                    } ?: skipped++
+                }
+                PREF_MONTHLY_BUDGETS -> {
+                    preferencesRepository.saveMonthlyBudgetsRaw(value)
+                    restored++
+                }
+                PREF_DEFAULT_PAYMENT_METHOD -> {
+                    preferencesRepository.setDefaultPaymentMethod(value)
+                    restored++
+                }
+                PREF_DEFAULT_EXPENSE_ACCOUNT -> {
+                    preferencesRepository.setDefaultExpenseAccount(value)
+                    restored++
+                }
+                PREF_DEFAULT_INCOME_ACCOUNT -> {
+                    preferencesRepository.setDefaultIncomeAccount(value)
+                    restored++
+                }
+                PREF_QUICK_ENTRY_ENABLED -> {
+                    preferencesRepository.setQuickEntryEnabled(value == "true")
+                    restored++
+                }
+                PREF_PRIVACY_MODE -> {
+                    preferencesRepository.setPrivacyMode(value == "true")
+                    restored++
+                }
+                PREF_HAPTIC_FEEDBACK_ENABLED -> {
+                    preferencesRepository.setHapticFeedbackEnabled(value == "true")
+                    restored++
+                }
+                PREF_CUSTOM_TAGS -> {
+                    val tags = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    preferencesRepository.setCustomTags(tags)
+                    restored++
                 }
                 else -> skipped++ // 未知键跳过（向前兼容）
             }

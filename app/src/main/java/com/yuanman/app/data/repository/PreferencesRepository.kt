@@ -69,6 +69,7 @@ class PreferencesRepository(private val context: Context) {
         val PAYCHECK_AUTO_ENABLED = booleanPreferencesKey("paycheck_auto_enabled")
         val PAYCHECK_AUTO_APPLIED_IDS = stringPreferencesKey("paycheck_auto_applied_ids")
         val PAYCHECK_RUN_HISTORY_DATA = stringPreferencesKey("paycheck_run_history_data")
+        val FIRST_LAUNCH_RESTORE_HANDLED = booleanPreferencesKey("first_launch_restore_handled")
     }
 
     val defaultPresetTags = listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "超市买菜", "地铁打车", "零食水果", "日用品", "房租水电", "聚会请客", "网购")
@@ -122,6 +123,14 @@ class PreferencesRepository(private val context: Context) {
     /** Explicit budgets keyed by yyyy-MM, so changing the month also changes the budget shown on Home. */
     val monthlyBudgets: Flow<Map<String, Long>> = context.dataStore.data.map { preferences ->
         parseMonthlyBudgets(preferences[PreferencesKeys.MONTHLY_BUDGETS])
+    }
+
+    val monthlyBudgetsRaw: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.MONTHLY_BUDGETS]
+    }
+
+    val firstLaunchRestoreHandled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.FIRST_LAUNCH_RESTORE_HANDLED] ?: false
     }
 
     val monthlyBudget: Flow<Long> = combine(monthlyBudgets, legacyMonthlyBudget) { budgets, legacy ->
@@ -292,6 +301,20 @@ class PreferencesRepository(private val context: Context) {
         }
         WidgetUpdateManager.requestUpdate(context)
         DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun saveMonthlyBudgetsRaw(raw: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.MONTHLY_BUDGETS] = raw
+        }
+        WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun setFirstLaunchRestoreHandled(handled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FIRST_LAUNCH_RESTORE_HANDLED] = handled
+        }
     }
 
     suspend fun setPrivacyMode(enabled: Boolean) {

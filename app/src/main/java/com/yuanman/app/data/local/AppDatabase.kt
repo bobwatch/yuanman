@@ -84,6 +84,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        fun closeAndResetInstance() {
+            synchronized(this) {
+                INSTANCE?.let { db ->
+                    try {
+                        if (db.isOpen) {
+                            db.close()
+                        }
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                }
+                INSTANCE = null
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             val appContext = context.applicationContext
             return INSTANCE ?: synchronized(this) {

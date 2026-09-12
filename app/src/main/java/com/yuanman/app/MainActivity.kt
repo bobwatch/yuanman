@@ -29,6 +29,16 @@ import com.yuanman.app.ui.theme.YuanmanTheme
 import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.widget.WidgetNavigation
 
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.yuanman.app.data.local.DatabaseBackupManager
+import com.yuanman.app.ui.components.FirstLaunchRestoreDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 class MainActivity : ComponentActivity() {
     private var pendingWidgetRoute by mutableStateOf<String?>(null)
 
@@ -49,14 +59,74 @@ class MainActivity : ComponentActivity() {
         val app = application as YuanmanApplication
 
         setContent {
+            val scope = rememberCoroutineScope()
             val themeMode by app.preferencesRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val toastHostState = remember { ToastHostState() }
             val updateState by app.updateManager.updateState.collectAsState()
             val showUpdatePrompt by app.updateManager.showUpdatePrompt.collectAsState()
 
+            // 首次安装后启动：检测历史账本状态
+            var showFirstLaunchDialog by remember { mutableStateOf(false) }
+            var firstLaunchNeedsPermission by remember { mutableStateOf(false) }
+            var historicalBackupInfo by remember { mutableStateOf<DatabaseBackupManager.HistoricalBackupInfo?>(null) }
+            var isRestoringFirstLaunch by remember { mutableStateOf(false) }
+
+            val firstLaunchPermissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) {
+                if (DatabaseBackupManager.hasAllFilesAccess(this@MainActivity)) {
+                    scope.launch(Dispatchers.IO) {
+                        val info = DatabaseBackupManager.detectHistoricalBackup(this@MainActivity)
+                        withContext(Dispatchers.Main) {
+                            if (info.hasBackup) {
+                                historicalBackupInfo = info
+                                firstLaunchNeedsPermission = false
+                                showFirstLaunchDialog = true
+                            } else {
+                                showFirstLaunchDialog = false
+                                DatabaseBackupManager.setFirstLaunchRestoreHandled(this@MainActivity, true)
+                                app.preferencesRepository.setFirstLaunchRestoreHandled(true)
+                                toastHostState.info("未检测到历史备份，已为您开启全新账本")
+                            }
+                        }
+                    }
+                } else {
+                    showFirstLaunchDialog = false
+                    DatabaseBackupManager.setFirstLaunchRestoreHandled(this@MainActivity, true)
+                    scope.launch {
+                        app.preferencesRepository.setFirstLaunchRestoreHandled(true)
+                    }
+                    toastHostState.info("已跳过检测，开启全新账本")
+                }
+            }
+
             // 🌟 App 启动时后台静默检查新版本
             LaunchedEffect(Unit) {
                 app.updateManager.checkForUpdates(isManual = false)
+            }
+
+            // 🌟 首次安装启动自动检测历史账本
+            LaunchedEffect(Unit) {
+                val alreadyHandled = DatabaseBackupManager.hasFirstLaunchRestoreHandled(this@MainActivity)
+                if (!alreadyHandled) {
+                    val hasPermission = DatabaseBackupManager.hasAllFilesAccess(this@MainActivity)
+                    if (hasPermission) {
+                        val info = withContext(Dispatchers.IO) {
+                            DatabaseBackupManager.detectHistoricalBackup(this@MainActivity)
+                        }
+                        if (info.hasBackup) {
+                            historicalBackupInfo = info
+                            firstLaunchNeedsPermission = false
+                            showFirstLaunchDialog = true
+                        } else {
+                            DatabaseBackupManager.setFirstLaunchRestoreHandled(this@MainActivity, true)
+                            app.preferencesRepository.setFirstLaunchRestoreHandled(true)
+                        }
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        firstLaunchNeedsPermission = true
+                        showFirstLaunchDialog = true
+                    }
+                }
             }
 
             YuanmanTheme(themeMode = themeMode) {
@@ -103,6 +173,49 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onDismiss = {
                                     app.updateManager.dismissUpdatePrompt(postpone = true)
+                                }
+                            )
+
+                            // 🌟 首次安装启动历史账本检测与恢复引导弹窗
+                            FirstLaunchRestoreDialog(
+                                visible = showFirstLaunchDialog,
+                                needsPermission = firstLaunchNeedsPermission,
+                                historicalBackupInfo = historicalBackupInfo,
+                                isRestoring = isRestoringFirstLaunch,
+                                onRequestPermission = {
+                                    val uri = Uri.parse("package:$packageName")
+                                    val settingsIntent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, uri)
+                                    try {
+                                        firstLaunchPermissionLauncher.launch(settingsIntent)
+                                    } catch (e: Exception) {
+                                        try {
+                                            firstLaunchPermissionLauncher.launch(
+                                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)
+                                            )
+                                        } catch (e2: Exception) {
+                                            toastHostState.error("无法打开权限设置页")
+                                        }
+                                    }
+                                },
+                                onConfirmRestore = {
+                                    isRestoringFirstLaunch = true
+                                    scope.launch {
+                                        val result = DatabaseBackupManager.restoreFromDocuments(this@MainActivity)
+                                        isRestoringFirstLaunch = false
+                                        showFirstLaunchDialog = false
+                                        result.onSuccess {
+                                            toastHostState.success("历史账本已成功恢复！")
+                                        }.onFailure { e ->
+                                            toastHostState.error("恢复失败：${e.message}")
+                                        }
+                                    }
+                                },
+                                onDismissFreshStart = {
+                                    showFirstLaunchDialog = false
+                                    DatabaseBackupManager.setFirstLaunchRestoreHandled(this@MainActivity, true)
+                                    scope.launch {
+                                        app.preferencesRepository.setFirstLaunchRestoreHandled(true)
+                                    }
                                 }
                             )
                         }
