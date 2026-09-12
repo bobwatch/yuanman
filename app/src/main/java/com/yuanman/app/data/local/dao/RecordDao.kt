@@ -15,6 +15,11 @@ interface RecordDao {
     @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     suspend fun getAllRecordsDirect(): List<RecordWithCategory>
 
+    /** 仅返回 updatedAt 晚于游标的账单（学习样本增量回填用，避免每次冷启动全表扫描）。 */
+    @Transaction
+    @Query("SELECT * FROM records WHERE deletedAt IS NULL AND updatedAt > :since ORDER BY updatedAt ASC, id ASC")
+    suspend fun getRecordsDirectSince(since: Long): List<RecordWithCategory>
+
     @Transaction
     @Query("SELECT * FROM records WHERE categoryId = :categoryId AND deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     fun getRecordsByCategoryId(categoryId: Long): Flow<List<RecordWithCategory>>

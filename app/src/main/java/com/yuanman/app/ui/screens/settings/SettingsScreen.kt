@@ -1,11 +1,11 @@
 package com.yuanman.app.ui.screens.settings
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -17,15 +17,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -37,37 +31,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.model.ThemeMode
-import com.yuanman.app.data.model.RecordType
-import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.sync.PeerDevice
+import com.yuanman.app.ui.components.BudgetSliderDialog
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.ui.components.YuanmanHeaderBackground
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.clickableDebounce
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateToCategoryManage: (() -> Unit)? = null,
+    onOpenQuickRecordSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -106,19 +90,102 @@ fun SettingsScreen(
 
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
+    // 数据管理底部操作层（导出 / 导入 / 备份与恢复）
+    var showDataManageSheet by remember { mutableStateOf(false) }
     var showThemeBottomSheet by remember { mutableStateOf(false) }
-    var showSpreadsheetBottomSheet by remember { mutableStateOf(false) }
-    var showBackupBottomSheet by remember { mutableStateOf(false) }
     var showFirstConfirmDialog by remember { mutableStateOf(false) }
     var showSecondConfirmDialog by remember { mutableStateOf(false) }
-    var showResetLearningDialog by remember { mutableStateOf(false) }
-    var showQuickEntrySheet by remember { mutableStateOf(false) }
-    var showAboutSheet by remember { mutableStateOf(false) }
+    var prevUpdateState by remember { mutableStateOf<UpdateState?>(null) }
+    var manualCheckRequested by remember { mutableStateOf(false) }
+    var showRestartAfterRestoreDialog by remember { mutableStateOf(false) }
+    var restoreSuccessMessage by remember { mutableStateOf("") }
+    var isBackingUp by remember { mutableStateOf(false) }
+    var isRestoringBackup by remember { mutableStateOf(false) }
+    var showStorageAccessDialog by remember { mutableStateOf(false) }
+
+    val backupRestorePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.restoreFromBackupFile(context, uri) { success, message, needsRestart ->
+                if (success) {
+                    if (needsRestart) {
+                        restoreSuccessMessage = message
+                        showRestartAfterRestoreDialog = true
+                    } else {
+                        // 账户数据 JSON 逐键写回 DataStore，无需重启即自动刷新
+                        toast.success(message)
+                    }
+                } else {
+                    toast.error(message)
+                }
+            }
+        }
+    }
+
+    // 持有"所有文件访问"权限时：直接扫描 文档/Yuanman 自动恢复；目录中没有备份则回退文件选择器
+    val performDocumentsRestore: () -> Unit = {
+        isRestoringBackup = true
+        viewModel.restoreFromDocumentsNow(context) { success, message ->
+            isRestoringBackup = false
+            if (success) {
+                restoreSuccessMessage = message
+                showRestartAfterRestoreDialog = true
+            } else {
+                toast.error(message)
+                backupRestorePickerLauncher.launch(arrayOf("*/*"))
+            }
+        }
+    }
+
+    // 系统"所有文件访问"设置页返回：授权成功则自动扫描恢复，否则回退手动选择
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (DatabaseBackupManager.hasAllFilesAccess(context)) {
+            performDocumentsRestore()
+        } else {
+            toast.info("未授予文件访问权限，请手动选择备份文件")
+            backupRestorePickerLauncher.launch(arrayOf("*/*"))
+        }
+    }
 
     LaunchedEffect(uiState.isClearedSuccess) {
         if (uiState.isClearedSuccess) {
             toast.success("全部数据已成功清空并恢复默认设置")
             viewModel.resetClearedFlag()
+        }
+    }
+
+    LaunchedEffect(updateState) {
+        val prev = prevUpdateState
+        val wasManualCheck = manualCheckRequested
+        prevUpdateState = updateState
+        when (val state = updateState) {
+            is UpdateState.ReadyToInstall -> {
+                if (prev is UpdateState.Downloading) {
+                    toast.success("更新包已下载")
+                }
+            }
+            is UpdateState.Error -> {
+                if (wasManualCheck) {
+                    toast.error(state.message)
+                }
+            }
+            else -> {}
+        }
+        // 只有手动检查才提示，静默检查不打扰用户。
+        if (prev is UpdateState.Checking && wasManualCheck) {
+            manualCheckRequested = false
+            when (val state = updateState) {
+                is UpdateState.UpToDate -> {
+                    toast.success("当前已是最新版本")
+                }
+                is UpdateState.Available -> {
+                    toast.success("发现新版本 v${state.info.versionName}")
+                }
+                else -> {}
+            }
         }
     }
 
@@ -190,9 +257,10 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                     )
 
+                    // 记账习惯二级页入口（闪电记账条总开关与分类学习管理迁至 QuickRecordSettingsScreen）
                     SettingsRowItem(
                         icon = Icons.Outlined.Bolt,
-                        title = "闪电记账",
+                        title = "记账习惯",
                         subtitle = if (uiState.quickEntryEnabled) {
                             if (learningRules.isEmpty()) "已开启 · 智能匹配分类"
                             else "已开启 · 已积累 ${learningRules.size} 条习惯规则"
@@ -200,7 +268,7 @@ fun SettingsScreen(
                             "已关闭 · 点击开启与管理规则"
                         },
                         subtitleHighlight = uiState.quickEntryEnabled,
-                        onClick = { showQuickEntrySheet = true }
+                        onClick = { onOpenQuickRecordSettings?.invoke() }
                     )
                 }
             }
@@ -242,30 +310,12 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    // 主页面只保留三个清晰入口，低频操作在二级面板中按任务分组。
+                    // 数据管理（导出、导入、备份与恢复，点击弹出底部操作层）
                     SettingsRowItem(
-                        icon = Icons.Outlined.ImportExport,
-                        title = "账单导入与导出",
-                        subtitle = "备份、分享或迁移账单 · 共 ${uiState.totalRecordCount} 笔",
-                        onClick = { showSpreadsheetBottomSheet = true }
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    val lastBackupText = if (uiState.lastBackupAt > 0L) {
-                        "上次生成 ${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(uiState.lastBackupAt))}"
-                    } else {
-                        "尚未创建完整备份"
-                    }
-                    SettingsRowItem(
-                        icon = Icons.Outlined.Backup,
-                        title = "备份与恢复",
-                        subtitle = "$lastBackupText · ${if (uninstallSafeBackupEnabled) "卸载保护已开" else "卸载保护已关"}",
-                        subtitleHighlight = uninstallSafeBackupEnabled,
-                        onClick = { showBackupBottomSheet = true }
+                        icon = Icons.Outlined.Storage,
+                        title = "数据管理",
+                        subtitle = "导出、导入、备份与恢复",
+                        onClick = { showDataManageSheet = true }
                     )
 
                     HorizontalDivider(
@@ -298,10 +348,33 @@ fun SettingsScreen(
                 ) {
                     // 关于沅满
                     SettingsRowItem(
-                        icon = Icons.Outlined.Info,
-                        title = "关于沅满",
-                        subtitle = "版本信息 · 数据隐私安全承诺",
-                        onClick = { showAboutSheet = true }
+                        icon = Icons.Outlined.SystemUpdate,
+                        title = "版本更新",
+                        subtitle = updateSubtitle,
+                        subtitleHighlight = subtitleHighlight,
+                        showBadge = hasUnseenUpdate,
+                        downloadProgress = downloadProgress,
+                        isLoading = updateState is UpdateState.Checking,
+                        onClick = {
+                            when (val state = updateState) {
+                                is UpdateState.ReadyToInstall -> {
+                                    viewModel.markUpdateSeen(state.info.versionName)
+                                    viewModel.requestUpdatePrompt()
+                                }
+                                is UpdateState.Available -> {
+                                    viewModel.markUpdateSeen(state.info.versionName)
+                                    viewModel.requestUpdatePrompt()
+                                }
+                                is UpdateState.Downloading -> {
+                                    toast.info("正在下载新版本安装包，请稍候...")
+                                }
+                                is UpdateState.Checking -> Unit
+                                else -> {
+                                    manualCheckRequested = true
+                                    viewModel.checkForUpdates(isManual = true)
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -354,150 +427,90 @@ fun SettingsScreen(
         }
     }
 
-    pendingJsonRestore?.let { pending ->
-        val preview = pending.preview
+    // 卸载重装后系统可能清除备份文件索引：引导授予"所有文件访问"以便自动扫描 文档/Yuanman
+    if (showStorageAccessDialog) {
         AlertDialog(
-            onDismissRequest = { pendingJsonRestore = null },
-            icon = { Icon(Icons.Outlined.Restore, contentDescription = null) },
-            title = { Text("确认恢复完整备份") },
+            onDismissRequest = { showStorageAccessDialog = false },
+            title = { Text("恢复备份数据") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "备份版本 ${preview.version} · ${preview.recordCount} 笔账单 · " +
-                            "${preview.categoryCount} 个分类 · ${preview.accountCount} 个账户 · " +
-                            "${preview.snapshotCount} 个周期快照"
-                    )
-                    Text("快捷学习 ${preview.learningRuleCount} 条 · ${if (preview.includesPreferences) "包含预算与偏好" else "旧版备份，不含预算与偏好"}")
-                    if (!preview.includesAccounts) {
-                        Text(
-                            "此备份未包含账户数据；如账单关联账户，恢复将被拒绝以避免产生悬空关联。",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Text(
-                        text = if (preview.checksumVerified) {
-                            "完整性校验已通过。恢复采用合并方式，现有数据会先创建安全快照。"
-                        } else {
-                            "这是旧版无校验备份。请确认文件来源可信；现有数据会先创建安全快照。"
-                        },
-                        color = if (preview.checksumVerified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                    )
-                }
+                Text(
+                    "卸载重装后，系统可能无法再索引 文档/Yuanman 中的备份文件。\n\n" +
+                        "授予「所有文件访问」权限后，应用将自动查找最近的备份并整体还原；" +
+                        "也可以不授权，直接手动选择备份文件。"
+                )
             },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.restoreFromJson(pending.json) { success, message ->
-                        if (success) toast.success(message) else toast.error(message)
+                TextButton(onClick = {
+                    showStorageAccessDialog = false
+                    val uri = Uri.parse("package:${context.packageName}")
+                    val settingsIntent =
+                        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, uri)
+                    try {
+                        allFilesAccessLauncher.launch(settingsIntent)
+                    } catch (e: Exception) {
+                        try {
+                            allFilesAccessLauncher.launch(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)
+                            )
+                        } catch (e2: Exception) {
+                            toast.error("无法打开权限设置，请手动选择备份文件")
+                            backupRestorePickerLauncher.launch(arrayOf("*/*"))
+                        }
                     }
-                    pendingJsonRestore = null
-                }) { Text("确认恢复") }
+                }) { Text("去授权并恢复") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingJsonRestore = null }) { Text("取消") }
+                TextButton(onClick = {
+                    showStorageAccessDialog = false
+                    backupRestorePickerLauncher.launch(arrayOf("*/*"))
+                }) { Text("手动选择文件") }
             }
         )
     }
 
-    // 🌟 月预算设置弹窗
-    if (showBudgetDialog) {
-        val budgetFocusRequester = remember { FocusRequester() }
-        val keyboardController = LocalSoftwareKeyboardController.current
-        var budgetInput by remember {
-            mutableStateOf(
-                if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
-            )
-        }
-        val budgetError = if (budgetInput.isNotBlank() && !MoneyUtils.isValidAmountInput(budgetInput.trim())) {
-            "请输入大于 0 的有效金额"
-        } else {
-            null
-        }
-
-        LaunchedEffect(Unit) {
-            delay(120)
-            budgetFocusRequester.requestFocus()
-            keyboardController?.show()
-        }
-
-        Dialog(onDismissRequest = { showBudgetDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "设置月预算",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Text(
-                        text = "设定合理的月预算目标，可在首页看板实时把控消费节奏。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    OutlinedTextField(
-                        value = budgetInput,
-                        onValueChange = { budgetInput = it },
-                        label = { Text("预算金额（元）") },
-                        placeholder = { Text("如：5000") },
-                        prefix = { Text("¥ ") },
-                        isError = budgetError != null,
-                        supportingText = {
-                            if (budgetError != null) {
-                                Text(budgetError, color = MaterialTheme.colorScheme.error)
-                            } else {
-                                Text("留空不修改预算，清除预算请点下方按钮", color = MaterialTheme.colorScheme.outline)
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(budgetFocusRequester)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                viewModel.setMonthlyBudget(0L)
-                                showBudgetDialog = false
-                                toast.success("已清除预算设置")
-                            }
-                        ) {
-                            Text("清除预算", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Button(
-                            onClick = {
-                                if (budgetError == null) {
-                                    if (budgetInput.isNotBlank()) {
-                                        viewModel.setMonthlyBudget(MoneyUtils.parseYuanToCents(budgetInput.trim()))
-                                        toast.success("月预算已保存")
-                                    }
-                                    showBudgetDialog = false
-                                }
-                            }
-                        ) {
-                            Text("保存")
-                        }
+    // 从备份文件恢复成功后，提示重启使新数据完整生效
+    if (showRestartAfterRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestartAfterRestoreDialog = false },
+            title = { Text("数据已恢复") },
+            text = { Text("$restoreSuccessMessage。\n\n重启应用后新数据将完整生效，是否立即重启？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRestartAfterRestoreDialog = false
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        context.startActivity(intent)
                     }
-                }
+                    Runtime.getRuntime().exit(0)
+                }) { Text("立即重启") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestartAfterRestoreDialog = false }) { Text("稍后再说") }
             }
-        }
+        )
     }
+
+    // 🌟 月度预算设置弹窗（拖动滑杆设置金额）
+    if (showBudgetDialog) {
+        BudgetSliderDialog(
+            title = "设置月度预算",
+            subtitle = "设定合理的月度预算目标，可在首页看板实时把控消费节奏。",
+            initialBudgetCents = uiState.monthlyBudget,
+            onSave = {
+                viewModel.setMonthlyBudget(it)
+                showBudgetDialog = false
+                toast.success("月度预算已保存")
+            },
+            onClear = {
+                viewModel.setMonthlyBudget(0L)
+                showBudgetDialog = false
+                toast.success("已清除预算设置")
+            },
+            onDismiss = { showBudgetDialog = false }
+        )
+    }
+
 
     // 🌟 主题外观底部选择弹层
     if (showThemeBottomSheet) {
@@ -664,6 +677,103 @@ fun SettingsScreen(
     }
 
     // 🌟 设备同步弹层
+    // 数据管理底部弹层：导出、导入、备份与恢复
+    if (showDataManageSheet) {
+        YuanmanModalBottomSheet(
+            onDismissRequest = { showDataManageSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "数据管理",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Text(
+                    text = "导出、导入、备份与恢复",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.FileDownload,
+                    title = "导出账单表格",
+                    subtitle = "支持 Excel 查看与微信/邮件分享 (共 ${uiState.totalRecordCount} 笔)",
+                    onClick = {
+                        viewModel.exportRecordsCsv(context)
+                        showDataManageSheet = false
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.FileUpload,
+                    title = "导入账单表格",
+                    subtitle = "支持导入 CSV 账单表格并自动归类入库",
+                    onClick = {
+                        csvPickerLauncher.launch(
+                            arrayOf(
+                                "text/comma-separated-values",
+                                "text/csv",
+                                "text/plain",
+                                "application/csv",
+                                "*/*"
+                            )
+                        )
+                        showDataManageSheet = false
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.Save,
+                    title = "立即备份到文档",
+                    subtitle = "分类、账单、账户与计划及个人习惯保存至 文档/Yuanman，重装可自动还原",
+                    isLoading = isBackingUp,
+                    onClick = {
+                        isBackingUp = true
+                        showDataManageSheet = false
+                        viewModel.backupDataToDocumentsNow(context) { success, message ->
+                            isBackingUp = false
+                            if (success) {
+                                toast.success(message)
+                            } else {
+                                toast.error(message)
+                            }
+                        }
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.SettingsBackupRestore,
+                    title = "从备份文件恢复",
+                    subtitle = "自动还原 文档/Yuanman 中分类、账单、账户与计划快照，也可手动选择备份文件",
+                    isLoading = isRestoringBackup,
+                    onClick = {
+                        showDataManageSheet = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                            !DatabaseBackupManager.hasAllFilesAccess(context)
+                        ) {
+                            // 卸载重装后 MediaStore 索引可能已被系统清除，引导授予文件访问权限
+                            showStorageAccessDialog = true
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            performDocumentsRestore()
+                        } else {
+                            backupRestorePickerLauncher.launch(arrayOf("*/*"))
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
     if (showWifiSyncModal) {
         FamilySyncBottomSheet(
             syncManager = viewModel.syncManager,
@@ -698,181 +808,6 @@ fun SettingsScreen(
         onDismiss = { showSecondConfirmDialog = false }
     )
 
-    ConfirmDeleteDialog(
-        visible = showResetLearningDialog,
-        title = "重置分类学习",
-        message = "将清除闪电记账的个人分类习惯，内置分类词典不会受影响。确定继续吗？",
-        confirmButtonText = "确认重置",
-        onConfirm = {
-            viewModel.clearQuickEntryLearning()
-            showResetLearningDialog = false
-            toast.success("分类学习已重置")
-        },
-        onDismiss = { showResetLearningDialog = false }
-    )
-
-    if (showQuickEntrySheet) {
-        QuickEntryBottomSheet(
-            viewModel = viewModel,
-            uiState = uiState,
-            onReset = { showResetLearningDialog = true },
-            onDismiss = { showQuickEntrySheet = false }
-        )
-    }
-
-    if (showAboutSheet) {
-        AboutYuanmanSheet(
-            updateManager = viewModel.updateManager,
-            onDismiss = { showAboutSheet = false },
-            onInstallApk = { apkFile ->
-                viewModel.updateManager.installApk(apkFile)
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SpreadsheetBottomSheet(
-    totalRecordCount: Int,
-    onDismiss: () -> Unit,
-    onExport: () -> Unit,
-    onImport: () -> Unit
-) {
-    YuanmanModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        SettingsTaskSheetContent(
-            title = "账单导入与导出",
-            description = "保存、分享账单，或从其他记账工具迁移数据"
-        ) {
-            SettingsRowItem(
-                icon = Icons.Outlined.FileDownload,
-                title = "导出账单",
-                subtitle = "导出当前 $totalRecordCount 笔账单，可保存或分享",
-                onClick = onExport
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-            SettingsRowItem(
-                icon = Icons.Outlined.FileUpload,
-                title = "导入账单",
-                subtitle = "选择账单文件并自动匹配分类",
-                onClick = onImport
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BackupAndRestoreBottomSheet(
-    lastBackupAt: Long,
-    uninstallSafeBackupEnabled: Boolean,
-    onDismiss: () -> Unit,
-    onCreateBackup: () -> Unit,
-    onRestore: () -> Unit,
-    onUninstallSafeBackupChanged: (Boolean) -> Unit
-) {
-    val lastBackupText = if (lastBackupAt > 0L) {
-        "上次生成 ${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(lastBackupAt))}"
-    } else {
-        "尚未创建完整备份"
-    }
-
-    YuanmanModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        SettingsTaskSheetContent(
-            title = "备份与恢复",
-            description = lastBackupText
-        ) {
-            SettingsRowItem(
-                icon = Icons.Outlined.Backup,
-                title = "创建完整备份",
-                subtitle = "账单、分类、账户、周期快照、预算与偏好",
-                onClick = onCreateBackup
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-            SettingsRowItem(
-                icon = Icons.Outlined.Restore,
-                title = "从备份恢复",
-                subtitle = "先校验并预览，确认后再合并数据",
-                onClick = onRestore
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-            SettingsRowItem(
-                icon = Icons.Outlined.FolderShared,
-                title = "卸载后自动恢复",
-                subtitle = if (uninstallSafeBackupEnabled) {
-                    "已开启 · 公共 Documents 中保留加固副本"
-                } else {
-                    "已关闭 · 财务数据仅保留在应用空间"
-                },
-                subtitleHighlight = uninstallSafeBackupEnabled,
-                trailingContent = {
-                    Switch(
-                        checked = uninstallSafeBackupEnabled,
-                        onCheckedChange = onUninstallSafeBackupChanged
-                    )
-                },
-                onClick = { onUninstallSafeBackupChanged(!uninstallSafeBackupEnabled) }
-            )
-        }
-
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-        ) {
-            Text(
-                text = "恢复前会校验备份，并为现有数据创建安全快照。卸载保护开启时，系统文件管理器可看到备份副本。",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun SettingsTaskSheetContent(
-    title: String,
-    description: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            }
-        }
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                content = content
-            )
-        }
-    }
 }
 
 @Composable
@@ -978,415 +913,6 @@ private fun SettingsRowItem(
 
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun QuickEntryBottomSheet(
-    viewModel: SettingsViewModel,
-    uiState: SettingsUiState,
-    onReset: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val rules by viewModel.quickEntryLearningRules.collectAsStateWithLifecycle()
-    val categories = viewModel.allCategories.collectAsStateWithLifecycle().value
-    var searchQuery by remember { mutableStateOf("") }
-    var searchExpanded by remember { mutableStateOf(false) }
-    val searchFocusRequester = remember { FocusRequester() }
-    var selectedType by remember { mutableStateOf<RecordType?>(null) }
-    var editingRule by remember { mutableStateOf<QuickEntryLearningEntity?>(null) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var editorPhrase by remember { mutableStateOf("") }
-    var editorType by remember { mutableStateOf(RecordType.EXPENSE) }
-    var editorCategoryId by remember { mutableStateOf<Long?>(null) }
-    var categoryMenuExpanded by remember { mutableStateOf(false) }
-    var deleteRule by remember { mutableStateOf<QuickEntryLearningEntity?>(null) }
-    val learningListState = rememberLazyListState()
-    val pageSize = 60
-
-    fun openEditor(rule: QuickEntryLearningEntity?) {
-        editingRule = rule
-        showAddDialog = rule == null
-        editorPhrase = rule?.phrase.orEmpty()
-        editorType = rule?.let { runCatching { RecordType.valueOf(it.type) }.getOrDefault(RecordType.EXPENSE) } ?: RecordType.EXPENSE
-        editorCategoryId = categories.firstOrNull { it.syncId == rule?.categorySyncId }?.id
-            ?: categories.firstOrNull { it.type == editorType.name }?.id
-    }
-
-    val visibleRules = rules.filter { rule ->
-        val categoryName = categories.firstOrNull { it.syncId == rule.categorySyncId }?.name.orEmpty()
-        (selectedType == null || rule.type == selectedType?.name) &&
-            (searchQuery.isBlank() || rule.phrase.contains(searchQuery.trim(), ignoreCase = true) || categoryName.contains(searchQuery.trim(), ignoreCase = true))
-    }
-
-    LaunchedEffect(searchExpanded) {
-        if (searchExpanded) {
-            delay(100)
-            searchFocusRequester.requestFocus()
-        }
-    }
-
-    // 词云按页渲染，首屏只创建少量 chip；滚动接近底部时再无感追加下一页。
-    var loadedRuleCount by remember(searchQuery, selectedType, rules.size) { mutableIntStateOf(pageSize) }
-    var isLoadingMoreRules by remember(searchQuery, selectedType, rules.size) { mutableStateOf(false) }
-    val sortedRules = remember(visibleRules) {
-        visibleRules.sortedWith(
-            compareByDescending<QuickEntryLearningEntity> { it.sampleCount }
-                .thenBy { it.phrase.length }
-        )
-    }
-    val loadedRules = sortedRules.take(loadedRuleCount)
-    LaunchedEffect(learningListState, loadedRules.size, sortedRules.size) {
-        snapshotFlow {
-            val layoutInfo = learningListState.layoutInfo
-            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
-            lastVisible != null &&
-                lastVisible.index >= layoutInfo.totalItemsCount - 1 &&
-                lastVisible.offset + lastVisible.size <= layoutInfo.viewportEndOffset
-        }.collect { reachedEnd ->
-            if (reachedEnd && loadedRules.size < sortedRules.size && !isLoadingMoreRules) {
-                // 给用户一个明确的反馈，即使本地数据加载很快也短暂展示加载状态。
-                isLoadingMoreRules = true
-                delay(180)
-                loadedRuleCount = (loadedRuleCount + pageSize).coerceAtMost(sortedRules.size)
-                isLoadingMoreRules = false
-            }
-        }
-    }
-
-    YuanmanModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 1. 顶部标题
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("闪电记账", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-                    Text(
-                        "自然语言智能识别与分类习惯管理",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
-                }
-            }
-
-            // 2. 闪电记账总开关卡片
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Bolt,
-                                    contentDescription = null,
-                                    tint = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "开启闪电记账",
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (uiState.quickEntryEnabled) "首页顶部常驻闪电记账条" else "已隐藏首页闪电记账条",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (uiState.quickEntryEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = uiState.quickEntryEnabled,
-                        onCheckedChange = viewModel::setQuickEntryEnabled
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = uiState.quickEntryEnabled,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                    )
-
-                    // 3. 分类学习管理区域
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("分类学习", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            Text(
-                                "个人习惯随记账自动积累",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            TextButton(onClick = { openEditor(null) }) { Text("新增") }
-                            TextButton(onClick = onReset, enabled = rules.isNotEmpty()) { Text("重置") }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        if (searchExpanded) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
-                                singleLine = true,
-                                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                                placeholder = { Text("搜索关键词或分类") },
-                                trailingIcon = {
-                                    IconButton(onClick = {
-                                        searchQuery = ""
-                                        searchExpanded = false
-                                    }) { Icon(Icons.Default.Close, contentDescription = "关闭搜索") }
-                                }
-                            )
-                        } else {
-                            FilterChip(selected = selectedType == null, onClick = { selectedType = null }, label = { Text("全部") })
-                            FilterChip(selected = selectedType == RecordType.EXPENSE, onClick = { selectedType = RecordType.EXPENSE }, label = { Text("支出") })
-                            FilterChip(selected = selectedType == RecordType.INCOME, onClick = { selectedType = RecordType.INCOME }, label = { Text("收入") })
-                            Spacer(modifier = Modifier.weight(1f))
-                            IconButton(onClick = { searchExpanded = true }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Outlined.Search, contentDescription = "展开搜索")
-                            }
-                        }
-                    }
-                    if (rules.isEmpty()) {
-                        Text(
-                            "还没有学习记录。保存几笔闪电记账后，系统会逐步记住你的分类习惯。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 20.dp)
-                        )
-                    } else if (visibleRules.isEmpty()) {
-                        Text("没有匹配的学习记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
-                    } else {
-                        Text(
-                            text = "长按标签可删除",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        LazyColumn(
-                            state = learningListState,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(320.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(
-                                items = loadedRules.chunked(pageSize),
-                                key = { page ->
-                                    page.firstOrNull()?.let { "${it.type}_${it.categorySyncId}_${it.phrase}" } ?: "learning_page"
-                                }
-                            ) { page ->
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    page.forEach { rule ->
-                                        val category = categories.firstOrNull { it.syncId == rule.categorySyncId }
-                                        val typeColor = if (rule.type == RecordType.EXPENSE.name) {
-                                            MaterialTheme.colorScheme.error
-                                        } else {
-                                            MaterialTheme.colorScheme.primary
-                                        }
-                                        val categoryColor = category?.colorHex?.let { Color(it) } ?: typeColor
-                                        Surface(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .combinedClickable(
-                                                    onClick = { openEditor(rule) },
-                                                    onLongClick = { deleteRule = rule }
-                                                ),
-                                            shape = RoundedCornerShape(50),
-                                            color = categoryColor.copy(alpha = 0.10f),
-                                            border = BorderStroke(0.7.dp, categoryColor.copy(alpha = 0.35f))
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(6.dp)
-                                                        .clip(CircleShape)
-                                                        .background(categoryColor)
-                                                )
-                                                Text(
-                                                    text = rule.phrase,
-                                                    fontSize = (11 + rule.sampleCount.coerceIn(0, 3)).sp,
-                                                    fontWeight = if (rule.sampleCount > 1) FontWeight.SemiBold else FontWeight.Normal,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if (loadedRules.size < sortedRules.size) {
-                                item(key = "learning_loading_footer") {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isLoadingMoreRules) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(18.dp),
-                                                    strokeWidth = 2.dp
-                                                )
-                                                Text(
-                                                    text = "正在加载更多…",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.outline
-                                                )
-                                            }
-                                        } else {
-                                            Text(
-                                                text = "继续下滑加载更多",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showAddDialog || editingRule != null) {
-        val currentRule = editingRule
-        val editorCategories = categories.filter { it.type == editorType.name }
-        val selectedCategory = editorCategories.firstOrNull { it.id == editorCategoryId }
-        AlertDialog(
-            onDismissRequest = { editingRule = null; showAddDialog = false },
-            title = { Text(if (currentRule == null) "新增学习内容" else "编辑学习内容") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = editorPhrase,
-                        onValueChange = { editorPhrase = it },
-                        label = { Text("描述关键词") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected = editorType == RecordType.EXPENSE, onClick = { editorType = RecordType.EXPENSE; editorCategoryId = null }, label = { Text("支出") })
-                        FilterChip(selected = editorType == RecordType.INCOME, onClick = { editorType = RecordType.INCOME; editorCategoryId = null }, label = { Text("收入") })
-                    }
-                    Box {
-                        OutlinedButton(onClick = { categoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text(selectedCategory?.name ?: "选择分类")
-                        }
-                        DropdownMenu(
-                            expanded = categoryMenuExpanded,
-                            onDismissRequest = { categoryMenuExpanded = false },
-                            modifier = Modifier.heightIn(max = 280.dp)
-                        ) {
-                            editorCategories.forEach { category ->
-                                DropdownMenuItem(
-                                    text = { Text(category.name) },
-                                    onClick = { editorCategoryId = category.id; categoryMenuExpanded = false }
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val category = editorCategories.firstOrNull { it.id == editorCategoryId }
-                        if (category != null) {
-                            if (currentRule == null) viewModel.addQuickEntryLearning(editorType, editorPhrase, category.syncId)
-                            else viewModel.updateQuickEntryLearning(currentRule, editorPhrase, editorType, category.syncId)
-                        }
-                        editingRule = null
-                        showAddDialog = false
-                    },
-                    enabled = editorPhrase.isNotBlank() && selectedCategory != null
-                ) { Text("保存") }
-            },
-            dismissButton = { TextButton(onClick = { editingRule = null; showAddDialog = false }) { Text("取消") } }
-        )
-    }
-
-    deleteRule?.let { rule ->
-        AlertDialog(
-            onDismissRequest = { deleteRule = null },
-            title = { Text("删除学习内容") },
-            text = { Text("确定删除“${rule.phrase}”这条分类学习记录吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteQuickEntryLearning(rule)
-                        deleteRule = null
-                    }
-                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { deleteRule = null }) { Text("取消") } }
-        )
-    }
-}
-
 @Composable
 private fun BoxScope.UpdateBadge() {
     val badgeTransition = rememberInfiniteTransition(label = "update-badge")
@@ -1412,7 +938,7 @@ private fun BoxScope.UpdateBadge() {
 }
 
 /**
- * 🌟 设备同步弹层 (基于 NSD 自动发现 + 6 位配对码 + AES-GCM 加密同步)
+ * 🌟 设备同步弹层 (基于 NSD 自动发现 + 人工确认授权 + AES-GCM 加密同步)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1421,18 +947,13 @@ private fun FamilySyncBottomSheet(
     toast: com.yuanman.app.ui.components.ToastHostState,
     onDismiss: () -> Unit
 ) {
-    val myCode by syncManager.pairingCode.collectAsStateWithLifecycle()
     val devices by syncManager.devices.collectAsStateWithLifecycle()
     val syncing by syncManager.syncing.collectAsStateWithLifecycle()
     val syncStatus by syncManager.status.collectAsStateWithLifecycle()
     val pendingRequests by syncManager.pendingRequests.collectAsStateWithLifecycle()
     val pendingOutboundDevices by syncManager.pendingOutboundDevices.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    var peerCodeInput by remember { mutableStateOf("") }
-    var confirmRegenerate by remember { mutableStateOf(false) }
-    var showPairingFallback by remember { mutableStateOf(false) }
     var knownDeviceNames by remember { mutableStateOf(setOf<String>()) }
 
     DisposableEffect(syncManager) {
@@ -1516,146 +1037,10 @@ private fun FamilySyncBottomSheet(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "点击在线设备发起同步，对方确认后才会传输数据。配对码仅作为备用方式。",
+                    text = "点击在线设备发起同步，对方确认后才会传输数据。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-
-            // 🌟 配对码备用入口：默认收起，优先使用在线设备授权。
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { showPairingFallback = !showPairingFallback }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "备用：使用配对码",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "无法点击设备时再展开使用",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    Icon(
-                        imageVector = if (showPairingFallback) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (showPairingFallback) "收起配对码" else "展开配对码",
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                }
-            }
-
-            if (showPairingFallback) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // 本机配对码只在备用入口展开时展示。
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "本机配对码",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = myCode,
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = primaryColor,
-                                    letterSpacing = 4.sp
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("pairingCode", myCode))
-                                        toast.success("配对码已复制")
-                                    }
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("复制")
-                                }
-                                TextButton(onClick = { confirmRegenerate = true }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("更换")
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-
-                        Text(
-                            text = "连接新设备",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = peerCodeInput,
-                                onValueChange = {
-                                    if (it.length <= 6) peerCodeInput = it.filter { ch -> ch.isDigit() }
-                                },
-                                label = { Text("对方 6 位配对码") },
-                                placeholder = { Text("如：123456") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Button(
-                                onClick = {
-                                    if (peerCodeInput.length == 6) {
-                                        val ok = syncManager.setPairingCode(peerCodeInput)
-                                        if (ok) {
-                                            peerCodeInput = ""
-                                            toast.success("已设置对方配对码，正在尝试同步…")
-                                            syncManager.syncNowWithPairingCode()
-                                        }
-                                    }
-                                },
-                                enabled = peerCodeInput.length == 6,
-                                modifier = Modifier.height(52.dp)
-                            ) {
-                                Text("配对")
-                            }
-                        }
-                    }
-                }
             }
 
             // 🌟 在线设备列表与同步
@@ -1765,27 +1150,4 @@ private fun FamilySyncBottomSheet(
         }
     }
 
-    if (confirmRegenerate) {
-        AlertDialog(
-            onDismissRequest = { confirmRegenerate = false },
-            title = { Text("换一个配对码") },
-            text = { Text("生成新配对码后，另一台手机需重新输入该配对码才能同步。确定更换吗？") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        syncManager.regeneratePairingCode()
-                        confirmRegenerate = false
-                        toast.success("已生成新配对码")
-                    }
-                ) {
-                    Text("确定更换")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRegenerate = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
 }

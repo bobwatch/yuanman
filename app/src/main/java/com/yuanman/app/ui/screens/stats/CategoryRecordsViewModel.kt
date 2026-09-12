@@ -8,6 +8,7 @@ import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.RecordRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import java.util.Calendar
 
@@ -114,7 +115,10 @@ class CategoryRecordsViewModel(
             maxAmount = maxAmt,
             isLoading = false
         )
-    }.stateIn(
+    }
+        // 全量历史分组/汇总等重计算移出主线程；stateIn 收集仍回到主线程
+        .flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = CategoryRecordsUiState(isLoading = true)

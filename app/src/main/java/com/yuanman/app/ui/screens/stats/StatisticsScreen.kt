@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,28 +45,56 @@ fun StatisticsScreen(
     var showWeekPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
 
+    // 周期翻页只允许回看：以当前自然周/月/年为上限（统计不涉及未来）
+    val (currentYear, currentMonth) = remember { DateTimeUtils.getCurrentYearMonth() }
+    val currentWeek = remember { DateTimeUtils.getCurrentYearWeek().second }
+    val canGoNextPeriod = when (uiState.periodMode) {
+        StatisticsPeriod.WEEK ->
+            uiState.selectedYear < currentYear ||
+                (uiState.selectedYear == currentYear && uiState.selectedWeek < currentWeek)
+        StatisticsPeriod.MONTH ->
+            uiState.selectedYear < currentYear ||
+                (uiState.selectedYear == currentYear && uiState.selectedMonth < currentMonth)
+        StatisticsPeriod.YEAR -> uiState.selectedYear < currentYear
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            YuanmanHeaderBackground {
-                TopAppBar(
-                    modifier = Modifier.offset(y = (-4).dp),
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    title = { Text("数据统计", fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
+            // 🌟 顶部 Header —— 与首页 FinancialOverviewCard 同款底纹卡视觉（AppHeaderSurface）：
+            // 素面底 + 低对比斜向细纹理 + 主色柔光晕 + 1dp 细描边 + 3dp 柔和投影；贴屏幕顶、
+            // 仅底部 18dp 圆角。原 TopAppBar 的返回 / 标题 / 周期快切胶囊原样保留，交互不变。
+            AppHeaderSurface(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onNavigateBack != null) {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
-                    },
-                    actions = {
-                        // 时间快捷切换
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(end = 12.dp)
-                        ) {
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "数据统计",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // 时间快捷切换：上一周期 / 下一周期；周/月模式可点中间文本呼出月份/周期选择
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -120,19 +149,24 @@ fun StatisticsScreen(
 
                             IconButton(
                                 onClick = { viewModel.nextPeriod() },
-                                modifier = Modifier.size(32.dp)
+                                enabled = canGoNextPeriod,
+                                modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ChevronRight,
                                     contentDescription = "下一周期",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = if (canGoNextPeriod) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.35f)
+                                    },
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
                         }
                     }
-                )
+                }
             }
         }
     ) { innerPadding ->
@@ -141,7 +175,8 @@ fun StatisticsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp),
+            // 顶部留 12dp：Header 卡底部圆角与 3dp 投影在此透出，再开始滚动内容
+            contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // 周期切换：使用独立胶囊滑块，周期数据本身不参与横向动画。

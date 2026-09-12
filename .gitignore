@@ -64,7 +64,5 @@ captures/
 # Adb sync working dir
 .adb_sync_backup/
 
-# Local Codex/build investigation artifacts
-.codex-build-cache/
-.tmp-*
---
+# ZCode session artifacts
+.zcode/

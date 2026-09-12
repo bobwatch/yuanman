@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.ui.components.AppHeaderSurface
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.DateGroupHeader
 import com.yuanman.app.ui.components.EmptyStateView
@@ -60,29 +61,43 @@ fun CategoryRecordsScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                modifier = Modifier.offset(y = (-4).dp),
-                title = {
-                    Text(
-                        text = "$categoryName · 账单明细",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                navigationIcon = {
+            // 🌟 顶部 Header —— 与首页 FinancialOverviewCard 同款底纹卡视觉（AppHeaderSurface）：
+            // 素面底 + 低对比斜向细纹理 + 主色柔光晕 + 1dp 细描边 + 3dp 柔和投影；贴屏幕顶、
+            // 仅底部 18dp 圆角。原 TopAppBar 的返回 / 标题 / 月份胶囊原样保留，交互不变。
+            AppHeaderSurface(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 返回
                     IconButton(
                         onClick = onNavigateBack,
                         modifier = Modifier.clickableDebounce(debounceTimeMs = 500L, onClick = onNavigateBack)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
-                actions = {
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "$categoryName · 账单明细",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     // 月份选择快捷胶囊
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                         modifier = Modifier
-                            .padding(end = 12.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .clickableDebounce(debounceTimeMs = 300L) { showMonthPicker = true }
                     ) {
@@ -106,7 +121,7 @@ fun CategoryRecordsScreen(
                         }
                     }
                 }
-            )
+            }
         },
         floatingActionButton = {
             if (onNavigateToAddRecord != null && category != null) {

@@ -17,6 +17,10 @@ import com.yuanman.app.data.repository.AccountRepository
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
+import com.yuanman.app.ui.screens.account.AccountUiModel
+import com.yuanman.app.ui.screens.account.PaycheckExecutor
+import com.yuanman.app.ui.screens.account.isSalaryCategoryName
+import com.yuanman.app.ui.screens.account.parseAccountsJson
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.WarmAffirmation
@@ -34,7 +38,7 @@ data class HomeUiState(
     val selectedMonth: Int,
     val summary: MonthSummaryData = MonthSummaryData(),
     val groupedRecords: Map<Long, List<RecordWithCategory>> = emptyMap(),
-    val daySummaries: Map<Long, Pair<Long, Long>> = emptyMap(), // dayTimestamp -> (expense, income)
+    val daySummaries: Map<Long, Pair<Long, Long>> = emptyMap(),
     val monthlyBudget: Long = 0L,
     val isPrivacyMode: Boolean = false,
     val affirmation: WarmAffirmation = WarmAffirmationsHelper.getAffirmationForCurrentTime(),
@@ -45,8 +49,9 @@ data class HomeUiState(
     val quickEntryEnabled: Boolean = true,
     val quickEntryCategories: List<CategoryEntity> = emptyList(),
     val quickEntryLearningRules: List<QuickEntryLearningEntity> = emptyList(),
-    val quickTemplates: List<QuickRecordTemplate> = emptyList(),
-    val pinnedTemplateKeys: Set<String> = emptySet(),
+    val accounts: List<AccountUiModel> = emptyList(),
+    val defaultExpenseAccount: String = "",
+    val defaultIncomeAccount: String = "",
     val isLoading: Boolean = false
 )
 
@@ -69,7 +74,10 @@ private data class PrefsInfo(
     val legacyBudget: Long,
     val privacy: Boolean,
     val quickEntryEnabled: Boolean,
-    val affirmation: WarmAffirmation
+    val affirmation: WarmAffirmation,
+    val accounts: List<AccountUiModel>,
+    val defaultExpenseAccount: String,
+    val defaultIncomeAccount: String
 )
 
 private data class TemplateInfo(
@@ -84,24 +92,9 @@ class HomeViewModel(
     private val accountRepository: AccountRepository
 ) : ViewModel() {
 
-    val accounts: StateFlow<List<AccountEntity>> = accountRepository.activeAccounts
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-
-    val defaultExpenseAccountId: StateFlow<Long?> = preferencesRepository.defaultExpenseAccountId
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
-        )
-
-    fun setDefaultExpenseAccount(accountId: Long?) {
-        viewModelScope.launch {
-            preferencesRepository.setDefaultExpenseAccountId(accountId)
-        }
+    // 工资到账自动分账执行器（v0.0.4.5）：首页快捷记账保存「工资」类收入后自动按规则分账
+    private val paycheckExecutor: PaycheckExecutor by lazy {
+        PaycheckExecutor(preferencesRepository, recordRepository)
     }
 
     private val currentYearMonth = DateTimeUtils.getCurrentYearMonth()
@@ -138,6 +131,10 @@ class HomeViewModel(
         MonthInfo(year, month, records)
     }
 
+    private val accountsDataFlow = preferencesRepository.accountsData.map {
+        parseAccountsJson(it)
+    }
+
     private val prefsInfoFlow = combine(
         preferencesRepository.monthlyBudgets,
         preferencesRepository.monthlyBudget,
@@ -145,7 +142,22 @@ class HomeViewModel(
         preferencesRepository.quickEntryEnabled,
         _currentAffirmation
     ) { budgets, legacyBudget, privacy, quickEntryEnabled, affirmation ->
-        PrefsInfo(budgets, legacyBudget, privacy, quickEntryEnabled, affirmation)
+        Triple(budgets, legacyBudget, privacy) to (quickEntryEnabled to affirmation)
+    }.combine(
+        combine(accountsDataFlow, preferencesRepository.defaultExpenseAccount, preferencesRepository.defaultIncomeAccount) { accs, defExp, defInc ->
+            Triple(accs, defExp, defInc)
+        }
+    ) { base, accInfo ->
+        PrefsInfo(
+            budgets = base.first.first,
+            legacyBudget = base.first.second,
+            privacy = base.first.third,
+            quickEntryEnabled = base.second.first,
+            affirmation = base.second.second,
+            accounts = accInfo.first,
+            defaultExpenseAccount = accInfo.second,
+            defaultIncomeAccount = accInfo.third
+        )
     }
 
     private val templateInfoFlow = combine(
@@ -265,11 +277,15 @@ class HomeViewModel(
             budgetUsedPercent = usedPercent,
             quickEntryCategories = categories,
             quickEntryLearningRules = learningRules,
-            quickTemplates = templateInfo.templates,
-            pinnedTemplateKeys = templateInfo.pinnedKeys,
+            accounts = prefsInfo.accounts,
+            defaultExpenseAccount = prefsInfo.defaultExpenseAccount,
+            defaultIncomeAccount = prefsInfo.defaultIncomeAccount,
             isLoading = false
         )
-    }.stateIn(
+    }
+        // 全月逐条分组/汇总与预算派生计算移出主线程；stateIn 收集仍回到主线程
+        .flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = HomeUiState(
@@ -313,13 +329,19 @@ class HomeViewModel(
     }
 
     fun nextMonth() {
-        var y = _selectedYear.value
-        var m = _selectedMonth.value + 1
-        if (m > 12) {
-            m = 1
-            y += 1
+        // 月份翻页只允许回看：以当前自然月为上限（首页看板不涉及未来）
+        val y = _selectedYear.value
+        val m = _selectedMonth.value
+        if (y > currentYearMonth.first ||
+            (y == currentYearMonth.first && m >= currentYearMonth.second)
+        ) return
+        var ny = y
+        var nm = m + 1
+        if (nm > 12) {
+            nm = 1
+            ny += 1
         }
-        selectMonth(y, m)
+        selectMonth(ny, nm)
     }
 
     fun togglePrivacy() {
@@ -356,12 +378,16 @@ class HomeViewModel(
     fun saveQuickEntry(
         input: String,
         type: RecordType,
-        overrideCategory: CategoryEntity? = null,
-        accountId: Long? = null
+        categoryOverride: CategoryEntity? = null,
+        accountOverride: String? = null
     ): QuickEntryResult? {
         val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
         val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
-        val category = overrideCategory ?: parsed.category ?: categories.firstOrNull() ?: return null
+        // 用户手动选择的分类优先；校验其仍属于当前收支类型，避免界面状态过期。
+        val category = categoryOverride?.takeIf { chosen -> categories.any { it.id == chosen.id } }
+            ?: parsed.category
+            ?: categories.firstOrNull()
+            ?: return null
         val amountCents = MoneyUtils.parseYuanToCents(parsed.amountYuan.toPlainString())
         if (amountCents <= 0L) return null
 
@@ -373,7 +399,18 @@ class HomeViewModel(
         } ?: defaultExpenseId
 
         viewModelScope.launch(Dispatchers.IO) {
-            val paymentMethod = preferencesRepository.defaultPaymentMethod.first()
+            val isExpense = type == RecordType.EXPENSE
+            val defaultAccount = if (isExpense) {
+                preferencesRepository.defaultExpenseAccount.first()
+            } else {
+                preferencesRepository.defaultIncomeAccount.first()
+            }
+            val fallbackMethod = preferencesRepository.defaultPaymentMethod.first()
+            val effectivePaymentMethod = accountOverride?.takeIf { it.isNotBlank() }
+                ?: parsed.paymentMethod
+                ?: defaultAccount.takeIf { it.isNotBlank() }
+                ?: fallbackMethod
+
             recordRepository.insertRecord(
                 RecordEntity(
                     type = type.name,
@@ -381,13 +418,31 @@ class HomeViewModel(
                     categoryId = category.id,
                     recordTime = System.currentTimeMillis(),
                     remark = parsed.remark,
-                    paymentMethod = parsed.paymentMethod ?: paymentMethod,
-                    accountId = resolvedAccountId
+                    paymentMethod = effectivePaymentMethod
                 )
-            )
+            ).also { insertedId ->
+                // ---- v0.0.4.5：工资类收入保存后自动按发薪规则分账（首页快捷入口，静默执行）----
+                if (!isExpense && insertedId > 0L && isSalaryCategoryName(category.name)) {
+                    paycheckExecutor.onSalaryRecordSaved(
+                        recordId = insertedId,
+                        amountCents = amountCents,
+                        paymentMethod = effectivePaymentMethod
+                    )
+                }
+            }
             categoryRepository.learnQuickEntry(type, parsed.remark, category.syncId)
         }
-        return parsed.copy(category = category)
+        return parsed.copy(category = category, paymentMethod = accountOverride ?: parsed.paymentMethod)
+    }
+
+    fun setDefaultPaymentAccount(accountName: String, isExpense: Boolean) {
+        viewModelScope.launch {
+            if (isExpense) {
+                preferencesRepository.setDefaultExpenseAccount(accountName)
+            } else {
+                preferencesRepository.setDefaultIncomeAccount(accountName)
+            }
+        }
     }
 
     fun setMonthlyBudget(budgetCents: Long) {

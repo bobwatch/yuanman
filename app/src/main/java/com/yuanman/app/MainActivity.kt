@@ -19,11 +19,14 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.yuanman.app.data.model.ThemeMode
+import com.yuanman.app.ui.components.AppUpdateDialog
 import com.yuanman.app.ui.components.LocalToastHostState
+import com.yuanman.app.ui.components.PrimeIconPainters
 import com.yuanman.app.ui.components.ToastHostState
 import com.yuanman.app.ui.components.TopToastHost
 import com.yuanman.app.ui.navigation.YuanmanNavGraph
 import com.yuanman.app.ui.theme.YuanmanTheme
+import com.yuanman.app.utils.UpdateState
 import com.yuanman.app.widget.WidgetNavigation
 
 class MainActivity : ComponentActivity() {
@@ -48,6 +51,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by app.preferencesRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val toastHostState = remember { ToastHostState() }
+            val updateState by app.updateManager.updateState.collectAsState()
+            val showUpdatePrompt by app.updateManager.showUpdatePrompt.collectAsState()
+
+            // 🌟 App 启动时后台静默检查新版本
+            LaunchedEffect(Unit) {
+                app.updateManager.checkForUpdates(isManual = false)
+            }
 
             YuanmanTheme(themeMode = themeMode) {
                 CompositionLocalProvider(LocalToastHostState provides toastHostState) {
@@ -57,6 +67,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             val navController = rememberNavController()
+
+                            // 常驻预置分类图标 painter，避免各页面每次进入重建矢量树导致卡顿
+                            PrimeIconPainters()
 
                             LaunchedEffect(pendingWidgetRoute) {
                                 pendingWidgetRoute?.let { route ->
@@ -80,6 +93,23 @@ class MainActivity : ComponentActivity() {
                                     .statusBarsPadding()
                                     .padding(top = 8.dp)
                                     .align(Alignment.TopCenter)
+                            )
+
+                            // 🌟 全局版本更新弹窗（支持启动后台检查自动弹出与取消后推迟1天）
+                            AppUpdateDialog(
+                                visible = showUpdatePrompt,
+                                updateState = updateState,
+                                onDownload = { info ->
+                                    app.updateManager.startDownload(info)
+                                    toastHostState.info("开始下载更新…")
+                                },
+                                onInstall = { apkFile ->
+                                    app.updateManager.installApk(apkFile)
+                                    toastHostState.info("正在打开安装器…")
+                                },
+                                onDismiss = {
+                                    app.updateManager.dismissUpdatePrompt(postpone = true)
+                                }
                             )
                         }
                     }

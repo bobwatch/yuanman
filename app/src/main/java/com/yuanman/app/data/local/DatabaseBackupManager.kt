@@ -7,9 +7,15 @@ import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import com.yuanman.app.utils.JsonBackupUtils
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -31,6 +37,47 @@ object DatabaseBackupManager {
     private const val SHARED_BACKUP_MIME_TYPE = "application/vnd.sqlite3"
     private const val MIN_VALID_DB_SIZE = 4096L
     private val backupLock = Any()
+
+    // DataStore 偏好文件(个人习惯: 预算、默认方式、主题、隐私、自定义标签等)
+    private const val PREFERENCES_FILE_NAME = "yuanman_preferences.preferences_pb"
+    private const val PREFERENCES_DATASTORE_REL_PATH = "datastore/$PREFERENCES_FILE_NAME"
+    private const val SHARED_PREFERENCES_NAME = PREFERENCES_FILE_NAME
+    private const val SHARED_PREFERENCES_FILE_PREFIX = "yuanman_preferences"
+    private const val SHARED_PREFERENCES_TEMP_PREFIX = ".yuanman_preferences_"
+    private const val SHARED_PREFERENCES_MIME_TYPE = "application/octet-stream"
+    private const val MAX_PREFERENCES_SIZE = 2 * 1024 * 1024L
+
+    // 账户/计划等 DataStore JSON 键的快照（随 .db / 偏好快照一起发布，恢复时逐键写回 DataStore）
+    const val ACCOUNTS_SNAPSHOT_NAME = "yuanman_accounts_data.json"
+    private const val ACCOUNTS_SNAPSHOT_FILE_PREFIX = "yuanman_accounts_data"
+    private const val ACCOUNTS_SNAPSHOT_TEMP_PREFIX = ".yuanman_accounts_data_"
+    private const val ACCOUNTS_SNAPSHOT_MIME_TYPE = "application/json"
+    private const val ACCOUNTS_INTERNAL_SNAPSHOT_NAME = "auto_backup_latest_accounts.json"
+    private const val ACCOUNTS_EXTERNAL_SNAPSHOT_NAME = "yuanman_autobackup_accounts.json"
+    private const val ACCOUNTS_DATED_SNAPSHOT_PREFIX = "yuanman_accounts_backup_"
+    private const val MAX_ACCOUNTS_SNAPSHOT_SIZE = 2 * 1024 * 1024L
+
+    // 数据变更后的防抖自动备份(避免每次记账都立刻全量写 Documents)
+    private const val DEBOUNCE_BACKUP_DELAY_MS = 4_000L
+    private val debounceHandler = Handler(Looper.getMainLooper())
+    private val backupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile
+    private var pendingBackupRunnable: Runnable? = null
+    @Volatile
+    private var attachedAppContext: Context? = null
+
+    /** 应用启动时注册进程级上下文，供无 Context 的数据层(仓库)触发防抖备份。 */
+    fun attach(context: Context) {
+        attachedAppContext = context.applicationContext
+    }
+
+    /**
+     * 是否已授予"所有文件访问"权限(Android 11+ 设置页授予)。
+     * 卸载重装后系统可能清除 MediaStore 索引行(实体文件仍留在公共目录)，
+     * 持有该权限时可直接按路径扫描 文档/Yuanman 下的实体文件完成恢复。
+     */
+    fun hasAllFilesAccess(context: Context): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
 
     /**
      * 在应用启动或升级前自动执行安全快照备份
@@ -86,6 +133,49 @@ object DatabaseBackupManager {
                 } else {
                     // v0.0.3 曾默认创建公共副本；升级后按新的默认隐私策略主动收口。
                     removeSharedBackups(context)
+                }
+
+                // 个人习惯偏好(DataStore)同样发布到公共 Documents，重装后随数据库一并还原。
+                val preferencesFile = getLocalPreferencesFile(context)
+                if (preferencesFile.isFile) {
+                    if (!createSharedPreferencesBackup(context, preferencesFile)) {
+                        Log.w(TAG, "Shared preferences snapshot was not updated.")
+                    }
+                }
+
+                // 账户/计划 DataStore JSON 键快照：内部备份目录、外部应用目录与公共 Documents 各一份，
+                // 与数据库快照成对保存（恢复时逐键写回 DataStore，无需重启即可生效）。
+                try {
+                    val accountDataJson = JsonBackupUtils.collectAccountDataEnvelopeBlocking(context)
+                    if (accountDataJson.isNotBlank()) {
+                        val internalAccounts = File(internalBackupDir, ACCOUNTS_INTERNAL_SNAPSHOT_NAME)
+                        if (!writeTextFileReplacing(internalAccounts, accountDataJson)) {
+                            Log.w(TAG, "Internal accounts snapshot was not updated.")
+                        }
+                        val externalAccountsDir = context.getExternalFilesDir("backups")
+                        if (externalAccountsDir != null) {
+                            writeTextFileReplacing(
+                                File(externalAccountsDir, ACCOUNTS_EXTERNAL_SNAPSHOT_NAME),
+                                accountDataJson
+                            )
+                            val dateStr = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date())
+                            val dated = File(externalAccountsDir, "${ACCOUNTS_DATED_SNAPSHOT_PREFIX}$dateStr.json")
+                            if (!dated.exists()) writeTextFileReplacing(dated, accountDataJson)
+                            val stale = externalAccountsDir.listFiles { _, name ->
+                                name.startsWith(ACCOUNTS_DATED_SNAPSHOT_PREFIX) && name.endsWith(".json")
+                            }
+                            if (stale != null && stale.size > 7) {
+                                stale.sortedBy { it.lastModified() }
+                                    .take(stale.size - 7)
+                                    .forEach { it.delete() }
+                            }
+                        }
+                        if (!createSharedAccountsBackup(context, accountDataJson)) {
+                            Log.w(TAG, "Shared accounts snapshot was not updated.")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Accounts data snapshot failed: ${e.message}", e)
                 }
 
                 Log.i(TAG, "Database auto-backup completed successfully. Size: ${dbFile.length()} bytes")
@@ -172,29 +262,6 @@ object DatabaseBackupManager {
     }
 
     /**
-     * 手动创建外部备份文件
-     */
-    suspend fun createManualBackup(context: Context): File? = withContext(Dispatchers.IO) {
-        synchronized(backupLock) {
-            try {
-                val dbFile = context.getDatabasePath(DB_NAME)
-                if (!dbFile.exists() || dbFile.length() == 0L) return@withContext null
-                if (!checkpointDatabase(dbFile) || !isDatabaseUsable(dbFile)) return@withContext null
-
-                val externalDir = context.getExternalFilesDir("backups") ?: context.filesDir
-                if (!externalDir.exists()) externalDir.mkdirs()
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.CHINA).format(Date())
-                val backupFile = File(externalDir, "yuanman_backup_$timestamp.db")
-
-                if (createVerifiedBackup(dbFile, backupFile)) backupFile else null
-            } catch (e: Exception) {
-                Log.e(TAG, "Manual backup failed: ${e.message}", e)
-                null
-            }
-        }
-    }
-
-    /**
      * 从外部文件或 URI 恢复数据库
      */
     suspend fun restoreFromUri(context: Context, uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
@@ -231,6 +298,88 @@ object DatabaseBackupManager {
         } catch (e: Exception) {
             Log.e(TAG, "Restore from URI failed: ${e.message}", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * 从公共 Documents/Yuanman 目录直接扫描并恢复最近的数据库与偏好快照。
+     * 不依赖 MediaStore(卸载重装后其索引行可能已被系统清除)，但需要"所有文件访问"权限。
+     * 调用方应在恢复成功后重启应用(数据库文件在被占用时执行替换)。
+     * 账户/计划 JSON 快照（yuanman_accounts_data.json）与 .db 成对恢复：
+     * 逐键写回 DataStore（PreferencesRepository 的 save 方法），写回后既有 Flow 自动刷新；
+     * 老备份没有该 JSON 时静默跳过账户段，不视为失败。
+     */
+    suspend fun restoreFromDocuments(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        var accountsSnapshotJson: String? = null
+        var dbCandidatePath: String? = null
+        val dbRestored = synchronized(backupLock) {
+            try {
+                if (!hasAllFilesAccess(appContext)) {
+                    return@withContext Result.failure(Exception("未授予文件访问权限"))
+                }
+
+                val dbFile = appContext.getDatabasePath(DB_NAME)
+                val dbCandidate = listPublicSnapshotFiles(appContext, SHARED_BACKUP_FILE_PREFIX)
+                    .firstOrNull { it.name.endsWith(".db") && isDatabaseUsable(it) }
+                    ?: return@withContext Result.failure(Exception("文档/Yuanman 目录中未找到有效的数据库备份"))
+
+                val tempFile = File(dbFile.parentFile, "$DB_NAME.recovery.tmp")
+                tempFile.delete()
+                copyFile(dbCandidate, tempFile)
+                deleteSqliteSidecars(tempFile)
+                if (!isDatabaseUsable(tempFile) || !replaceDatabaseFile(tempFile, dbFile)) {
+                    deleteSqliteSidecars(tempFile)
+                    tempFile.delete()
+                    return@withContext Result.failure(Exception("替换数据库文件失败，请稍后重试"))
+                }
+                tempFile.delete()
+                dbCandidatePath = dbCandidate.absolutePath
+
+                // 偏好快照与数据库一并还原；不存在时(如早期版本)不视为失败。
+                val prefsSnapshot = listPublicSnapshotFiles(appContext, SHARED_PREFERENCES_FILE_PREFIX)
+                    .firstOrNull { isValidPreferencesFile(it) }
+                if (prefsSnapshot != null) {
+                    restorePreferencesLocked(appContext, prefsSnapshot)
+                }
+
+                // 账户/计划 JSON 快照与数据库成对还原；读取到内存，锁外逐键写回 DataStore
+                val accountsSnapshot = findSharedAccountsSnapshot(appContext)
+                if (accountsSnapshot != null) {
+                    accountsSnapshotJson = try {
+                        accountsSnapshot.readText(Charsets.UTF_8)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Unable to read accounts snapshot: ${e.message}")
+                        null
+                    }
+                }
+
+                Log.i(TAG, "Restored database and preferences from public Documents directory: ${dbCandidate.absolutePath}")
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Restore from Documents failed: ${e.message}", e)
+                return@withContext Result.failure(e)
+            }
+        }
+
+        // 账户数据段：老备份无账户 JSON 或文件无效时跳过（不报错，兼容旧备份）
+        val accountsJsonText = accountsSnapshotJson
+        if (dbRestored && !accountsJsonText.isNullOrBlank()) {
+            try {
+                val summary = JsonBackupUtils.restoreAccountData(
+                    com.yuanman.app.data.repository.PreferencesRepository(appContext),
+                    JsonBackupUtils.parseAccountDataEnvelope(accountsJsonText)
+                )
+                Log.i(TAG, "Accounts data restored from snapshot. restoredKeys=${summary.restoredKeys} skipped=${summary.skippedKeys}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Accounts data restore failed: ${e.message}", e)
+            }
+        }
+
+        if (!dbRestored) {
+            Result.failure(Exception("替换数据库文件失败，请稍后重试"))
+        } else {
+            Result.success(Unit)
         }
     }
 
@@ -271,7 +420,13 @@ object DatabaseBackupManager {
         if (internalBackup.exists()) candidates.add(internalBackup)
 
         findSharedBackup(context)?.let(candidates::add)
-        findLegacySharedBackup()?.let(candidates::add)
+        legacySharedFilePath(SHARED_BACKUP_NAME)?.takeIf { it.isFile }?.let(candidates::add)
+
+        // 卸载重装后 MediaStore 索引行可能已被系统清除；持有"所有文件访问"权限时
+        // 直接扫描公共目录实体文件兜底，不依赖 MediaStore。
+        listPublicSnapshotFiles(context, SHARED_BACKUP_FILE_PREFIX)
+            .filter { it.name.endsWith(".db") }
+            .forEach(candidates::add)
 
         context.getExternalFilesDir("backups")?.let { externalDir ->
             externalDir.listFiles { _, name -> name.endsWith(".db") }
@@ -288,24 +443,183 @@ object DatabaseBackupManager {
     }
 
     /**
+     * 持有"所有文件访问"权限时，直接扫描公共 Documents/Yuanman 目录下的实体文件
+     * (MediaStore 索引行被卸载清除后的兜底数据源)。按修改时间倒序返回，供选择最新快照。
+     */
+    private fun listPublicSnapshotFiles(context: Context, filePrefix: String): List<File> {
+        if (!hasAllFilesAccess(context) || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
+        val dir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            SHARED_BACKUP_DIR_NAME
+        )
+        val files = try {
+            dir.listFiles { file -> file.isFile && file.name.startsWith(filePrefix) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to list public snapshot dir $dir: ${e.message}")
+            null
+        } ?: return emptyList()
+        return files.sortedByDescending { it.lastModified() }
+    }
+
+    /**
      * 将快照写入卸载后仍保留的共享存储。Android 10+ 使用 MediaStore，避免申请广泛存储权限。
      */
     private fun createSharedBackup(context: Context, source: File): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            createMediaStoreBackup(context, source)
+            createMediaStoreSnapshot(
+                context = context,
+                source = source,
+                displayName = SHARED_BACKUP_NAME,
+                filePrefix = SHARED_BACKUP_FILE_PREFIX,
+                tempPrefix = SHARED_BACKUP_TEMP_PREFIX,
+                mimeType = SHARED_BACKUP_MIME_TYPE
+            )
         } else {
-            val destination = legacySharedBackupFile() ?: return false
+            val destination = legacySharedFilePath(SHARED_BACKUP_NAME) ?: return false
             createVerifiedBackup(source, destination)
         }
     }
 
-    private fun createMediaStoreBackup(context: Context, source: File): Boolean {
+    /** 个人习惯偏好(DataStore)快照，写入同一公共目录，重装后随数据库还原。 */
+    private fun createSharedPreferencesBackup(context: Context, source: File): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            createMediaStoreSnapshot(
+                context = context,
+                source = source,
+                displayName = SHARED_PREFERENCES_NAME,
+                filePrefix = SHARED_PREFERENCES_FILE_PREFIX,
+                tempPrefix = SHARED_PREFERENCES_TEMP_PREFIX,
+                mimeType = SHARED_PREFERENCES_MIME_TYPE
+            )
+        } else {
+            val destination = legacySharedFilePath(SHARED_PREFERENCES_NAME) ?: return false
+            copyFileReplacing(source, destination)
+        }
+    }
+
+    /** 账户/计划 JSON 快照（内容为文本），发布到同一公共目录，与 .db 快照成对。 */
+    private fun createSharedAccountsBackup(context: Context, jsonContent: String): Boolean {
+        val source = File(context.cacheDir, "$ACCOUNTS_SNAPSHOT_NAME.tmp")
+        return try {
+            source.delete()
+            source.writeText(jsonContent, Charsets.UTF_8)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                createMediaStoreSnapshot(
+                    context = context,
+                    source = source,
+                    displayName = ACCOUNTS_SNAPSHOT_NAME,
+                    filePrefix = ACCOUNTS_SNAPSHOT_FILE_PREFIX,
+                    tempPrefix = ACCOUNTS_SNAPSHOT_TEMP_PREFIX,
+                    mimeType = ACCOUNTS_SNAPSHOT_MIME_TYPE
+                )
+            } else {
+                val destination = legacySharedFilePath(ACCOUNTS_SNAPSHOT_NAME) ?: return false
+                copyFileReplacing(source, destination)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Accounts shared snapshot failed: ${e.message}", e)
+            false
+        } finally {
+            source.delete()
+        }
+    }
+
+    /** 从公共 Documents/Yuanman 读取最近的有效账户 JSON 快照到缓存文件。 */
+    private fun findSharedAccountsSnapshot(context: Context): File? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return legacySharedFilePath(ACCOUNTS_SNAPSHOT_NAME)?.takeIf { isValidAccountsSnapshotFile(it) }
+        }
+        val accountsUri = querySharedFileUris(context, ACCOUNTS_SNAPSHOT_FILE_PREFIX)
+            .firstOrNull()
+        if (accountsUri != null) {
+            val cachedFile = File(context.cacheDir, "$ACCOUNTS_SNAPSHOT_NAME.recovery")
+            cachedFile.delete()
+            return try {
+                copyUriToFile(context, accountsUri, cachedFile)
+                if (isValidAccountsSnapshotFile(cachedFile)) {
+                    cachedFile
+                } else {
+                    cachedFile.delete()
+                    null
+                }
+            } catch (e: Exception) {
+                cachedFile.delete()
+                Log.w(TAG, "Unable to read accounts snapshot: ${e.message}")
+                null
+            }
+        }
+        // MediaStore 行被清除时的公共实体文件兜底
+        return listPublicSnapshotFiles(context, ACCOUNTS_SNAPSHOT_FILE_PREFIX)
+            .firstOrNull { isValidAccountsSnapshotFile(it) }
+    }
+
+    private fun isValidAccountsSnapshotFile(file: File): Boolean =
+        file.isFile && file.name.endsWith(".json") &&
+            file.length() > 0L && file.length() <= MAX_ACCOUNTS_SNAPSHOT_SIZE
+
+    /** 从用户选择的文件手动恢复「账户数据」JSON 快照（逐键写回 DataStore，无需重启）。 */
+    suspend fun restoreAccountDataFromUri(context: Context, uri: Uri): Result<JsonBackupUtils.AccountDataRestoreSummary> =
+        withContext(Dispatchers.IO) {
+            val appContext = context.applicationContext
+            try {
+                val text = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?.toString(Charsets.UTF_8)
+                    ?: return@withContext Result.failure(Exception("无法读取备份文件内容"))
+                if (text.isBlank()) {
+                    return@withContext Result.failure(Exception("备份文件内容为空"))
+                }
+                val accountData = JsonBackupUtils.parseAccountDataEnvelope(text)
+                if (accountData.isEmpty()) {
+                    return@withContext Result.failure(Exception("未识别到账户数据段，请确认选择的是账户备份文件"))
+                }
+                val summary = JsonBackupUtils.restoreAccountData(
+                    com.yuanman.app.data.repository.PreferencesRepository(appContext),
+                    accountData
+                )
+                if (summary.restoredKeys == 0) {
+                    Result.failure(Exception("账户数据校验未通过，恢复被跳过（老备份或文件已损坏）"))
+                } else {
+                    Log.i(TAG, "Accounts data restored from URI. restoredKeys=${summary.restoredKeys} skipped=${summary.skippedKeys}")
+                    Result.success(summary)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Restore accounts data from URI failed: ${e.message}", e)
+                Result.failure(e)
+            }
+        }
+
+    /** 把文本安全写入文件（临时文件 + 原子替换），自动建目录。 */
+    private fun writeTextFileReplacing(destination: File, text: String): Boolean {
+        val parent = destination.parentFile ?: return false
+        if (!parent.exists() && !parent.mkdirs()) return false
+        val temp = File(parent, ".${destination.name}.recovery.tmp")
+        return try {
+            temp.delete()
+            temp.writeText(text, Charsets.UTF_8)
+            val replaced = replaceFile(temp, destination)
+            if (!replaced) temp.delete()
+            replaced
+        } catch (e: Exception) {
+            temp.delete()
+            Log.e(TAG, "Write text file failed for ${destination.name}: ${e.message}", e)
+            false
+        }
+    }
+
+    private fun createMediaStoreSnapshot(
+        context: Context,
+        source: File,
+        displayName: String,
+        filePrefix: String,
+        tempPrefix: String,
+        mimeType: String
+    ): Boolean {
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri("external")
-        val pendingName = "$SHARED_BACKUP_TEMP_PREFIX${System.currentTimeMillis()}.tmp"
+        val pendingName = "$tempPrefix${System.currentTimeMillis()}.tmp"
         val pendingValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, pendingName)
-            put(MediaStore.MediaColumns.MIME_TYPE, SHARED_BACKUP_MIME_TYPE)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
             put(MediaStore.MediaColumns.RELATIVE_PATH, sharedBackupRelativePath())
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
@@ -314,21 +628,21 @@ object DatabaseBackupManager {
         return try {
             copyFileToUri(context, source, pendingUri)
             val publishedValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, SHARED_BACKUP_NAME)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }
             check(resolver.update(pendingUri, publishedValues, null, null) == 1)
 
             // 新快照已发布后再清理旧版本，避免更新过程中没有可恢复快照。
-            querySharedBackupUris(context)
-                .filterNot { it == pendingUri }
-                .forEach { resolver.delete(it, null, null) }
+            val staleUris = querySharedFileUris(context, filePrefix).filterNot { it == pendingUri }
+            Log.d(TAG, "Cleanup for $displayName: total stale rows = ${staleUris.size}")
+            staleUris.forEach { uri -> deleteMediaStoreRowAndFile(resolver, uri) }
 
             // 某些系统会因同名文件自动追加 "(1)"，旧文件清理后尝试恢复为稳定文件名。
             resolver.update(
                 pendingUri,
                 ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, SHARED_BACKUP_NAME)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
                 },
                 null,
                 null
@@ -336,12 +650,40 @@ object DatabaseBackupManager {
             true
         } catch (e: Exception) {
             resolver.delete(pendingUri, null, null)
-            Log.e(TAG, "MediaStore backup failed: ${e.message}", e)
+            Log.e(TAG, "MediaStore backup failed for $displayName: ${e.message}", e)
             false
         }
     }
 
-    private fun querySharedBackupUris(context: Context): List<Uri> {
+    /**
+     * 删除过期快照：先移除 MediaStore 行，再尝试直接删除实体文件。
+     * 部分厂商只移除索引而不回收实体，快照文件属于本应用 uid，可直接删除兜底。
+     */
+    private fun deleteMediaStoreRowAndFile(resolver: android.content.ContentResolver, uri: Uri) {
+        var dataPath: String? = null
+        try {
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    dataPath = cursor.getString(0)
+                }
+            }
+            val deleted = resolver.delete(uri, null, null)
+            Log.d(TAG, "Removed stale media row $uri deleted=$deleted")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to remove stale media row $uri: ${e.message}", e)
+        }
+        val path = dataPath ?: return
+        try {
+            val file = File(path)
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Stale media file still exists after delete: $path")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to delete stale media file $path: ${e.message}", e)
+        }
+    }
+
+    private fun querySharedFileUris(context: Context, filePrefix: String): List<Uri> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
 
         val resolver = context.contentResolver
@@ -355,7 +697,7 @@ object DatabaseBackupManager {
         // 部分厂商 MediaProvider 对 RELATIVE_PATH 和 IS_PENDING 放在 selection 中的处理不一致。
         // 先按名称前缀查询，再在游标中校验目录和发布状态，兼容性更好。
         val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf("$SHARED_BACKUP_FILE_PREFIX%")
+        val selectionArgs = arrayOf("$filePrefix%")
 
         return try {
             buildList {
@@ -364,8 +706,7 @@ object DatabaseBackupManager {
                     projection,
                     selection,
                     selectionArgs,
-                    "CASE WHEN ${MediaStore.MediaColumns.DISPLAY_NAME} = '$SHARED_BACKUP_NAME' THEN 0 ELSE 1 END, " +
-                        "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+                    "_id DESC"
                 )?.use { cursor ->
                     val idIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                     val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -375,11 +716,13 @@ object DatabaseBackupManager {
                         val name = cursor.getString(nameIndex)
                         val relativePath = cursor.getString(pathIndex)
                         val isPending = cursor.getInt(pendingIndex) != 0
-                        if (name.startsWith(SHARED_BACKUP_FILE_PREFIX) &&
+                        if (name.startsWith(filePrefix) &&
                             relativePath == sharedBackupRelativePath() &&
                             !isPending
                         ) {
                             add(ContentUris.withAppendedId(collection, cursor.getLong(idIndex)))
+                        } else {
+                            Log.d(TAG, "Filtered out media row: name=$name path=$relativePath pending=$isPending")
                         }
                     }
                 }
@@ -392,7 +735,8 @@ object DatabaseBackupManager {
 
     private fun findSharedBackup(context: Context): File? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val backupUri = querySharedBackupUris(context).firstOrNull() ?: return null
+        // 按 MediaStore 行号倒序取最近发布的行；不依赖 DISPLAY_NAME(厂商可能追加 (N) 后缀)。
+        val backupUri = querySharedFileUris(context, SHARED_BACKUP_FILE_PREFIX).firstOrNull() ?: return null
         val cachedFile = File(context.cacheDir, "$SHARED_BACKUP_NAME.recovery")
         deleteSqliteSidecars(cachedFile)
         cachedFile.delete()
@@ -415,7 +759,183 @@ object DatabaseBackupManager {
         }
     }
 
-    private fun legacySharedBackupFile(): File? {
+    /**
+     * 从公共 Documents 读取偏好快照(个人习惯)到缓存文件。
+     * Android 9- 读取旧版直写路径；Android 10+ 走 MediaStore；
+     * MediaStore 行被卸载清除时，持有"所有文件访问"权限则直接读取公共实体文件兜底。
+     */
+    private fun findSharedPreferences(context: Context): File? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return legacySharedFilePath(SHARED_PREFERENCES_NAME)?.takeIf { it.isFile }
+        }
+        val prefsUri = querySharedFileUris(context, SHARED_PREFERENCES_FILE_PREFIX)
+            .firstOrNull()
+        if (prefsUri != null) {
+            val cachedFile = File(context.cacheDir, "$SHARED_PREFERENCES_NAME.recovery")
+            cachedFile.delete()
+
+            return try {
+                copyUriToFile(context, prefsUri, cachedFile)
+                if (isValidPreferencesFile(cachedFile)) {
+                    cachedFile
+                } else {
+                    cachedFile.delete()
+                    null
+                }
+            } catch (e: Exception) {
+                cachedFile.delete()
+                Log.w(TAG, "Unable to read shared preferences backup: ${e.message}")
+                null
+            }
+        }
+        // 卸载重装后 MediaStore 索引行可能已被清除，直接读取公共目录实体(需权限)。
+        return listPublicSnapshotFiles(context, SHARED_PREFERENCES_FILE_PREFIX)
+            .firstOrNull { isValidPreferencesFile(it) }
+    }
+
+    private fun getLocalPreferencesFile(context: Context): File =
+        File(context.filesDir, PREFERENCES_DATASTORE_REL_PATH)
+
+    private fun isValidPreferencesFile(file: File): Boolean =
+        file.isFile && file.length() > 0L && file.length() <= MAX_PREFERENCES_SIZE
+
+    /**
+     * 将偏好快照原子替换到本地 DataStore 文件。
+     * 必须在任何 DataStore 读取发生前调用(Application.onCreate 同步阶段)。
+     */
+    private fun restorePreferencesLocked(context: Context, snapshot: File): Boolean {
+        val target = getLocalPreferencesFile(context)
+        val parent = target.parentFile ?: return false
+        if (!parent.exists() && !parent.mkdirs()) return false
+        val temp = File(parent, "$PREFERENCES_FILE_NAME.recovery.tmp")
+        return try {
+            temp.delete()
+            copyFile(snapshot, temp)
+            if (!isValidPreferencesFile(temp) || !replaceFile(temp, target)) {
+                temp.delete()
+                false
+            } else {
+                temp.delete()
+                Log.i(TAG, "Shared preferences snapshot restored to ${target.absolutePath}")
+                true
+            }
+        } catch (e: Exception) {
+            temp.delete()
+            Log.e(TAG, "Preferences restore failed: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * 重装后首次冷启动(尚未初始化数据库)时，同步还原 Documents 中的偏好快照。
+     * 必须在任何 DataStore 读取之前执行，因此由 Application.onCreate 同步调用。
+     */
+    fun restorePreferencesForReinstallNow(context: Context) {
+        val appContext = context.applicationContext
+        synchronized(backupLock) {
+            if (isDatabaseInitialized(appContext)) return
+            val snapshot = findSharedPreferences(appContext) ?: return
+            restorePreferencesLocked(appContext, snapshot)
+        }
+    }
+
+    /** 从用户选择的文件手动还原偏好(DataStore 文件)。 */
+    suspend fun restorePreferencesFromUri(context: Context, uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        try {
+            val tempFile = File(appContext.cacheDir, "temp_restore_preferences.pb")
+            tempFile.delete()
+            appContext.contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output -> input.copyTo(output) }
+            } ?: return@withContext Result.failure(Exception("无法读取备份文件内容"))
+
+            if (!isValidPreferencesFile(tempFile)) {
+                tempFile.delete()
+                return@withContext Result.failure(Exception("偏好备份文件无效或为空"))
+            }
+            val restored = synchronized(backupLock) {
+                restorePreferencesLocked(appContext, tempFile)
+            }
+            tempFile.delete()
+            if (restored) Result.success(Unit) else Result.failure(Exception("替换偏好文件失败"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Restore preferences from URI failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 注册防抖自动备份：数据(账单/分类/个人习惯)变更后调用，
+     * 多次连续写入只合并为一次快照，4 秒后执行。
+     */
+    fun scheduleAutoBackupSoon() {
+        val appContext = attachedAppContext ?: return
+        scheduleAutoBackupSoon(appContext)
+    }
+
+    /** 带进程级上下文的防抖自动备份。 */
+    fun scheduleAutoBackupSoon(context: Context) {
+        val appContext = context.applicationContext
+        attachedAppContext = appContext
+        synchronized(backupLock) {
+            pendingBackupRunnable?.let { debounceHandler.removeCallbacks(it) }
+            val runnable = Runnable {
+                pendingBackupRunnable = null
+                backupScope.launch {
+                    try {
+                        autoBackup(appContext)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Scheduled auto backup failed: ${e.message}", e)
+                    }
+                }
+            }
+            pendingBackupRunnable = runnable
+            debounceHandler.postDelayed(runnable, DEBOUNCE_BACKUP_DELAY_MS)
+        }
+    }
+
+    /**
+     * 手动备份到公共 Documents(数据库 + 个人习惯偏好 + 账户/计划 JSON)。
+     * 返回是否成功。位置为 Documents/Yuanman/yuanman_database_backup.db、
+     * yuanman_preferences.preferences_pb 与 yuanman_accounts_data.json。
+     */
+    suspend fun createManualBackup(context: Context): Boolean = withContext(Dispatchers.IO) {
+        // 账户/计划 JSON 快照先于锁收集（DataStore 读取不应占锁）
+        val accountDataJson = try {
+            JsonBackupUtils.collectAccountDataEnvelope(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Manual accounts snapshot collect failed: ${e.message}", e)
+            ""
+        }
+        synchronized(backupLock) {
+            try {
+                val dbFile = context.getDatabasePath(DB_NAME)
+                if (!dbFile.exists() || dbFile.length() == 0L) return@withContext false
+                if (!checkpointDatabase(dbFile) || !isDatabaseUsable(dbFile)) return@withContext false
+
+                var dbOk = createSharedBackup(context, dbFile)
+                val preferencesFile = getLocalPreferencesFile(context)
+                if (preferencesFile.isFile && !createSharedPreferencesBackup(context, preferencesFile)) {
+                    Log.w(TAG, "Manual preferences snapshot failed.")
+                }
+
+                // 账户/计划 JSON 快照与数据库成对发布（恢复时逐键写回 DataStore）
+                if (accountDataJson.isNotBlank() && !createSharedAccountsBackup(context, accountDataJson)) {
+                    Log.w(TAG, "Manual accounts snapshot failed.")
+                }
+
+                if (dbOk) {
+                    Log.i(TAG, "Manual uninstall-safe backup completed.")
+                }
+                dbOk
+            } catch (e: Exception) {
+                Log.e(TAG, "Manual backup failed: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    private fun legacySharedFilePath(fileName: String): File? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
             Environment.getExternalStorageState() != Environment.MEDIA_MOUNTED
         ) {
@@ -423,12 +943,8 @@ object DatabaseBackupManager {
         }
         return File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-            "$SHARED_BACKUP_DIR_NAME/$SHARED_BACKUP_NAME"
+            "$SHARED_BACKUP_DIR_NAME/$fileName"
         )
-    }
-
-    private fun findLegacySharedBackup(): File? {
-        return legacySharedBackupFile()?.takeIf { it.isFile }
     }
 
     private fun sharedBackupRelativePath(): String {
@@ -626,6 +1142,23 @@ object DatabaseBackupManager {
     private fun deleteSqliteSidecars(databaseFile: File) {
         File(databaseFile.parentFile, "${databaseFile.name}-wal").delete()
         File(databaseFile.parentFile, "${databaseFile.name}-shm").delete()
+    }
+
+    private fun copyFileReplacing(source: File, destination: File): Boolean {
+        val parent = destination.parentFile ?: return false
+        if (!parent.exists() && !parent.mkdirs()) return false
+        val temp = File(parent, ".${destination.name}.recovery.tmp")
+        return try {
+            temp.delete()
+            copyFile(source, temp)
+            val replaced = replaceFile(temp, destination)
+            if (!replaced) temp.delete()
+            replaced
+        } catch (e: Exception) {
+            temp.delete()
+            Log.e(TAG, "Replacing file failed for ${destination.name}: ${e.message}", e)
+            false
+        }
     }
 
     private fun copyFile(source: File, dest: File) {

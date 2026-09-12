@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式下的启动底色：与 DarkColorScheme.background(#0B0E14) 完全一致，
+         系统深色时启动屏 → 首帧 → 页面背景全程同色，消除冷启动白/米白闪屏 -->
+    <color name="splash_suet_jade">#FF0B0E14</color>
+</resources>

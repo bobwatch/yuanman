@@ -12,6 +12,7 @@ import com.yuanman.app.utils.DateTimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.widget.WidgetUpdateManager
 
 class RecordRepository(
@@ -119,6 +120,7 @@ class RecordRepository(
             }
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
         id
     }
 
@@ -130,6 +132,7 @@ class RecordRepository(
             normalizedRecords.forEach { applyBalanceChanges(it, direction = 1, timestamp = now) }
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun updateRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
@@ -150,16 +153,19 @@ class RecordRepository(
             applyBalanceChanges(normalized, direction = 1, timestamp = now)
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteRecord(record: RecordEntity) = withContext(Dispatchers.IO) {
         deleteRecordByIdInternal(record.id)
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteRecordById(id: Long) = withContext(Dispatchers.IO) {
         deleteRecordByIdInternal(id)
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun restoreRecord(id: Long) = withContext(Dispatchers.IO) {
@@ -172,6 +178,7 @@ class RecordRepository(
             }
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteAllRecords() = withContext(Dispatchers.IO) {
@@ -184,10 +191,12 @@ class RecordRepository(
             recordDao.softDeleteAllRecords(now)
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     fun notifyDataChanged() {
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     private suspend fun deleteRecordByIdInternal(id: Long) {

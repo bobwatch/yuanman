@@ -2,11 +2,11 @@ package com.yuanman.app.ui.screens.settings
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import androidx.room.withTransaction
-import com.yuanman.app.data.local.AppDatabase
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -110,11 +111,8 @@ class SettingsViewModel(
         categoryRepository.observeAllQuickEntryLearning()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val settingsDataFlow = combine(
-        allCategories,
-        allRecords,
-        preferencesRepository.lastBackupAt
-    ) { categories, records, lastBackupAt -> SettingsData(categories, records, lastBackupAt) }
+    val quickEntryEnabled: StateFlow<Boolean> = preferencesRepository.quickEntryEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         generalPrefsFlow,
@@ -147,6 +145,10 @@ class SettingsViewModel(
 
     fun checkForUpdates(isManual: Boolean = true) {
         updateManager.checkForUpdates(isManual = isManual)
+    }
+
+    fun requestUpdatePrompt() {
+        updateManager.requestUpdatePrompt()
     }
 
     fun markUpdateSeen(versionName: String) {
@@ -203,7 +205,7 @@ class SettingsViewModel(
         }
     }
 
-    /** 清除闪电记账根据用户保存记录形成的个人分类习惯。 */
+    /** 清除「记账习惯」根据用户保存记录形成的个人分类习惯。 */
     fun clearQuickEntryLearning() {
         viewModelScope.launch {
             categoryRepository.clearQuickEntryLearning()
@@ -229,24 +231,34 @@ class SettingsViewModel(
     }
 
     fun exportRecordsCsv(context: Context) {
-        val records = uiState.value.allRecords
-        CsvExportUtils.shareCsvContent(context, records)
+        // 整库 CSV 生成与文件写入较重，放后台线程避免主线程卡顿
+        viewModelScope.launch {
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val records = uiState.value.allRecords
+                CsvExportUtils.shareCsvContent(context, records)
+            }
+        }
     }
 
     fun importRecordsFromCsv(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val result = CsvImportUtils.importFromCsvUri(
-                    context = context,
-                    uri = uri,
-                    categoryRepository = categoryRepository,
-                    recordRepository = recordRepository
-                )
-                if (result.successCount > 0) {
-                    categoryRepository.backfillQuickEntryLearning()
-                    onResult(true, result.message)
+                val outcome = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val result = CsvImportUtils.importFromCsvUri(
+                        context = context,
+                        uri = uri,
+                        categoryRepository = categoryRepository,
+                        recordRepository = recordRepository
+                    )
+                    if (result.successCount > 0) {
+                        categoryRepository.backfillQuickEntryLearning()
+                    }
+                    result
+                }
+                if (outcome.successCount > 0) {
+                    onResult(true, outcome.message)
                 } else {
-                    onResult(false, result.message)
+                    onResult(false, outcome.message)
                 }
             } catch (e: Exception) {
                 onResult(false, "导入失败：${e.message ?: "表格格式错误"}")
@@ -254,41 +266,117 @@ class SettingsViewModel(
         }
     }
 
-    fun exportJsonBackup(context: Context, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+    fun exportJsonBackup(context: Context) {
         viewModelScope.launch {
-            val snapshot = preferencesRepository.createSnapshot()
-            val result = withContext(Dispatchers.IO) {
-                JsonBackupUtils.createBackupFile(
-                    context = context,
-                    categories = uiState.value.allCategories,
-                    records = uiState.value.allRecords,
-                    preferences = snapshot,
-                    quickEntryLearning = quickEntryLearningRules.value,
-                    accounts = accountRepository.getAllAccountsForBackup(),
-                    accountSnapshots = accountRepository.getAllAccountSnapshotsForBackup()
-                )
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val categories = uiState.value.allCategories
+                val records = uiState.value.allRecords
+                JsonBackupUtils.shareBackupFile(context, categories, records)
             }
-            result.onSuccess { file ->
-                JsonBackupUtils.shareBackupFile(context, file)
-                preferencesRepository.markBackupCreated()
-                onResult(true, "完整备份已生成，请选择保存位置")
-            }.onFailure { onResult(false, "备份失败：${it.message ?: "无法创建文件"}") }
         }
     }
 
-    fun previewJsonBackup(context: Context, uri: Uri, onResult: (Result<PendingJsonRestore>) -> Unit) {
+    /**
+     * 立即手动备份：分类、账单、账户与计划(JSON)及个人习惯(偏好)整体快照到公共 Documents。
+     * 卸载/重装后应用可从快照自动恢复，实现数据不丢失。
+     */
+    fun backupDataToDocumentsNow(context: Context, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val bytes = input.readBytes()
-                        require(bytes.size <= 100 * 1024 * 1024) { "备份文件超过 100MB 限制" }
-                        val json = bytes.toString(Charsets.UTF_8)
-                        PendingJsonRestore(json, JsonBackupUtils.preview(json))
-                    } ?: error("无法读取备份文件")
+            val ok = DatabaseBackupManager.createManualBackup(context)
+            onResult(
+                ok,
+                if (ok) {
+                    "已备份到 文档/Yuanman 目录：分类、全部账单、账户与计划、个人习惯"
+                } else {
+                    "备份失败，请稍后重试"
                 }
+            )
+        }
+    }
+
+    /**
+     * 从用户选择的备份文件整体还原：
+     *  - 文件名含 accounts（yuanman_accounts_data.json）→ 账户/计划 JSON 快照，逐键写回 DataStore，无需重启；
+     *  - 文件名含 preferences → 个人习惯快照（DataStore 整文件，含账户相关键），重启后生效；
+     *  - 其余视为数据库(.db)快照。
+     * @param onResult (成功, 提示文案, 是否需要重启生效)
+     */
+    fun restoreFromBackupFile(
+        context: Context,
+        uri: Uri,
+        onResult: (Boolean, String, Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val displayName = context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                val name = displayName.orEmpty()
+                val isAccountsSnapshot = name.contains("accounts", ignoreCase = true) && name.endsWith(".json")
+                val isPreferences = !isAccountsSnapshot && name.contains("preferences", ignoreCase = true)
+
+                when {
+                    isAccountsSnapshot -> {
+                        val result = DatabaseBackupManager.restoreAccountDataFromUri(context, uri)
+                        result.onSuccess {
+                            onResult(
+                                true,
+                                "账户、对账记录、攒钱计划与发薪方案等数据已恢复（无需重启，页面将自动刷新）",
+                                false
+                            )
+                        }.onFailure { e ->
+                            onResult(false, e.message ?: "恢复失败", false)
+                        }
+                    }
+                    isPreferences -> {
+                        val result = DatabaseBackupManager.restorePreferencesFromUri(context, uri)
+                        result.onSuccess {
+                            onResult(
+                                true,
+                                "个人习惯(预算/标签/快捷设置)与账户、计划数据已恢复，重启应用后生效",
+                                true
+                            )
+                        }.onFailure { e ->
+                            onResult(false, e.message ?: "恢复失败", false)
+                        }
+                    }
+                    else -> {
+                        val result = DatabaseBackupManager.restoreFromUri(context, uri)
+                        result.onSuccess {
+                            onResult(
+                                true,
+                                "分类与全部账单已恢复，重启应用后生效" +
+                                    "（账户与计划数据请通过包含 yuanman_accounts_data.json 的整套备份从「文档」目录恢复）",
+                                true
+                            )
+                        }.onFailure { e ->
+                            onResult(false, e.message ?: "恢复失败", false)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                onResult(false, "恢复失败：${e.message ?: "无法读取所选文件"}", false)
             }
-            onResult(result)
+        }
+    }
+
+    /**
+     * 从公共 Documents/Yuanman 目录自动扫描并恢复最近的备份(需"所有文件访问"权限)。
+     * 用于卸载重装后 MediaStore 索引已被系统清除、无法从文件选择器定位备份的场景；
+     * 恢复内容 = 数据库 + 账户/计划 JSON（逐键写回 DataStore）+ 个人习惯偏好。
+     */
+    fun restoreFromDocumentsNow(context: Context, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = DatabaseBackupManager.restoreFromDocuments(context)
+            result.onSuccess {
+                onResult(true, "已从 文档/Yuanman 恢复分类、账单、账户与计划及个人习惯")
+            }.onFailure { e ->
+                onResult(false, e.message ?: "从文档恢复失败")
+            }
         }
     }
 
@@ -321,11 +409,17 @@ class SettingsViewModel(
                 categoryRepository.mergeQuickEntryLearning(data.quickEntryLearning)
                 data.preferences?.let { preferencesRepository.restoreSnapshot(it) }
                 recordRepository.notifyDataChanged()
+                // 完整备份 JSON 中若带 accountData 段（账户/计划等 DataStore 键）则一并逐键写回；
+                // 老备份文件无该段时 accountData 为空，跳过即可、不影响分类与账单恢复。
+                var accountPart = ""
+                if (data.accountData.isNotEmpty()) {
+                    val summary = JsonBackupUtils.restoreAccountData(preferencesRepository, data.accountData)
+                    accountPart = "，账户与计划键 ${summary.restoredKeys} 个"
+                }
                 onResult(
                     true,
-                    "恢复完成：${data.records.count { it.deletedAt == null }} 笔账单、" +
-                        "${data.categories.count { it.deletedAt == null }} 个分类、" +
-                        "${data.accounts.count { it.deletedAt == null }} 个账户"
+                    "成功恢复 ${data.records.size} 笔账单与 ${data.categories.size} 个分类" +
+                        if (accountPart.isBlank()) "！" else "$accountPart！"
                 )
             } catch (e: Exception) {
                 onResult(false, "备份解析失败：${e.message}")

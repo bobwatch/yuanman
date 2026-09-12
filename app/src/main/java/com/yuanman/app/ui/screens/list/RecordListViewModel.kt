@@ -14,6 +14,7 @@ import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -125,10 +126,26 @@ class RecordListViewModel(
     private var currentLoadJob: Job? = null
     private var currentFilterParams: FilterParams? = null
 
+    /** 页面是否可见：由 RecordListScreen 组合/销毁时置位，用于停止切走 Tab 后的后台空转查询。 */
+    private val _isPageActive = MutableStateFlow(false)
+
+    fun setPageActive(active: Boolean) {
+        _isPageActive.value = active
+    }
+
     val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val filtersFlow = combine(
+    // 搜索词通道分离：
+    // - 输入框展示用即时值（uiFiltersFlow），保证逐字跟手；
+    // - 触发数据库查询用防抖值（dbFiltersFlow），避免每敲一个字符就发起两次全表 LIKE 查询。
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private val searchQueryDebounced = _searchQuery
+        .debounce(250)
+        .distinctUntilChanged()
+
+    // 基础筛选（不含搜索词）
+    private val baseFiltersFlow = combine(
         _selectedYear,
         _selectedMonth,
         _selectedDay,
@@ -137,8 +154,8 @@ class RecordListViewModel(
     ) { year, month, day, type, categoryIds ->
         Tuple5(year, month, day, type, categoryIds)
     }.combine(
-        combine(_selectedPaymentMethods, _sortOrder, _searchQuery) { pay, sort, query ->
-            Triple(pay, sort, query)
+        combine(_selectedPaymentMethods, _sortOrder) { pay, sort ->
+            pay to sort
         }
     ) { firstPart, secondPart ->
         FilterParams(
@@ -149,12 +166,22 @@ class RecordListViewModel(
             categoryIds = firstPart.e,
             paymentMethods = secondPart.first,
             sortOrder = secondPart.second,
-            query = secondPart.third
+            query = ""
         )
     }
 
+    /** UI 即时视图：搜索词原样参与（输入框与筛选状态即时展示）。 */
+    private val uiFiltersFlow = combine(baseFiltersFlow, _searchQuery) { base, query ->
+        base.copy(query = query)
+    }
+
+    /** 数据库查询视图：搜索词经 250ms 防抖去重后参与（列表加载 / 汇总查询使用）。 */
+    private val dbFiltersFlow = combine(baseFiltersFlow, searchQueryDebounced) { base, query ->
+        base.copy(query = query)
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val summaryFlow: Flow<RecordFilterSummary> = filtersFlow.flatMapLatest { params ->
+    private val summaryFlow: Flow<RecordFilterSummary> = dbFiltersFlow.flatMapLatest { params ->
         val (start, end) = params.calculateTimestamps()
         recordRepository.getFilteredSummary(
             startTime = start,
@@ -169,22 +196,35 @@ class RecordListViewModel(
     }
 
     init {
-        // 监听筛选条件变化，自动触发第一页加载
+        // 监听筛选条件变化，自动触发第一页加载（搜索词已防抖，避免每敲一个字符立即查询）
         viewModelScope.launch {
-            filtersFlow.collectLatest { params ->
+            dbFiltersFlow.collectLatest { params ->
                 currentFilterParams = params
                 reloadFirstPage(params)
             }
         }
 
-        // 分页列表本身是一次性查询，因此编辑页返回后需要根据数据库变更重新拉取
-        // 当前筛选条件。Home 页使用 Room Flow 可自动刷新，但这里的分页查询不会。
+        // 分页列表本身是一次性查询，因此编辑页返回后需要根据数据库变更重新拉取。
+        // Home 页使用 Room Flow 可自动刷新，但这里的分页查询不会。
+        // 仅在页面可见时实时跟随写库刷新（切走 Tab 后 VM 随状态保留但不再后台空转）；
+        // 不可见期间漏掉的更新，在重新可见时由下方 activation 分支兜底补拉一次。
         viewModelScope.launch {
-            recordRepository.observeLatestRecordUpdate()
-                .drop(1) // 忽略首次订阅时的初始值
-                .collect {
+            // StateFlow 本身已按值去重，false→true 即「页面重新可见」
+            _isPageActive.collect { active ->
+                if (active) {
                     currentFilterParams?.let { params -> reloadFirstPage(params, preserveExisting = true) }
                 }
+            }
+        }
+        viewModelScope.launch {
+            _isPageActive.collect { active ->
+                if (!active) return@collect
+                recordRepository.observeLatestRecordUpdate()
+                    .drop(1) // 忽略首次订阅时的初始值
+                    .collect {
+                        currentFilterParams?.let { params -> reloadFirstPage(params, preserveExisting = true) }
+                    }
+            }
         }
     }
 
@@ -297,7 +337,7 @@ class RecordListViewModel(
     }
 
     val uiState: StateFlow<RecordListUiState> = combine(
-        filtersFlow,
+        uiFiltersFlow,
         _loadedRecords,
         summaryFlow,
         allCategories
@@ -366,7 +406,10 @@ class RecordListViewModel(
             isLoadingMore = isLoadingMore,
             isLoading = isLoading
         )
-    }.stateIn(
+    }
+        // 逐条 Calendar 分组/小计等派生计算移出主线程；stateIn 收集仍回到主线程
+        .flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = RecordListUiState(

@@ -4,12 +4,16 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -34,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -42,8 +47,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import com.yuanman.app.data.local.entity.CategoryEntity
+import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.QuickEntryResult
@@ -54,7 +62,9 @@ import androidx.compose.material.icons.outlined.MoneyOff
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Star
 import com.yuanman.app.data.model.RecordType
+import com.yuanman.app.ui.screens.account.AccountUiModel
 import com.yuanman.app.ui.components.*
+import com.yuanman.app.ui.components.YuanmanPullRefreshIndicator
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.clickableDebounce
@@ -140,6 +150,12 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
+                // 月份翻页只允许回看：以当前自然月为上限（首页看板不涉及未来）
+                val canGoNextMonth =
+                    uiState.selectedYear < today.get(Calendar.YEAR) ||
+                        (uiState.selectedYear == today.get(Calendar.YEAR) &&
+                            uiState.selectedMonth < today.get(Calendar.MONTH) + 1)
+
                 // 🌟 1. 顶部收支看板与预算进度卡片
                 FinancialOverviewCard(
                     year = uiState.selectedYear,
@@ -154,6 +170,7 @@ fun HomeScreen(
                     remainingDays = uiState.remainingDays,
                     onPrevMonth = { viewModel.previousMonth() },
                     onNextMonth = { viewModel.nextMonth() },
+                    canGoNextMonth = canGoNextMonth,
                     onMonthClick = { showMonthPicker = true },
                     onBudgetClick = { showBudgetDialog = true },
                     onCardClick = onNavigateToStatistics,
@@ -169,15 +186,15 @@ fun HomeScreen(
                         draftState = viewModel.quickEntryDraft,
                         categories = uiState.quickEntryCategories,
                         learningRules = uiState.quickEntryLearningRules,
-                        accounts = accounts,
-                        selectedAccountId = quickEntryAccountId,
-                        defaultExpenseAccountId = defaultExpenseAccountId,
-                        onAccountSelected = { quickEntryAccountId = it },
-                        onSetDefaultExpenseAccount = { viewModel.setDefaultExpenseAccount(it) },
+                        accounts = uiState.accounts,
+                        defaultExpenseAccount = uiState.defaultExpenseAccount,
+                        defaultIncomeAccount = uiState.defaultIncomeAccount,
                         onTypeChange = { quickEntryType = it },
-                        onDraftChange = viewModel::updateQuickEntryDraft,
-                        onSubmit = { input, type, overrideCategory, accountId ->
-                            val saved = viewModel.saveQuickEntry(input, type, overrideCategory, accountId)
+                        onSetDefaultAccount = { acc, isExp ->
+                            viewModel.setDefaultPaymentAccount(acc, isExp)
+                        },
+                        onSubmit = { input, type, categoryOverride, accountOverride ->
+                            val saved = viewModel.saveQuickEntry(input, type, categoryOverride, accountOverride)
                             if (saved != null) {
                                 val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
                                 toast.success(
@@ -280,18 +297,21 @@ fun HomeScreen(
                                     onLongClick = { activeMenuRecord = item }
                                 )
                             }
-                                Spacer(modifier = Modifier.height(5.dp))
+                                // 条目间距与账单明细页保持一致
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
 
-                    // 进度读取封装在指示器内部，避免拖动时重组整页账单。
-                    YuanmanPullRefreshIndicator(
-                        state = pullRefreshState,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
-                    )
+                    // 自绘刷新指示器：无容器无阴影，拖动期显示进度弧、刷新期显示圆环
+                    if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0f) {
+                        YuanmanPullRefreshIndicator(
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -309,92 +329,22 @@ fun HomeScreen(
         onDismiss = { showMonthPicker = false }
     )
 
-    // 预算配置弹窗
+    // 预算配置弹窗（拖动滑杆设置金额）
     if (showBudgetDialog) {
-        var budgetInput by remember {
-            mutableStateOf(
-                if (uiState.monthlyBudget > 0L) MoneyUtils.centsToYuanString(uiState.monthlyBudget) else ""
-            )
-        }
-        val budgetError = if (budgetInput.isNotBlank() && !MoneyUtils.isValidAmountInput(budgetInput.trim())) {
-            "请输入大于 0 的有效金额"
-        } else {
-            null
-        }
-
-        Dialog(onDismissRequest = { showBudgetDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "设置 ${uiState.selectedYear}年${uiState.selectedMonth}月预算",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Text(
-                        text = "只影响当前月份；切换月份即可查看和设置各月预算。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    OutlinedTextField(
-                        value = budgetInput,
-                        onValueChange = { budgetInput = it },
-                        label = { Text("预算金额（元）") },
-                        placeholder = { Text("如：5000") },
-                        prefix = { Text("¥ ") },
-                        isError = budgetError != null,
-                        supportingText = {
-                            if (budgetError != null) {
-                                Text(budgetError, color = MaterialTheme.colorScheme.error)
-                            } else {
-                                Text("留空不修改预算，清除预算请点下方按钮")
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                viewModel.setMonthlyBudget(0L)
-                                showBudgetDialog = false
-                            }
-                        ) {
-                            Text("清除预算", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Button(
-                            onClick = {
-                                if (budgetError == null && budgetInput.isNotBlank()) {
-                                    val cents = MoneyUtils.parseYuanToCents(budgetInput.trim())
-                                    viewModel.setMonthlyBudget(cents)
-                                }
-                                showBudgetDialog = false
-                            }
-                        ) {
-                            Text("保存")
-                        }
-                    }
-                }
-            }
-        }
+        BudgetSliderDialog(
+            title = "设置 ${uiState.selectedYear}年${uiState.selectedMonth}月预算",
+            subtitle = "只影响当前月份；切换月份即可查看和设置各月预算。",
+            initialBudgetCents = uiState.monthlyBudget,
+            onSave = {
+                viewModel.setMonthlyBudget(it)
+                showBudgetDialog = false
+            },
+            onClear = {
+                viewModel.setMonthlyBudget(0L)
+                showBudgetDialog = false
+            },
+            onDismiss = { showBudgetDialog = false }
+        )
     }
 
     // 长按快捷操作底部弹层（直接展示明细）
@@ -624,24 +574,28 @@ private fun HomeFilterChip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QuickEntryStrip(
     type: RecordType,
-    draftState: StateFlow<String>,
-    categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
-    learningRules: List<com.yuanman.app.data.local.entity.QuickEntryLearningEntity>,
-    accounts: List<AccountEntity>,
-    selectedAccountId: Long?,
-    defaultExpenseAccountId: Long?,
-    onAccountSelected: (Long?) -> Unit,
-    onSetDefaultExpenseAccount: (Long?) -> Unit,
+    categories: List<CategoryEntity>,
+    learningRules: List<QuickEntryLearningEntity>,
+    accounts: List<AccountUiModel>,
+    defaultExpenseAccount: String,
+    defaultIncomeAccount: String,
     onTypeChange: (RecordType) -> Unit,
-    onDraftChange: (String) -> Unit,
-    onSubmit: (String, RecordType, com.yuanman.app.data.local.entity.CategoryEntity?, Long?) -> Boolean,
+    onSetDefaultAccount: (String, Boolean) -> Unit,
+    onSubmit: (String, RecordType, CategoryEntity?, String?) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val text by draftState.collectAsState()
+    var text by remember { mutableStateOf("") }
+    // 用户点按解析徽章手动选定的分类；非空时优先于自动解析结果。
+    var manualCategory by remember { mutableStateOf<CategoryEntity?>(null) }
+    var manualAccount by remember { mutableStateOf<String?>(null) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    var showAccountPicker by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
     }
@@ -672,94 +626,75 @@ private fun QuickEntryStrip(
             }
         }
     }
-
-    val stablePreview = preview
-    val isReady = stablePreview != null
+    // 手动选择后继续改金额等解析词时保留手动分类；分类被删除或与收支类型不符则回退解析结果。
+    val effectiveCategory = manualCategory?.takeIf { manual ->
+        availableCategories.any { it.id == manual.id }
+    } ?: preview?.category
+    val isManualCategory = manualCategory != null
     val isExpense = type == RecordType.EXPENSE
+    val defaultAccountForType = if (isExpense) defaultExpenseAccount else defaultIncomeAccount
+    val effectiveAccount = manualAccount
+        ?: preview?.paymentMethod
+        ?: defaultAccountForType.takeIf { it.isNotBlank() }
+        ?: if (isExpense) "支出账户" else "入账账户"
+    val isManualAccount = manualAccount != null
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
-    // 默认支出账户实体
-    val defaultExpenseAccount = remember(defaultExpenseAccountId, accounts) {
-        accounts.firstOrNull { it.id == defaultExpenseAccountId }
-    }
-
-    // 智能自动识别账户：若用户未手动选定账户，但输入中识别出了支付渠道（如支付宝、微信），自动关联匹配账户
-    val autoMatchedAccount = remember(stablePreview?.paymentMethod, accounts) {
-        stablePreview?.paymentMethod?.let { method ->
-            accounts.firstOrNull { acc ->
-                acc.name.contains(method, ignoreCase = true) || method.contains(acc.name, ignoreCase = true)
-            }
-        }
-    }
-
-    // 实际生效账户：
-    // 1. 若用户显式选择不关联账户（selectedAccountId == -1L），则为 null
-    // 2. 若用户指定了某个账户，则使用该账户
-    // 3. 若识别出了渠道，使用渠道关联账户
-    // 4. 否则回退为默认支出账户（支出类型下）
-    val effectiveAccount = remember(selectedAccountId, autoMatchedAccount, defaultExpenseAccount, isExpense, accounts) {
-        when {
-            selectedAccountId == -1L -> null
-            selectedAccountId != null -> accounts.firstOrNull { it.id == selectedAccountId }
-            autoMatchedAccount != null -> autoMatchedAccount
-            isExpense -> defaultExpenseAccount
-            else -> null
-        }
-    }
+    val isReady = preview != null
+    val btnBgColor by animateColorAsState(
+        targetValue = if (isReady) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        label = "btn_bg"
+    )
+    val btnIconColor by animateColorAsState(
+        targetValue = if (isReady) Color.White else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+        label = "btn_icon"
+    )
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = if (isReady) 2.5.dp else 1.dp, shape = RoundedCornerShape(20.dp)),
-        shape = RoundedCornerShape(20.dp),
+            .shadow(elevation = 1.5.dp, shape = RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            width = if (isReady) 1.2.dp else 1.dp,
-            color = if (isReady) accent.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-        )
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            // ===== ROW 1: 主命令条（收支切换 + 弹性输入框 + 快捷清除/收起） =====
+            // === 第一行：类型切换 + 输入框 + 清除/关闭 ===
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 40.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 1. 收支切换药丸
+                // 1. 支 / 收 极简切换胶囊
                 QuickTypeTogglePill(
                     selectedType = type,
-                    onTypeChange = {
-                        categoryOverride = null
-                        onTypeChange(it)
+                    onTypeChange = { newType ->
+                        if (newType != type) {
+                            manualCategory = null
+                            manualAccount = null
+                        }
+                        onTypeChange(newType)
                     }
                 )
 
-                // 垂直微分割线
-                Box(
-                    modifier = Modifier
-                        .height(18.dp)
-                        .width(0.6.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                )
-
-                // 2. 单行弹性输入框
+                // 2. 原生无框极简输入框（独占整行剩余宽度）
                 BasicTextField(
                     value = text,
-                    onValueChange = onDraftChange,
+                    onValueChange = { newText ->
+                        if (newText.isEmpty()) manualCategory = null
+                        text = newText
+                    },
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 2.dp),
+                        .padding(horizontal = 4.dp),
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 13.5.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     ),
                     cursorBrush = SolidColor(accent),
@@ -770,9 +705,11 @@ private fun QuickEntryStrip(
                     keyboardActions = KeyboardActions(
                         onDone = {
                             if (isReady) {
-                                if (onSubmit(text, type, categoryOverride?.second, effectiveAccount?.id)) {
-                                    onDraftChange("")
-                                    categoryOverride = null
+                                val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
+                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                    text = ""
+                                    manualCategory = null
+                                    manualAccount = null
                                 }
                             }
                         }
@@ -784,9 +721,9 @@ private fun QuickEntryStrip(
                         ) {
                             if (text.isEmpty()) {
                                 Text(
-                                    text = "闪电记账 如：咖啡28",
+                                    text = "✨ 闪电记账 如: 咖啡15 / 午餐30微信",
                                     style = MaterialTheme.typography.bodyMedium.copy(
-                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
                                         fontSize = 13.sp
                                     ),
                                     maxLines = 1,
@@ -798,369 +735,545 @@ private fun QuickEntryStrip(
                     }
                 )
 
-                // 3. 右侧清空/关闭按钮
-                IconButton(
-                    onClick = {
-                        if (text.isNotEmpty()) {
-                            onDraftChange("")
-                            categoryOverride = null
-                        } else {
-                            onClose()
-                        }
-                    },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = if (text.isNotEmpty()) Icons.Default.Cancel else Icons.Default.Close,
-                        contentDescription = if (text.isNotEmpty()) "清空" else "关闭闪电记账",
-                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
-                        modifier = Modifier.size(17.dp)
-                    )
-                }
-            }
-
-            // ===== ROW 2: 默认账户选择栏（替换原“试一试”） =====
-            if (accounts.isNotEmpty()) {
-                val isDefault = effectiveAccount != null && effectiveAccount.id == defaultExpenseAccountId && isExpense
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (selectedAccountId != null && selectedAccountId != -1L) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                        } else if (effectiveAccount != null) {
-                            accent.copy(alpha = 0.1f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                // 3. 清空输入或关闭快捷条
+                if (text.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            text = ""
+                            manualCategory = null
+                            manualAccount = null
                         },
-                        border = BorderStroke(
-                            0.5.dp,
-                            if (selectedAccountId != null || effectiveAccount != null) {
-                                accent.copy(alpha = 0.25f)
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                            }
-                        ),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showAccountPicker = true }
+                        modifier = Modifier.size(26.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = when {
-                                    effectiveAccount != null -> AccountIconHelper.getIcon(effectiveAccount.icon)
-                                    selectedAccountId == -1L -> Icons.Outlined.MoneyOff
-                                    else -> Icons.Outlined.AccountBalanceWallet
-                                },
-                                contentDescription = null,
-                                tint = if (effectiveAccount != null) accent else MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = if (isExpense) "扣款账户：" else "入账账户：",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            )
-                            Text(
-                                text = when {
-                                    effectiveAccount != null -> effectiveAccount.name
-                                    selectedAccountId == -1L -> "不记账户"
-                                    else -> "未指定账户"
-                                },
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = if (effectiveAccount != null) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.5.sp,
-                                    color = if (effectiveAccount != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
-                                )
-                            )
-                            if (isDefault) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = accent.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = "默认",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = accent
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "切换账户",
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "清空输入",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭快捷记账",
+                            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
             }
 
-            // ===== ROW 3: 智能识别结果与「⚡ 记一笔」主动作栏 =====
+            // === 第二行（输入内容后才展开）：账户胶囊 + 智能解析结果 + 记一笔按钮 ===
             AnimatedVisibility(
-                visible = isReady,
-                enter = expandVertically(animationSpec = tween(120)) + fadeIn(animationSpec = tween(100)),
-                exit = shrinkVertically(animationSpec = tween(90)) + fadeOut(animationSpec = tween(70))
+                visible = text.isNotEmpty(),
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(220)),
+                exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(animationSpec = tween(160))
             ) {
-                if (stablePreview != null) {
-                    val cat = stablePreview.category
-                    val catColor = cat?.let { Color(it.colorHex) } ?: accent
-                    val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // 左侧：账户选择胶囊（点击呼出账户选择与设为默认）
+                QuickAccountSelectPill(
+                    accountName = effectiveAccount,
+                    isManual = isManualAccount,
+                    onClick = {
+                        focusManager.clearFocus()
+                        showAccountPicker = true
+                    }
+                )
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                // 右侧：实时智能解析徽章 + 记一笔保存按钮
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = isReady,
+                        enter = fadeIn() + expandHorizontally(),
+                        exit = fadeOut() + shrinkHorizontally()
                     ) {
-                        HorizontalDivider(
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                        )
+                        if (preview != null) {
+                            val cat = effectiveCategory
+                            val catColor = cat?.let { Color(it.colorHex) } ?: accent
+                            val iconVector = cat?.let { CategoryIconHelper.getIcon(it.iconName) } ?: Icons.Default.Bolt
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 左侧：分类微调胶囊 + 识别金额
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                            Surface(
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    showCategoryPicker = true
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isManualCategory) accent.copy(alpha = 0.16f) else catColor.copy(alpha = 0.12f),
+                                border = BorderStroke(
+                                    0.8.dp,
+                                    if (isManualCategory) accent.copy(alpha = 0.6f) else catColor.copy(alpha = 0.35f)
+                                )
                             ) {
                                 Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Bolt,
+                                        imageVector = iconVector,
                                         contentDescription = null,
-                                        tint = accent,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = catColor,
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Text(
-                                        text = "识别为",
+                                        text = cat?.name ?: "账单",
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = catColor.copy(alpha = 0.12f),
-                                    border = BorderStroke(0.6.dp, catColor.copy(alpha = 0.35f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { showCategoryPicker = true }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = iconVector,
-                                            contentDescription = null,
-                                            tint = catColor,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Text(
-                                            text = cat?.name ?: "未分类",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 11.5.sp,
-                                                color = catColor
-                                            )
-                                        )
+                                    if (isManualCategory) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
-                                            contentDescription = "修改分类",
-                                            tint = catColor.copy(alpha = 0.6f),
+                                            contentDescription = "点击修改分类",
+                                            tint = accent,
                                             modifier = Modifier.size(10.dp)
                                         )
                                     }
+                                    Text(
+                                        text = "¥${preview.amountYuan.toPlainString()}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 11.5.sp,
+                                            color = accent
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
-
-                                Text(
-                                    text = "¥${stablePreview.amountYuan.toPlainString()}",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 15.sp,
-                                        color = accent
-                                    )
-                                )
                             }
+                        }
+                    }
 
-                            // 右侧：⚡ 一键记下按钮
-                            Button(
-                                onClick = {
-                                    if (onSubmit(text, type, categoryOverride?.second, effectiveAccount?.id)) {
-                                        onDraftChange("")
-                                        categoryOverride = null
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = accent),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(34.dp)
+                    // 记一笔保存按钮
+                    Surface(
+                        onClick = {
+                            if (isReady) {
+                                val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
+                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                    text = ""
+                                    manualCategory = null
+                                    manualAccount = null
+                                }
+                            }
+                        },
+                        enabled = isReady,
+                        shape = RoundedCornerShape(12.dp),
+                        color = btnBgColor,
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "记一笔",
+                                tint = btnIconColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "记一笔",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = btnIconColor
+                                )
+                            )
+                        }
+                    }
+                }
+                }
+            }
+        }
+
+        if (showCategoryPicker) {
+            QuickCategoryPickSheet(
+                categories = availableCategories,
+                selectedCategoryId = effectiveCategory?.id,
+                isManual = isManualCategory,
+                accent = accent,
+                onPick = { chosen ->
+                    manualCategory = chosen
+                    showCategoryPicker = false
+                },
+                onRestoreAuto = {
+                    manualCategory = null
+                    showCategoryPicker = false
+                },
+                onDismiss = { showCategoryPicker = false }
+            )
+        }
+
+        if (showAccountPicker) {
+            QuickAccountPickSheet(
+                accounts = accounts,
+                selectedAccountName = effectiveAccount,
+                defaultAccountName = defaultAccountForType,
+                isExpense = isExpense,
+                isManual = isManualAccount,
+                onPick = { chosen ->
+                    manualAccount = chosen
+                    showAccountPicker = false
+                },
+                onSetDefault = { accName, isExp ->
+                    onSetDefaultAccount(accName, isExp)
+                },
+                onRestoreAuto = {
+                    manualAccount = null
+                    showAccountPicker = false
+                },
+                onDismiss = { showAccountPicker = false }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickCategoryPickSheet(
+    categories: List<CategoryEntity>,
+    selectedCategoryId: Long?,
+    isManual: Boolean,
+    accent: Color,
+    onPick: (CategoryEntity) -> Unit,
+    onRestoreAuto: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "选择分类",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f)
+                )
+                if (isManual) {
+                    TextButton(onClick = onRestoreAuto) {
+                        Text(
+                            text = "恢复自动识别",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accent
+                        )
+                    }
+                }
+            }
+            if (categories.isEmpty()) {
+                Text(
+                    text = "暂无可用分类",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                ) {
+                    gridItems(categories, key = { it.id }) { category ->
+                        val isSelected = category.id == selectedCategoryId
+                        val categoryColor = Color(category.colorHex)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onPick(category) }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) categoryColor.copy(alpha = 0.18f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    )
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(2.dp, categoryColor, CircleShape)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "记一笔",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
+                                CategoryIconView(
+                                    iconName = category.iconName,
+                                    colorHex = category.colorHex,
+                                    size = 46.dp,
+                                    iconSize = 22.dp
                                 )
                             }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = category.name,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
 
-    // 分类选择底栏
-    if (showCategoryPicker && stablePreview != null) {
-        QuickCategoryPickerSheet(
-            categories = availableCategories,
-            selectedCategoryId = (categoryOverride?.second ?: stablePreview.category)?.id,
-            accentColor = accent,
-            onDismiss = { showCategoryPicker = false },
-            onSelectCategory = { newCat ->
-                categoryOverride = stablePreview.remark to newCat
-                showCategoryPicker = false
-            }
+@Composable
+private fun QuickAccountSelectPill(
+    accountName: String,
+    isManual: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isManual) scheme.primary.copy(alpha = 0.12f) else scheme.surfaceVariant.copy(alpha = 0.65f),
+        border = BorderStroke(
+            0.6.dp,
+            if (isManual) scheme.primary.copy(alpha = 0.45f) else scheme.outlineVariant.copy(alpha = 0.4f)
         )
-    }
-
-    // 账户选择底栏
-    if (showAccountPicker) {
-        QuickAccountPickerSheet(
-            accounts = accounts,
-            selectedAccountId = if (selectedAccountId == -1L) -1L else effectiveAccount?.id,
-            defaultExpenseAccountId = defaultExpenseAccountId,
-            onSetDefaultExpenseAccount = onSetDefaultExpenseAccount,
-            onDismiss = { showAccountPicker = false },
-            onSelectAccount = { accId ->
-                onAccountSelected(accId)
-                showAccountPicker = false
-            }
-        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CreditCard,
+                contentDescription = null,
+                tint = if (isManual) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.75f),
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = accountName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = if (isManual) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 11.5.sp,
+                    color = if (isManual) scheme.primary else scheme.onSurfaceVariant
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                modifier = Modifier.widthIn(max = 120.dp)
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "选择账户",
+                tint = if (isManual) scheme.primary else scheme.outline,
+                modifier = Modifier.size(14.dp)
+            )
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickCategoryPickerSheet(
-    categories: List<com.yuanman.app.data.local.entity.CategoryEntity>,
-    selectedCategoryId: Long?,
-    accentColor: Color,
-    onDismiss: () -> Unit,
-    onSelectCategory: (com.yuanman.app.data.local.entity.CategoryEntity) -> Unit
+private fun QuickAccountPickSheet(
+    accounts: List<AccountUiModel>,
+    selectedAccountName: String,
+    defaultAccountName: String,
+    isExpense: Boolean,
+    isManual: Boolean,
+    onPick: (String) -> Unit,
+    onSetDefault: (String, Boolean) -> Unit,
+    onRestoreAuto: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
+    val scheme = MaterialTheme.colorScheme
+    val titleText = if (isExpense) "闪电记账 · 选择支出账户" else "闪电记账 · 选择入账账户"
+
+    YuanmanModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 4.dp)
+                .padding(bottom = 28.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "选择分类",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    text = titleText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 360.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(categories, key = { it.id }) { cat ->
-                    val isCurrent = cat.id == selectedCategoryId
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isCurrent) accentColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        border = BorderStroke(
-                            if (isCurrent) 1.dp else 0.5.dp,
-                            if (isCurrent) accentColor.copy(alpha = 0.5f) else Color.Transparent
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onSelectCategory(cat) }
+                if (isManual) {
+                    TextButton(
+                        onClick = onRestoreAuto,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            CategoryIconView(
-                                iconName = cat.iconName,
-                                colorHex = cat.colorHex,
-                                size = 28.dp,
-                                iconSize = 15.dp
-                            )
-                            Text(
-                                text = cat.name,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isCurrent) accentColor else MaterialTheme.colorScheme.onSurface
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (isCurrent) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "已选中",
-                                    tint = accentColor,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
+                        Text("跟随默认", fontSize = 12.sp, color = scheme.primary)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // 1. 我的资金账户
+            if (accounts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "我的资金账户",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    ),
+                    color = scheme.outline
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                accounts.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        pair.forEach { account ->
+                            val isSelected = selectedAccountName == account.name
+                            val isDefault = account.name == defaultAccountName
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) scheme.primaryContainer.copy(alpha = 0.55f) else scheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = BorderStroke(1.2.dp, if (isSelected) scheme.primary else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onPick(account.name) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CategoryIconView(
+                                        iconName = account.iconName,
+                                        colorHex = account.colorHex,
+                                        size = 30.dp,
+                                        iconSize = 15.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = account.name,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                color = scheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            // 默认账户直接点徽章切换：默认态点一下取消，非默认态点一下设为默认
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Surface(
+                                                onClick = {
+                                                    onSetDefault(if (isDefault) "" else account.name, isExpense)
+                                                },
+                                                shape = RoundedCornerShape(3.dp),
+                                                color = if (isDefault) {
+                                                    scheme.primary.copy(alpha = 0.15f)
+                                                } else {
+                                                    scheme.surfaceVariant.copy(alpha = 0.45f)
+                                                },
+                                                border = if (isDefault) {
+                                                    null
+                                                } else {
+                                                    BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.6f))
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = if (isDefault) "默认" else "设默认",
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isDefault) scheme.primary else scheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "¥" + MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true),
+                                            fontSize = 10.sp,
+                                            color = scheme.outline,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = scheme.primary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // （默认账户设置已上收到每张账户卡的「默认 / 设默认」徽章，直接点按切换）
+            }
+
+            // 2.（已移除）「常用 / 其它方式」内置预设区块：支付方式 = 账户，预设字符串与账户列表冗余，
+            //    只保留账户选择；无账户时给出引导提示。
+            if (accounts.isEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "还没有资金账户：先创建账户后，即可在这里选择「${if (isExpense) "支出" else "入账"}账户」",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    color = scheme.outline,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
         }
     }
 }
@@ -1638,6 +1751,7 @@ private fun FinancialOverviewCard(
     remainingDays: Int,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    canGoNextMonth: Boolean,
     onMonthClick: () -> Unit,
     onBudgetClick: () -> Unit,
     onCardClick: (() -> Unit)? = null,
@@ -1765,7 +1879,8 @@ private fun FinancialOverviewCard(
 
                         IconButton(
                             onClick = onNextMonth,
-                            modifier = Modifier.size(28.dp)
+                            enabled = canGoNextMonth,
+                            modifier = Modifier.size(22.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
@@ -2002,6 +2117,19 @@ fun BitgetTransactionItem(
     val isExpense = record.type == RecordType.EXPENSE.name
     val primaryColor = MaterialTheme.colorScheme.primary
 
+    // 行内格式化只随输入变化重算：避免相邻行状态（如滑动开关）变化导致整行重组合时
+    // 反复 new BigDecimal / SimpleDateFormat，拖慢长列表滚动。
+    val amountText = remember(record.amount, isExpense) {
+        val yuan = MoneyUtils.centsToYuanString(record.amount)
+        if (isExpense) "-¥$yuan" else "+¥$yuan"
+    }
+    val subtitle = remember(record.remark, record.paymentMethod) {
+        listOf(record.remark, record.paymentMethod)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+    }
+    val timeText = remember(record.recordTime) { DateTimeUtils.formatTime(record.recordTime) }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -2043,9 +2171,6 @@ fun BitgetTransactionItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                val subtitle = listOf(record.remark, record.paymentMethod)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
                 if (subtitle.isNotBlank()) {
                     Text(
                         text = subtitle,
@@ -2061,7 +2186,7 @@ fun BitgetTransactionItem(
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = if (isExpense) "-¥${MoneyUtils.centsToYuanString(record.amount)}" else "+¥${MoneyUtils.centsToYuanString(record.amount)}",
+                    text = amountText,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
@@ -2070,8 +2195,8 @@ fun BitgetTransactionItem(
                 )
 
                 Text(
-                    text = DateTimeUtils.formatTime(record.recordTime),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    text = timeText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.outline
                 )
             }

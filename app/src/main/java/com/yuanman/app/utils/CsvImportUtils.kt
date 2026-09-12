@@ -201,6 +201,12 @@ object CsvImportUtils {
         )
     }
 
+    /**
+     * 解码 CSV 字节为文本（UTF-8 BOM / UTF-8 / GBK 探测）。
+     * 同模块导出/导入（账户与计划 CSV 等）复用同一解码约定。
+     */
+    internal fun decodeCsvText(bytes: ByteArray): String = detectAndDecode(bytes)
+
     private fun detectAndDecode(bytes: ByteArray): String {
         // 检查 UTF-8 BOM
         if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {

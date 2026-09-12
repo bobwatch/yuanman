@@ -59,21 +59,15 @@ class AddEditCategoryViewModel(
                 }
             }
         } else {
-            // 新增模式：设置默认推荐标签
-            val defaultTags = CategoryIconHelper.getPresetRemarks("餐饮")
-            _uiState.update { it.copy(tagList = defaultTags) }
+            // 新增模式：不预置任何专属子标签，初始为空
+            _uiState.update { it.copy(tagList = emptyList()) }
         }
     }
 
     fun setName(name: String) {
         val trimmed = name.take(8)
         _uiState.update { state ->
-            val newTags = if (!state.isEditMode && state.tagList.isEmpty() && trimmed.isNotBlank()) {
-                CategoryIconHelper.getPresetRemarks(trimmed)
-            } else {
-                state.tagList
-            }
-            state.copy(name = trimmed, tagList = newTags, errorMessage = null)
+            state.copy(name = trimmed, errorMessage = null)
         }
     }
 

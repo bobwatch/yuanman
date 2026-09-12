@@ -11,6 +11,7 @@ import com.yuanman.app.data.repository.PreferencesRepository
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -332,7 +333,10 @@ class StatisticsViewModel(
                 )
             )
         }
-    }.stateIn(
+    }
+        // 整周期逐条分组/环比/洞察文本等重计算移出主线程；stateIn 收集仍回到主线程
+        .flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = StatisticsUiState(
@@ -394,8 +398,13 @@ class StatisticsViewModel(
     }
 
     fun nextPeriod() {
+        // 周期翻页只允许回看：周/月/年分别以当前自然周/月/年为上限（统计不涉及未来）
+        val curY = currentYearMonth.first
         when (_periodMode.value) {
             StatisticsPeriod.WEEK -> {
+                if (_selectedYear.value > curY ||
+                    (_selectedYear.value == curY && _selectedWeek.value >= currentYearWeek.second)
+                ) return
                 val maxWeeks = DateTimeUtils.getMaxWeeksInYear(_selectedYear.value)
                 if (_selectedWeek.value >= maxWeeks) {
                     _selectedYear.value += 1
@@ -406,6 +415,9 @@ class StatisticsViewModel(
                 _selectedCategory.value = null
             }
             StatisticsPeriod.MONTH -> {
+                if (_selectedYear.value > curY ||
+                    (_selectedYear.value == curY && _selectedMonth.value >= currentYearMonth.second)
+                ) return
                 var y = _selectedYear.value
                 var m = _selectedMonth.value + 1
                 if (m > 12) {
@@ -415,6 +427,7 @@ class StatisticsViewModel(
                 selectMonth(y, m)
             }
             StatisticsPeriod.YEAR -> {
+                if (_selectedYear.value >= curY) return
                 _selectedYear.value += 1
                 _selectedCategory.value = null
             }

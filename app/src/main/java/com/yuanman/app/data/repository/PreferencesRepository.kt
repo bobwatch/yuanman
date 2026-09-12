@@ -2,12 +2,14 @@ package com.yuanman.app.data.repository
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.model.ThemeMode
@@ -15,10 +17,35 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.widget.WidgetUpdateManager
+import java.io.File
 import java.util.Calendar
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "yuanman_preferences")
+private val dataStoreLock = Any()
+private val dataStores = HashMap<Context, DataStore<Preferences>>()
+
+/**
+ * 进程内单例 DataStore；若文件被意外写坏（如进程被强杀），自动以空配置替换，
+ * 避免启动时直接崩溃闪退（MIUI 强杀场景实测会触发 CorruptionException）。
+ */
+val Context.dataStore: DataStore<Preferences>
+    get() {
+        val appContext = applicationContext
+        synchronized(dataStoreLock) {
+            dataStores[appContext]?.let { return it }
+        }
+        val store = PreferenceDataStoreFactory.create(
+            produceFile = {
+                File(appContext.filesDir, "datastore/yuanman_preferences.preferences_pb")
+            },
+            corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
+        )
+        synchronized(dataStoreLock) {
+            dataStores[appContext] = store
+            return store
+        }
+    }
 
 class PreferencesRepository(private val context: Context) {
 
@@ -26,19 +53,22 @@ class PreferencesRepository(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DEFAULT_RECORD_TYPE = stringPreferencesKey("default_record_type")
         val DEFAULT_PAYMENT_METHOD = stringPreferencesKey("default_payment_method")
+        val DEFAULT_EXPENSE_ACCOUNT = stringPreferencesKey("default_expense_account")
+        val DEFAULT_INCOME_ACCOUNT = stringPreferencesKey("default_income_account")
         val MONTHLY_BUDGET = longPreferencesKey("monthly_budget")
         val MONTHLY_BUDGETS = stringPreferencesKey("monthly_budgets")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
         val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
         val QUICK_ENTRY_ENABLED = booleanPreferencesKey("quick_entry_enabled")
         val CUSTOM_TAGS = stringPreferencesKey("custom_tags")
-        val PINNED_TEMPLATE_KEYS = stringPreferencesKey("pinned_template_keys")
-        val HIDDEN_TEMPLATE_KEYS = stringPreferencesKey("hidden_template_keys")
-        val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
-        val ACCOUNT_PERIOD_TYPE = stringPreferencesKey("account_period_type")
-        val ACCOUNT_PERIOD_START_DAY = androidx.datastore.preferences.core.intPreferencesKey("account_period_start_day")
-        val INCOME_ALLOCATION_RULES = stringPreferencesKey("income_allocation_rules")
-        val DEFAULT_EXPENSE_ACCOUNT_ID = longPreferencesKey("default_expense_account_id")
+        val ACCOUNTS_DATA = stringPreferencesKey("accounts_data")
+        val SAVING_PLANS_DATA = stringPreferencesKey("saving_plans_data")
+        val PAYCHECK_SCHEME_DATA = stringPreferencesKey("paycheck_scheme_data")
+        val PAYCHECK_LAST_RUN_DATA = stringPreferencesKey("paycheck_last_run_data")
+        val RECONCILE_CYCLE_DATA = stringPreferencesKey("reconcile_cycle_data")
+        val PAYCHECK_AUTO_ENABLED = booleanPreferencesKey("paycheck_auto_enabled")
+        val PAYCHECK_AUTO_APPLIED_IDS = stringPreferencesKey("paycheck_auto_applied_ids")
+        val PAYCHECK_RUN_HISTORY_DATA = stringPreferencesKey("paycheck_run_history_data")
     }
 
     val defaultPresetTags = listOf("早餐", "午餐", "晚餐", "奶茶咖啡", "外卖", "超市买菜", "地铁打车", "零食水果", "日用品", "房租水电", "聚会请客", "网购")
@@ -74,8 +104,14 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] ?: PaymentMethod.defaultMethod()
     }
 
-    val defaultExpenseAccountId: Flow<Long?> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT_ID]?.takeIf { it > 0L }
+    val defaultExpenseAccount: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT]
+            ?: preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD]
+            ?: PaymentMethod.defaultMethod()
+    }
+
+    val defaultIncomeAccount: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DEFAULT_INCOME_ACCOUNT] ?: ""
     }
 
     /** Legacy/default budget, kept for users who upgraded from the old single-budget version. */
@@ -105,65 +141,143 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] ?: true
     }
 
-    val pinnedTemplateKeys: Flow<Set<String>> = context.dataStore.data.map { preferences ->
-        parseKeySet(preferences[PreferencesKeys.PINNED_TEMPLATE_KEYS])
+    val accountsData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ACCOUNTS_DATA]
     }
 
-    val hiddenTemplateKeys: Flow<Set<String>> = context.dataStore.data.map { preferences ->
-        parseKeySet(preferences[PreferencesKeys.HIDDEN_TEMPLATE_KEYS])
-    }
-
-    val lastBackupAt: Flow<Long> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.LAST_BACKUP_AT] ?: 0L
-    }
-
-    val accountPeriodType: Flow<com.yuanman.app.data.model.AccountPeriodType> = context.dataStore.data.map { preferences ->
-        val raw = preferences[PreferencesKeys.ACCOUNT_PERIOD_TYPE] ?: com.yuanman.app.data.model.AccountPeriodType.MONTH.name
-        com.yuanman.app.data.model.AccountPeriodType.fromString(raw)
-    }
-
-    val accountPeriodStartDay: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.ACCOUNT_PERIOD_START_DAY] ?: 1
-    }
-
-    val incomeAllocationRules: Flow<List<com.yuanman.app.data.model.IncomeAllocationRule>> = context.dataStore.data.map { preferences ->
-        com.yuanman.app.data.model.IncomeAllocationCalculator.deserializeRules(preferences[PreferencesKeys.INCOME_ALLOCATION_RULES])
-    }
-
-    suspend fun setAccountPeriodType(type: com.yuanman.app.data.model.AccountPeriodType) {
+    suspend fun saveAccountsData(json: String) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.ACCOUNT_PERIOD_TYPE] = type.name
+            preferences[PreferencesKeys.ACCOUNTS_DATA] = json
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
-    suspend fun setAccountPeriodStartDay(day: Int) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.ACCOUNT_PERIOD_START_DAY] = day.coerceIn(1, 28)
-        }
+    // ---- 攒钱计划 & 发薪分配（v0.3）：与账户同构的 JSON DataStore 持久化 ----
+
+    val savingPlansData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SAVING_PLANS_DATA]
     }
 
-    suspend fun setIncomeAllocationRules(rules: List<com.yuanman.app.data.model.IncomeAllocationRule>) {
+    val paycheckSchemeData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_SCHEME_DATA]
+    }
+
+    val paycheckLastRunData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_LAST_RUN_DATA]
+    }
+
+    suspend fun saveSavingPlansData(json: String) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.INCOME_ALLOCATION_RULES] = com.yuanman.app.data.model.IncomeAllocationCalculator.serializeRules(rules)
+            preferences[PreferencesKeys.SAVING_PLANS_DATA] = json
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun savePaycheckSchemeData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_SCHEME_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun savePaycheckLastRunData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_LAST_RUN_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    // ---- 账户核对全局周期（账户可各自自定义覆盖，见账户 JSON reconcileCycleOverride）----
+
+    val reconcileCycleData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.RECONCILE_CYCLE_DATA]
+    }
+
+    suspend fun saveReconcileCycleData(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.RECONCILE_CYCLE_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    // ---- v0.0.4.5：工资到账自动分账（开关 / 已执行收入记录 / 执行历史）----
+
+    /** 工资到账自动分账总开关，默认开 */
+    val paycheckAutoEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_AUTO_ENABLED] ?: true
+    }
+
+    suspend fun setPaycheckAutoEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_AUTO_ENABLED] = enabled
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    /** 已自动分账过的收入记录 id（逗号分隔字符串）—— 幂等守卫，防止同一笔工资重复执行 */
+    val paycheckAutoAppliedIds: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_AUTO_APPLIED_IDS]
+    }
+
+    suspend fun addPaycheckAutoAppliedId(recordId: Long) {
+        context.dataStore.edit { preferences ->
+            val raw = preferences[PreferencesKeys.PAYCHECK_AUTO_APPLIED_IDS].orEmpty()
+            val ids = raw.split(",").mapNotNull { it.trim().toLongOrNull() }.toMutableSet()
+            if (ids.add(recordId)) {
+                preferences[PreferencesKeys.PAYCHECK_AUTO_APPLIED_IDS] = ids.joinToString(",")
+            }
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    /** 历次发薪分账执行记录（JSON 数组，最新在前，最多保留 30 条） */
+    val paycheckRunHistoryData: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PAYCHECK_RUN_HISTORY_DATA]
+    }
+
+    suspend fun savePaycheckRunHistory(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PAYCHECK_RUN_HISTORY_DATA] = json
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setDefaultRecordType(type: RecordType) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_RECORD_TYPE] = type.name
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setDefaultPaymentMethod(method: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] = method
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun setDefaultExpenseAccount(account: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT] = account
+            if (account.isNotBlank()) {
+                preferences[PreferencesKeys.DEFAULT_PAYMENT_METHOD] = account
+            }
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
+    suspend fun setDefaultIncomeAccount(account: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DEFAULT_INCOME_ACCOUNT] = account
+        }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setDefaultExpenseAccountId(accountId: Long?) {
@@ -187,6 +301,7 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.MONTHLY_BUDGETS] = serializeMonthlyBudgets(budgets)
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setPrivacyMode(enabled: Boolean) {
@@ -194,6 +309,7 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.PRIVACY_MODE] = enabled
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun togglePrivacyMode() {
@@ -202,18 +318,21 @@ class PreferencesRepository(private val context: Context) {
             preferences[PreferencesKeys.PRIVACY_MODE] = !current
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setHapticFeedbackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] = enabled
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setQuickEntryEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.QUICK_ENTRY_ENABLED] = enabled
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun setTemplatePinned(key: String, pinned: Boolean) {
@@ -278,6 +397,7 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.CUSTOM_TAGS] = tags.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun addCustomTag(tag: String) {
@@ -290,6 +410,7 @@ class PreferencesRepository(private val context: Context) {
                 preferences[PreferencesKeys.CUSTOM_TAGS] = (current + trimmed).joinToString(",")
             }
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun updateCustomTag(oldTag: String, newTag: String) {
@@ -301,6 +422,7 @@ class PreferencesRepository(private val context: Context) {
             val updated = current.map { if (it == oldTag) trimmed else it }.distinct()
             preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun deleteCustomTag(tag: String) {
@@ -310,6 +432,7 @@ class PreferencesRepository(private val context: Context) {
             val updated = current.filterNot { it == tag }
             preferences[PreferencesKeys.CUSTOM_TAGS] = updated.joinToString(",")
         }
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun clearAll() {
@@ -317,6 +440,7 @@ class PreferencesRepository(private val context: Context) {
             preferences.clear()
         }
         WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
     }
 
     suspend fun getWidgetPreferences(year: Int, month: Int): WidgetPreferences {

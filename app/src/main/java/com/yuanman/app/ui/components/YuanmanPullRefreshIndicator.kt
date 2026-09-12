@@ -1,26 +1,13 @@
 package com.yuanman.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,122 +16,84 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
- * Branded pull-to-refresh feedback without Material's morphing container.
- * The explicit pill surface avoids the white polygon/block artifact seen on light themes.
+ * 自绘下拉刷新指示器（胶囊形态）：
+ * 拖动中展示主色进度弧 + 「下拉刷新 / 松开刷新」提示，刷新中切换为主色圆环 + 「正在刷新」。
+ * 使用白色圆角胶囊（细描边、低阴影）呈现状态，不再使用官方 PullToRefreshContainer，
+ * 彻底避免浅色主题下残留圆形背景色块与硬阴影。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YuanmanPullRefreshIndicator(
     state: PullToRefreshState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    // 在组件内部读取手势状态，避免下拉的每一帧让整个页面内容一起重组。
-    val reveal = state.progress.coerceIn(0f, 1f)
     val isRefreshing = state.isRefreshing
-    val isLightTheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
-    val smoothProgress by animateFloatAsState(
-        targetValue = reveal,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "refresh_pull_progress"
-    )
-    val message = when {
-        isRefreshing -> "正在整理账本"
-        reveal >= 0.78f -> "松手刷新"
-        else -> "继续下拉"
+    val progress = state.progress
+    val verticalOffset = state.verticalOffset
+
+    // 三态文案均为 4 字，切换时不引起胶囊宽度跳动
+    val label = when {
+        isRefreshing -> "正在刷新"
+        progress >= 1f -> "松开刷新"
+        else -> "下拉刷新"
     }
 
-    AnimatedVisibility(
-        visible = isRefreshing || reveal > 0f,
-        modifier = modifier,
-        enter = fadeIn(animationSpec = tween(80)) + scaleIn(
-            initialScale = 0.94f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            )
-        ),
-        exit = fadeOut(animationSpec = tween(90)) + scaleOut(
-            targetScale = 0.96f,
-            animationSpec = tween(90)
-        )
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                // 从列表顶部随下拉位移滑入，松开刷新后停留在原位；未拖拽时完全隐藏
+                translationY = verticalOffset - size.height
+                alpha = if (isRefreshing) 1f else progress.coerceIn(0f, 1f)
+            },
+        contentAlignment = Alignment.Center
     ) {
         Surface(
-            modifier = Modifier.animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ),
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = if (isLightTheme) 0.dp else 2.dp,
-            shadowElevation = if (isLightTheme) 0.dp else 5.dp,
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (isLightTheme) {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f)
-                } else {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.26f)
-                }
-            )
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            border = BorderStroke(1.dp, contentColor.copy(alpha = if (isRefreshing) 0.55f else 0.3f)),
+            shadowElevation = 2.dp
         ) {
             Row(
-                modifier = Modifier.padding(start = 8.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
-                            CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(15.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp,
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        )
-                    } else {
-                        CircularProgressIndicator(
-                            progress = { smoothProgress.coerceAtLeast(0.06f) },
-                            modifier = Modifier.size(15.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp,
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = contentColor,
+                        strokeWidth = 2.25.dp,
+                        trackColor = Color.Transparent
+                    )
+                } else {
+                    Canvas(modifier = Modifier.size(18.dp)) {
+                        drawArc(
+                            color = contentColor,
+                            startAngle = -90f,
+                            sweepAngle = 300f * progress.coerceIn(0f, 1f),
+                            useCenter = false,
+                            style = Stroke(width = 2.25.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(7.dp))
-                // 文案多长胶囊就多宽，状态切换时由外层弹簧自然伸缩。
-                Crossfade(
-                    targetState = message,
-                    animationSpec = tween(durationMillis = 100),
-                    label = "refresh_message"
-                ) { text ->
-                    Text(
-                        text = text,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Spacer(modifier = Modifier.width(9.dp))
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor
+                )
             }
         }
     }
