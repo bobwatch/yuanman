@@ -388,13 +388,14 @@ class SettingsViewModel(
     }
 
     /**
-     * 清空全部数据：清空账单记录，恢复默认预置分类
+     * 清空全部数据：清空账单记录、资金账户与攒钱计划数据，恢复默认预置分类
      */
     fun clearAllData() {
         viewModelScope.launch {
             recordRepository.deleteAllRecords()
             categoryRepository.resetDefaultCategories()
             categoryRepository.clearQuickEntryLearning()
+            preferencesRepository.clearAccountsAndPlansData()
             _isClearedSuccess.value = true
         }
     }

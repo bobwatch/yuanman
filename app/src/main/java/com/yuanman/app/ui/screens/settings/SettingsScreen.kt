@@ -725,7 +725,7 @@ fun SettingsScreen(
     ConfirmDeleteDialog(
         visible = showFirstConfirmDialog,
         title = "清空全部数据",
-        message = "确定要清空全部账单数据吗？此操作无法撤销，建议先导出备份！",
+        message = "确定要清空全部账单、资金账户与攒钱计划数据吗？此操作无法撤销，建议先导出备份！",
         confirmButtonText = "继续清空",
         onConfirm = {
             showFirstConfirmDialog = false
@@ -738,7 +738,7 @@ fun SettingsScreen(
     ConfirmDeleteDialog(
         visible = showSecondConfirmDialog,
         title = "最终确认清空",
-        message = "您真的确定要删除全部账单数据吗？删除后数据将永远丢失！",
+        message = "您真的确定要删除全部账单、资金账户与攒钱计划数据吗？删除后数据将彻底清空！",
         confirmButtonText = "确认彻底清空",
         onConfirm = {
             viewModel.clearAllData()

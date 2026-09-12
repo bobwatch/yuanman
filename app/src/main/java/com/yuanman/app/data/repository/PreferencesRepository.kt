@@ -317,6 +317,26 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
+    /**
+     * 清空全部账户、攒钱计划、发薪方案及对账历史数据（用于设置页“清空全部数据”）
+     */
+    suspend fun clearAccountsAndPlansData() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(PreferencesKeys.ACCOUNTS_DATA)
+            preferences.remove(PreferencesKeys.SAVING_PLANS_DATA)
+            preferences.remove(PreferencesKeys.PAYCHECK_SCHEME_DATA)
+            preferences.remove(PreferencesKeys.PAYCHECK_LAST_RUN_DATA)
+            preferences.remove(PreferencesKeys.PAYCHECK_RUN_HISTORY_DATA)
+            preferences.remove(PreferencesKeys.RECONCILE_CYCLE_DATA)
+            preferences.remove(PreferencesKeys.PAYCHECK_AUTO_APPLIED_IDS)
+            preferences.remove(PreferencesKeys.DEFAULT_EXPENSE_ACCOUNT)
+            preferences.remove(PreferencesKeys.DEFAULT_INCOME_ACCOUNT)
+            preferences.remove(PreferencesKeys.DEFAULT_PAYMENT_METHOD)
+        }
+        WidgetUpdateManager.requestUpdate(context)
+        DatabaseBackupManager.scheduleAutoBackupSoon(context)
+    }
+
     suspend fun setPrivacyMode(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PRIVACY_MODE] = enabled
