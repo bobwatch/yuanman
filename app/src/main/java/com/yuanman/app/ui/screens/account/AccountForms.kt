@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,11 +52,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.ui.components.AccountIconHelper
 import com.yuanman.app.ui.components.BrandAccountIcon
 import com.yuanman.app.ui.components.BrandAccountIcons
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+import com.yuanman.app.ui.theme.LocalDarkTheme
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
 
@@ -83,7 +84,7 @@ fun AddEditAccountSheet(
     var name by remember { mutableStateOf(accountToEdit?.name ?: "") }
     var label by remember { mutableStateOf(accountToEdit?.label ?: "") }
     var iconName by remember { mutableStateOf(accountToEdit?.iconName ?: "wallet") }
-    var colorHex by remember { mutableStateOf(accountToEdit?.colorHex ?: 0xFF059669L) }
+    var colorHex by remember { mutableStateOf(accountToEdit?.colorHex ?: IconPalette.DEFAULT_COLOR) }
     var balanceYuan by remember {
         mutableStateOf(
             if (accountToEdit != null) {
@@ -98,21 +99,9 @@ fun AddEditAccountSheet(
     }
     var cycleMenuExpanded by remember { mutableStateOf(false) }
 
-    // 主题色盘：仅作视觉挑选，与类型无关
-    val presetColors = listOf(
-        0xFF059669L, // 翡翠翠绿
-        0xFF0284C7L, // 晴空蔚蓝
-        0xFFE53935L, // 鲜明赤红
-        0xFFFF9800L, // 活力暖橙
-        0xFF9C27B0L, // 优雅紫
-        0xFFE91E63L, // 珊瑚粉
-        0xFF009688L, // 墨玉青
-        0xFF3F51B5L, // 靛青蓝
-        0xFF795548L, // 暖棕
-        0xFF607D8BL, // 极简灰
-        0xFFFFB300L, // 晨曦金
-        0xFF26A69AL  // 薄荷绿
-    )
+    // 主题色盘：与分类/计划共用全应用统一色板（对比度与色差由 IconPaletteTest 锁定），
+    // 不再是另一套 Material 500 色，避免同一屏出现两种色系
+    val presetColors = IconPalette.PRESET_COLORS
 
     // 账户类别图标词表（精选 22 项细分账户资产图标，含主流支付品牌、卡包、理财、借贷等）
     val availableIcons = AccountIconHelper.ALL_AVAILABLE_ACCOUNT_ICONS
@@ -291,7 +280,7 @@ fun AddEditAccountSheet(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                val isDark = isSystemInDarkTheme()
+                val isDark = LocalDarkTheme.current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

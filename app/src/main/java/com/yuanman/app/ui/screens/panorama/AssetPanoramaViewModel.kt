@@ -21,18 +21,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.util.Calendar
 
-private data class RawAccount(
-    val id: Long,
-    val name: String,
-    val label: String,
-    val iconName: String,
-    val colorHex: Long,
-    val openingBalanceCents: Long,
-    val balanceCents: Long,
-    val inCents: Long,
-    val outCents: Long,
-    val sortOrder: Int
-)
+
 
 class AssetPanoramaViewModel(
     private val preferencesRepository: PreferencesRepository,
@@ -93,28 +82,14 @@ class AssetPanoramaViewModel(
         allRecords: List<RecordWithCategory>,
         period: PanoramaTrendPeriod
     ): AssetPanoramaUiState {
-        val rawAccounts = parseAccounts(accountsJson)
+        val rawAccounts = com.yuanman.app.ui.screens.account.parseAccountsJson(accountsJson)
 
-        // 1. 结合当月流水丰富账户实时余额（与 AccountViewModel 相同的口径）
-        val accounts = rawAccounts.map { acc ->
-            var monthIn = 0L
-            var monthOut = 0L
-            currentMonthRecords.forEach { rw ->
-                val r = rw.record
-                if (methodMatchesAccount(r.paymentMethod, acc.name)) {
-                    if (r.type == "INCOME") monthIn += r.amount
-                    else if (r.type == "EXPENSE") monthOut += r.amount
-                }
-            }
-            val finalIn = if (monthIn > 0L) monthIn else acc.inCents
-            val finalOut = if (monthOut > 0L) monthOut else acc.outCents
-            val effectiveBalance = acc.openingBalanceCents + finalIn - finalOut
-            acc.copy(
-                inCents = finalIn,
-                outCents = finalOut,
-                balanceCents = effectiveBalance
-            )
-        }
+        // 1. 结合当月流水丰富账户实时余额（与 AccountViewModel 统一口径，单流水唯一归属）
+        val accounts = com.yuanman.app.ui.screens.account.enrichAccountsForMonth(
+            rawAccounts = rawAccounts,
+            monthRecords = currentMonthRecords,
+            globalReconcileCycle = com.yuanman.app.ui.screens.account.ReconcileCycle.DEFAULT
+        )
 
         // 2. 净资产大盘：总资产、待还负债、净值
         val positiveAccounts = accounts.filter { it.balanceCents > 0L }
@@ -280,44 +255,6 @@ class AssetPanoramaViewModel(
             )
         }
         return points
-    }
-
-    private fun parseAccounts(accountsJson: String?): List<RawAccount> {
-        if (accountsJson.isNullOrBlank()) return emptyList()
-        val list = mutableListOf<RawAccount>()
-        runCatching {
-            val array = JSONArray(accountsJson)
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                list.add(
-                    RawAccount(
-                        id = obj.optLong("id", i.toLong() + 1L),
-                        name = obj.optString("name", "账户"),
-                        label = obj.optString("label", ""),
-                        iconName = obj.optString("iconName", "wallet"),
-                        colorHex = obj.optLong("colorHex", 0xFF059669L),
-                        openingBalanceCents = obj.optLong("openingBalanceCents", 0L),
-                        balanceCents = obj.optLong("balanceCents", 0L),
-                        inCents = obj.optLong("inCents", 0L),
-                        outCents = obj.optLong("outCents", 0L),
-                        sortOrder = obj.optInt("sortOrder", i + 1)
-                    )
-                )
-            }
-        }
-        return list
-    }
-
-    private fun methodMatchesAccount(methodRaw: String, accountName: String): Boolean {
-        val method = methodRaw.trim()
-        return method.isNotBlank() && (
-            method == accountName ||
-                accountName.contains(method, ignoreCase = true) ||
-                (method.contains("微信") && accountName.contains("微信")) ||
-                (method.contains("支付宝") && accountName.contains("支付宝")) ||
-                ((method.contains("卡") || method.contains("银行")) && (accountName.contains("行") || accountName.contains("卡"))) ||
-                (method.contains("现金") && accountName.contains("现金"))
-            )
     }
 
     class Factory(

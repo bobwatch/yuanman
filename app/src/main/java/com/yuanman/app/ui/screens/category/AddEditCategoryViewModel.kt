@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yuanman.app.data.local.entity.CategoryEntity
 import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,7 @@ data class AddEditCategoryUiState(
     val name: String = "",
     val type: RecordType = RecordType.EXPENSE,
     val selectedIcon: String = "food",
-    val selectedColor: Long = 0xFFFF5722L,
+    val selectedColor: Long = IconPalette.DEFAULT_COLOR,
     val tagList: List<String> = emptyList(),
     val selectedIconGroup: String = "全部",
     val isEditMode: Boolean = false,

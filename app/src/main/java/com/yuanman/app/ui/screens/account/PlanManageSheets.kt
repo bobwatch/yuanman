@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
@@ -80,21 +81,8 @@ import java.math.BigDecimal
 /** 超额警示琥珀 —— 与账户页警示同值 Color(0xFFFF9800) */
 private val PlanWarnAmber = Color(0xFFFF9800)
 
-/** 12 色盘 —— 与 AddEditAccountSheet（AccountForms.kt）取值一致 */
-private val PlanPresetColors = listOf(
-    0xFF059669L, // 翡翠翠绿
-    0xFF0284C7L, // 晴空蔚蓝
-    0xFFE53935L, // 鲜明赤红
-    0xFFFF9800L, // 活力暖橙
-    0xFF9C27B0L, // 优雅紫
-    0xFFE91E63L, // 珊瑚粉
-    0xFF009688L, // 墨玉青
-    0xFF3F51B5L, // 靛青蓝
-    0xFF795548L, // 暖棕
-    0xFF607D8BL, // 极简灰
-    0xFFFFB300L, // 晨曦金
-    0xFF26A69AL  // 薄荷绿
-)
+/** 可选色盘 —— 分类 / 账户 / 计划共用 IconPalette 一套色，避免三处各一份且互不一致 */
+private val PlanPresetColors = IconPalette.PRESET_COLORS
 
 // ---------------------------------------------------------------------------
 // 通用小件

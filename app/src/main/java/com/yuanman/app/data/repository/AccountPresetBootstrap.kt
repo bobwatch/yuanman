@@ -1,6 +1,7 @@
 package com.yuanman.app.data.repository
 
 import com.yuanman.app.data.local.dao.RecordDao
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.data.model.PaymentMethod
 import com.yuanman.app.ui.screens.account.AccountUiModel
 import com.yuanman.app.ui.screens.account.serializeAccountsJson
@@ -29,12 +30,12 @@ object AccountPresetBootstrap {
 
     /** 与 PaymentMethod.COMMON_ACCOUNTS 一一对应的图标与主题色（品牌户用品牌图标 key，其余用账户词表 key） */
     private val presetStyles = listOf(
-        AccountPresetStyle("wechat", 0xFF07C160L),    // 微信支付（微信绿 + 品牌气泡）
-        AccountPresetStyle("alipay", 0xFF1677FFL),    // 支付宝（支付蓝 + 品牌字标）
-        AccountPresetStyle("wallet", 0xFF26A69AL),    // 现金（青）
-        AccountPresetStyle("bank", 0xFF3F51B5L),      // 银行卡（靛蓝）
-        AccountPresetStyle("card_gift", 0xFFE53935L), // 信用卡（红）
-        AccountPresetStyle("part_time", 0xFF9C27B0L)  // 花呗/白条（紫）
+        AccountPresetStyle("wechat", 0xFF07C160L),            // 微信支付（微信绿 + 品牌气泡）
+        AccountPresetStyle("alipay", 0xFF1677FFL),            // 支付宝（支付蓝 + 品牌字标）
+        AccountPresetStyle("wallet", IconPalette.UTILITY),    // 现金（幽谷松石）
+        AccountPresetStyle("bank_card", IconPalette.CAR),     // 银行卡（深海青；原先用 "bank" 会画成「银行理财」的分类图标）
+        AccountPresetStyle("card_gift", IconPalette.MEDICAL), // 信用卡（朱砂红）
+        AccountPresetStyle("part_time", IconPalette.LEISURE)  // 花呗/白条（幻夜紫）
     )
 
     suspend fun ensurePresetAccountsForLegacyUsers(

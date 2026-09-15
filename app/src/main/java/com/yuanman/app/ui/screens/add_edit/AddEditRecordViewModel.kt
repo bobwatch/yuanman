@@ -141,6 +141,25 @@ class AddEditRecordViewModel(
             }
         }
 
+        // 持续同步账户列表与默认收支账户变更（确保设默认与外部建卡即时同步）
+        viewModelScope.launch {
+            combine(
+                preferencesRepository.defaultExpenseAccount,
+                preferencesRepository.defaultIncomeAccount,
+                preferencesRepository.accountsData
+            ) { defExp, defInc, accJson ->
+                Triple(defExp, defInc, parseAccountsJson(accJson))
+            }.collectLatest { (defExp, defInc, parsedAcc) ->
+                _uiState.update { state ->
+                    state.copy(
+                        defaultExpenseAccount = defExp,
+                        defaultIncomeAccount = defInc,
+                        accounts = parsedAcc
+                    )
+                }
+            }
+        }
+
         // 双向预加载并常驻缓存支出与收入分类（合并原子更新，避免多次重组与跳动）
         viewModelScope.launch {
             categoryRepository.getCategoriesByType(RecordType.EXPENSE).collectLatest { list ->
@@ -297,11 +316,48 @@ class AddEditRecordViewModel(
     }
 
     fun setDefaultPaymentAccount(accountName: String, isExpense: Boolean) {
+        _uiState.update { state ->
+            if (isExpense) state.copy(defaultExpenseAccount = accountName)
+            else state.copy(defaultIncomeAccount = accountName)
+        }
         viewModelScope.launch {
             if (isExpense) {
                 preferencesRepository.setDefaultExpenseAccount(accountName)
             } else {
                 preferencesRepository.setDefaultIncomeAccount(accountName)
+            }
+        }
+    }
+
+    /** 快速创建新账户并自动选中为当前账单的支付账户 */
+    fun createAccountAndSelect(
+        name: String,
+        label: String,
+        iconName: String,
+        colorHex: Long,
+        balanceCents: Long
+    ) {
+        viewModelScope.launch {
+            val currentAccounts = _uiState.value.accounts.toMutableList()
+            val newId = (currentAccounts.maxOfOrNull { it.id } ?: 0L) + 1L
+            val trimmedName = name.trim()
+            val newAccount = AccountUiModel(
+                id = newId,
+                name = trimmedName,
+                label = label.trim(),
+                iconName = iconName,
+                colorHex = colorHex,
+                openingBalanceCents = balanceCents,
+                balanceCents = balanceCents,
+                sortOrder = currentAccounts.size + 1
+            )
+            currentAccounts.add(newAccount)
+            preferencesRepository.saveAccountsData(com.yuanman.app.ui.screens.account.serializeAccountsJson(currentAccounts))
+            _uiState.update {
+                it.copy(
+                    accounts = currentAccounts,
+                    paymentMethod = trimmedName
+                )
             }
         }
     }

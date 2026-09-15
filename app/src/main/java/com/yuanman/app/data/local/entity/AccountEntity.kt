@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.yuanman.app.data.model.IconPalette
 import java.util.UUID
 
 @Entity(
@@ -17,7 +18,7 @@ data class AccountEntity(
     /** 用户自定义类型标签（如"储蓄""信用"）。纯展示/分组用途，代码永不读取其值做分支或计算。 */
     val label: String = "",
     val iconName: String = "wallet",
-    val colorHex: Long = 0xFF607D8BL,
+    val colorHex: Long = IconPalette.SERVICE,
     /** 期初余额（分，可正可负）。余额 = 期初 + 流水，任何对账校正都只并入此值。 */
     val openingBalanceCents: Long = 0L,
     val isArchived: Boolean = false,

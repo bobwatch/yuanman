@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
 import com.yuanman.app.ui.components.EmptyStateView
@@ -117,11 +118,11 @@ fun AccountDetailScreen(
 
     // 当月流水（本月收支卡数据；过滤口径与账户聚合一致：按支付方式命中账户）
     val monthRecords by viewModel.monthRecordsFlow.collectAsState()
-    val accountMonthRecords = remember(monthRecords, account) {
+    val accountMonthRecords = remember(monthRecords, account, uiState.accounts) {
         if (account == null) {
             emptyList()
         } else {
-            monthRecords.filter { rw -> methodMatchesAccount(rw.record.paymentMethod, account) }
+            monthRecords.filter { rw -> methodMatchesAccount(rw.record.paymentMethod, account, uiState.accounts) }
         }
     }
     val reconcilePending = account?.reconcileStatus?.isPending() == true
@@ -788,7 +789,7 @@ private fun AccountRecordRow(
     ) {
         CategoryIconView(
             iconName = category?.iconName ?: "other",
-            colorHex = category?.colorHex ?: 0xFF607D8BL,
+            colorHex = category?.colorHex ?: IconPalette.SERVICE,
             size = 32.dp,
             iconSize = 16.dp
         )

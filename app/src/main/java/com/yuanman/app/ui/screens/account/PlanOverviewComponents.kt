@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.utils.MoneyUtils
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -467,28 +468,28 @@ val DefaultPlanInspirations = listOf(
         emoji = "🏝️",
         name = "旅行度假",
         targetAmountCents = 5_000_00L,
-        colorHex = 0xFF0D9488L, // 湖海青
+        colorHex = IconPalette.TRAVEL, // 海天蓝
         tagline = "去看山和大海"
     ),
     PlanInspirationPreset(
         emoji = "📱",
         name = "数码换新",
         targetAmountCents = 8_000_00L,
-        colorHex = 0xFF6366F1L, // 科技紫
+        colorHex = IconPalette.DIGITAL, // 星云紫
         tagline = "给心仪装备蓄力"
     ),
     PlanInspirationPreset(
         emoji = "🛡️",
         name = "应急备用金",
         targetAmountCents = 20_000_00L,
-        colorHex = 0xFFF59E0BL, // 暖阳金
+        colorHex = IconPalette.INVEST, // 财富绿
         tagline = "积攒3~6月安全感"
     ),
     PlanInspirationPreset(
         emoji = "🎸",
         name = "兴趣成长",
         targetAmountCents = 3_000_00L,
-        colorHex = 0xFFEC4899L, // 活力粉
+        colorHex = IconPalette.LEISURE, // 幻夜紫
         tagline = "把热爱变成专款"
     )
 )

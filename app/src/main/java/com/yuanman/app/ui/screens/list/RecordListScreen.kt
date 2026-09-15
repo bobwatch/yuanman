@@ -92,8 +92,6 @@ fun RecordListScreen(
     var refreshWasRunning by remember { mutableStateOf(false) }
     // 🌟 展开式搜索框：顶栏搜索图标切换显隐，展开后自动聚焦并弹出键盘
     val searchFocusRequester = remember { FocusRequester() }
-    // 🌟 筛选过滤区显隐：往回翻看（手指下滑、内容下移）超过阈值自动隐藏，往下翻浏览（手指上滑）或回到顶部自动恢复
-    var showFilters by remember { mutableStateOf(true) }
 
     // 明细「天筛选」同步给底部「记一笔」入口：选中哪天，就把哪天零点带进新增页（补记当天账）
     LaunchedEffect(uiState.selectedYear, uiState.selectedMonth, uiState.selectedDay) {
@@ -138,47 +136,6 @@ fun RecordListScreen(
     //   手指上滑（内容向上移动、往下翻看更多数据，consumed.y > 0）累计超过阈值 → 恢复筛选过滤区。
     // 下拉刷新发生在列表顶部、此时列表内容本身并不滚动（consumed.y == 0），故不会被误判为“下滑隐藏”。
     // 列表滚动回到顶部（firstVisibleItemIndex==0 且偏移为 0）时强制恢复筛选区。
-    val filterHideThresholdPx = with(LocalDensity.current) { 32.dp.toPx() }
-    val filtersVisibilityConnection = remember {
-        object : NestedScrollConnection {
-            private var direction = 0 // 1 = 手指上滑（往下翻看更多数据），-1 = 手指下滑（往回翻看上方数据）
-            private var scrollAccumulated = 0f
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                val isActiveSource = source == NestedScrollSource.Drag ||
-                        source == NestedScrollSource.Fling
-                val dy = consumed.y
-                if (isActiveSource && dy != 0f) {
-                    val dir = if (dy > 0f) 1 else -1
-                    if (dir != direction) {
-                        direction = dir
-                        scrollAccumulated = 0f
-                    }
-                    scrollAccumulated += if (dir > 0) dy else -dy
-                    if (scrollAccumulated >= filterHideThresholdPx) {
-                        // 只有手指下滑（往回翻看）才隐藏筛选区；手指上滑（往下翻浏览）时恢复
-                        showFilters = dir > 0
-                        scrollAccumulated = 0f
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }.collect { atTop ->
-            if (atTop) {
-                showFilters = true
-            }
-        }
-    }
-
     // 🌟 提前 4 项静默预加载下一页（无感加载）
     val shouldLoadMore by remember {
         derivedStateOf {
@@ -435,18 +392,13 @@ fun RecordListScreen(
                         }
 
                         // 🌟 2. 筛选过滤区（类型切换 + 排序 + 日期天筛选）
-                        // 往回翻看（手指下滑）超过阈值自动隐藏、往下翻浏览（手指上滑）或回到顶部自动展开（见 filtersVisibilityConnection）
-                        AnimatedVisibility(
-                            visible = showFilters,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut()
+                        // 稳固呈现，杜绝列表滚动时因高度频繁伸缩导致的抖动死锁
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // 已并入 AppHeaderSurface 的素面底，去掉独立底色避免压住底纹纹理
+                                .padding(vertical = 4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    // 已并入 AppHeaderSurface 的素面底，去掉独立底色避免压住底纹纹理
-                                    .padding(vertical = 4.dp)
-                            ) {
                                 // 第一行：类型切换 (全部 / 仅支出 / 仅收入) 与 排序
                                 Row(
                                     modifier = Modifier
@@ -678,7 +630,6 @@ fun RecordListScreen(
                                     }
                                 }
                             }
-                        }
 
                         // 🌟 3. 当月汇总收支条（并入 Header 卡后去掉独立底色带，避免双重底色）
                         Row(
@@ -724,7 +675,6 @@ fun RecordListScreen(
                         .weight(1f)
                         .fillMaxWidth()
                         .nestedScroll(pullRefreshState.nestedScrollConnection)
-                        .nestedScroll(filtersVisibilityConnection)
                 ) {
                     if (uiState.filteredRecords.isEmpty()) {
                         Box(

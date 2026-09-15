@@ -192,7 +192,7 @@ class StatisticsViewModel(
                 name = "其他",
                 type = type.name,
                 iconName = "other",
-                colorHex = 0xFF607D8BL
+                colorHex = IconPalette.SERVICE
             )
             val sum = records.sumOf { it.record.amount }
             val count = records.size

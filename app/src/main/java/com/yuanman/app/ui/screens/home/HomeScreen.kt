@@ -51,6 +51,7 @@ import com.yuanman.app.data.local.entity.RecordWithCategory
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.yuanman.app.data.model.CategoryIconHelper
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.ui.screens.account.AccountUiModel
@@ -855,7 +856,9 @@ private fun QuickCategoryPickSheet(
                                     iconName = category.iconName,
                                     colorHex = category.colorHex,
                                     size = 46.dp,
-                                    iconSize = 22.dp
+                                    iconSize = 22.dp,
+                                    // 底色/描边已由外层圆给出，图标不再叠第二层圆
+                                    showBackground = false
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -1581,7 +1584,7 @@ fun BitgetTransactionItem(
         ) {
             CategoryIconView(
                 iconName = category?.iconName ?: "other",
-                colorHex = category?.colorHex ?: 0xFF607D8BL,
+                colorHex = category?.colorHex ?: IconPalette.SERVICE,
                 size = 32.dp,
                 iconSize = 16.dp
             )

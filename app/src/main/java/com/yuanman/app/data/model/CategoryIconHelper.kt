@@ -120,24 +120,11 @@ object CategoryIconHelper {
 
     val ICON_GROUPS = listOf("全部", "餐饮", "交通", "购物", "居家", "娱乐", "医疗", "学习", "人情", "收入")
 
-    val PRESET_COLORS = listOf(
-        0xFFFF5722, // 橙红
-        0xFF4CAF50, // 翡翠绿
-        0xFF2196F3, // 蔚蓝
-        0xFFFF9800, // 活力橙
-        0xFF9C27B0, // 优雅紫
-        0xFFE91E63, // 珊瑚粉
-        0xFF009688, // 墨玉青
-        0xFF3F51B5, // 靛青蓝
-        0xFF795548, // 暖棕
-        0xFF607D8B, // 极简灰
-        0xFFFFB300, // 晨曦金
-        0xFF00BCD4, // 晴空青
-        0xFF8BC34A, // 嫩芽绿
-        0xFF673AB7, // 深空紫
-        0xFFFF7043, // 蜜桃橘
-        0xFF26A69A  // 薄荷绿
-    )
+    /**
+     * 可选主题色板。分类 / 账户 / 攒钱计划已统一收敛到 [IconPalette] 一套色，
+     * 这里保留转发入口，历史调用点无需逐个改。
+     */
+    val PRESET_COLORS: List<Long> get() = IconPalette.PRESET_COLORS
 
     private val ICON_MAP: Map<String, ImageVector> = AVAILABLE_ICONS.associate { it.key to it.icon }
 

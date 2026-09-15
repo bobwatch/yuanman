@@ -76,10 +76,14 @@ object AccountIconHelper {
 
     /**
      * 账户新增/编辑弹窗完整可选图标词表（精选自 Simple Icons、Tabler Icons、FontAwesome 官方标准库）
+     *
+     * 淘宝 / 百度两个品牌已从词表移除（非支付渠道，图形辨识度也差）。
+     * 历史数据里仍存着这两个 key 的账户，读取时由
+     * [com.yuanman.app.ui.screens.account.parseAccountsJson] 归一化成通用图标。
      */
     val ALL_AVAILABLE_ACCOUNT_ICONS: List<String> = listOf(
         // 1. 品牌渠道与主流支付（Simple Icons 官方高精矢量）
-        "wechat", "alipay", "unionpay", "qq", "taobao", "jd", "applepay", "visa", "mastercard", "paypal", "baidu",
+        "wechat", "alipay", "unionpay", "qq", "jd", "applepay", "visa", "mastercard", "paypal",
         // 2. 现金、储蓄与卡包（Tabler Icons & FontAwesome）
         "cash", "bank_card", "credit_card", "wallet", "safe_box", "savings",
         // 3. 投资理财、大件资产与贵金属（K线/基金/股票/黄金/房车等）
@@ -88,5 +92,11 @@ object AccountIconHelper {
         "bonus", "debt", "loan_out", "reimbursement", "invoice",
         // 5. 保障、生活卡券与专用账户（公积金/保险/教育金/商超/餐饮/交通/税费）
         "provident_fund", "insurance", "education", "card_gift", "shopping_card", "meal_card", "transport_card", "tax", "other"
+    )
+
+    /** 已下架的品牌 key -> 归一化后的通用图标，供历史账户数据迁移使用 */
+    val RETIRED_BRAND_ICONS: Map<String, String> = mapOf(
+        "taobao" to "shopping_card",
+        "baidu" to "wallet"
     )
 }

@@ -7,11 +7,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.yuanman.app.data.model.ThemeMode
+
+/**
+ * 当前是否处于深色渲染（已包含「应用内强制深色」的覆盖）。
+ *
+ * 图标着色不能再用 isSystemInDarkTheme()：那只反映系统设置，用户在应用内强制深色时
+ * 会得到浅色模式的色值，深色卡片上发暗看不清。
+ */
+val LocalDarkTheme = staticCompositionLocalOf { false }
 
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF059669),
@@ -109,6 +119,8 @@ fun YuanmanTheme(
         colorScheme = colorScheme,
         typography = Typography,
         shapes = Shapes,
-        content = content
+        content = {
+            CompositionLocalProvider(LocalDarkTheme provides darkTheme, content = content)
+        }
     )
 }

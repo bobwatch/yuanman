@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yuanman.app.data.local.entity.RecordWithCategory
+import com.yuanman.app.data.model.IconPalette
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.utils.DateTimeUtils
 
@@ -28,7 +29,7 @@ fun RecordDetailCard(
     val record = item.record
     val category = item.category
     val recordType = RecordType.fromString(record.type)
-    val categoryColor = Color(category?.colorHex ?: 0xFF607D8BL)
+    val categoryColor = Color(category?.colorHex ?: IconPalette.SERVICE)
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -49,7 +50,7 @@ fun RecordDetailCard(
             ) {
                 CategoryIconView(
                     iconName = category?.iconName ?: "other",
-                    colorHex = category?.colorHex ?: 0xFF607D8BL,
+                    colorHex = category?.colorHex ?: IconPalette.SERVICE,
                     size = 52.dp,
                     iconSize = 28.dp
                 )

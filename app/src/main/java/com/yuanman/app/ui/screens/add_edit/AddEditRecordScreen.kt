@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import com.yuanman.app.ui.screens.account.AccountUiModel
+import com.yuanman.app.ui.screens.account.AddEditAccountSheet
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -71,6 +72,17 @@ import kotlinx.coroutines.launch
 import java.math.RoundingMode
 import java.util.Calendar
 
+/**
+ * 金额字号随表达式长度回落：金额行是单行不换行（换行会把整张卡片撑高、挤歪左侧分类胶囊），
+ * 位数多时降字号，保证「¥ 金额」始终完整落在卡片里。
+ */
+private fun amountFontSize(charCount: Int) = when {
+    charCount <= 7 -> 34.sp
+    charCount <= 10 -> 28.sp
+    charCount <= 13 -> 23.sp
+    else -> 19.sp
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun AddEditRecordScreen(
@@ -90,6 +102,7 @@ fun AddEditRecordScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPaymentSheet by remember { mutableStateOf(false) }
     var showRecordDateSheet by remember { mutableStateOf(false) }
+    var showAddAccountSheet by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = if (uiState.type == RecordType.EXPENSE) 0 else 1) { 2 }
     val expenseGridState = rememberLazyGridState()
@@ -168,27 +181,20 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 当选中的分类变化时，仅在分类不在当前可见屏内时才平滑滚动；已在可视区域的分类绝不触发任何滚动动画
+    // 仅在页面初始加载时对齐选中项，用户手动点击分类时绝不触发滚动动画，避免点击时网格移动变形
     var isGridInitialLayoutDone by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.selectedCategory?.id, uiState.type) {
-        val selectedId = uiState.selectedCategory?.id ?: return@LaunchedEffect
-        val isExpense = uiState.type == RecordType.EXPENSE
-        val categories = if (isExpense) uiState.expenseCategories else uiState.incomeCategories
-        val gridState = if (isExpense) expenseGridState else incomeGridState
-        val index = categories.indexOfFirst { it.id == selectedId }
-        if (index >= 0) {
-            val layoutInfo = gridState.layoutInfo
-            val visibleIndices = layoutInfo.visibleItemsInfo.map { it.index }
-            val isAlreadyVisible = visibleIndices.contains(index)
-            if (!isAlreadyVisible && visibleIndices.isNotEmpty()) {
-                if (!isGridInitialLayoutDone) {
-                    gridState.scrollToItem(index)
-                } else {
-                    gridState.animateScrollToItem(index)
-                }
+    LaunchedEffect(uiState.type) {
+        if (!isGridInitialLayoutDone) {
+            val selectedId = uiState.selectedCategory?.id ?: return@LaunchedEffect
+            val isExpense = uiState.type == RecordType.EXPENSE
+            val categories = if (isExpense) uiState.expenseCategories else uiState.incomeCategories
+            val gridState = if (isExpense) expenseGridState else incomeGridState
+            val index = categories.indexOfFirst { it.id == selectedId }
+            if (index > 8) {
+                gridState.scrollToItem(index)
             }
+            isGridInitialLayoutDone = true
         }
-        isGridInitialLayoutDone = true
     }
 
     val isExpense = pagerState.currentPage == 0
@@ -322,17 +328,17 @@ fun AddEditRecordScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 当前选中的分类胶囊
+                    // 当前选中的分类胶囊（可被压缩 + 省略号，绝不挤压右侧金额）
                     if (uiState.selectedCategory != null) {
                         val category = uiState.selectedCategory!!
                         val catColor = Color(category.colorHex)
                         Surface(
                             shape = CircleShape,
                             color = catColor.copy(alpha = 0.15f),
-                            border = BorderStroke(1.dp, catColor.copy(alpha = 0.4f))
+                            border = BorderStroke(1.dp, catColor.copy(alpha = 0.4f)),
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -351,7 +357,9 @@ fun AddEditRecordScreen(
                                         color = catColor,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp
-                                    )
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -360,11 +368,16 @@ fun AddEditRecordScreen(
                             text = "请选择分类",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
+                            ),
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
 
-                    // 大字号金额与算式预览
+                    // 弹性留白：把金额顶到右侧；用 weight 而非 SpaceBetween，
+                    // SpaceBetween 在内容超宽时会算出负间距导致两块直接叠在一起
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // 大字号金额与算式预览（单行不换行，长度变化时降字号而不是折行）
                     Column(horizontalAlignment = Alignment.End) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -377,10 +390,12 @@ fun AddEditRecordScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = uiState.expression.ifEmpty { "0.00" },
-                                fontSize = 34.sp,
+                                fontSize = amountFontSize(uiState.expression.length),
                                 fontWeight = FontWeight.Bold,
                                 color = themeActiveColor,
-                                letterSpacing = (-0.5).sp
+                                letterSpacing = (-0.5).sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -435,6 +450,8 @@ fun AddEditRecordScreen(
                                 }
                                 .padding(vertical = 4.dp)
                         ) {
+                            // 单一圆底衬：选中态只叠加「描边 + 加深底色」，图标不再自带第二层圆。
+                            // 双层圆（大圆环套小圆）会让点选后的图标看起来错位变形。
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -456,7 +473,8 @@ fun AddEditRecordScreen(
                                     iconName = category.iconName,
                                     colorHex = category.colorHex,
                                     size = 48.dp,
-                                    iconSize = 24.dp
+                                    iconSize = 22.dp,
+                                    showBackground = false
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -464,7 +482,7 @@ fun AddEditRecordScreen(
                                 text = category.name,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (isSelected) categoryColor else MaterialTheme.colorScheme.onSurface
                                 ),
                                 maxLines = 1,
@@ -509,7 +527,7 @@ fun AddEditRecordScreen(
                                         imageVector = Icons.Default.Add,
                                         contentDescription = "新增分类",
                                         tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -870,14 +888,46 @@ fun AddEditRecordScreen(
                 // 合一账户列表（需求3）：自建账户在前的分组一
                 if (uiState.accounts.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "我的账户",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        ),
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "我的账户",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            ),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { showAddAccountSheet = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "新增账户",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "新增账户",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
 
                     uiState.accounts.chunked(2).forEach { pair ->
@@ -913,16 +963,25 @@ fun AddEditRecordScreen(
                     }
                 }
 
-                // （已移除）「快速创建常用账户」区块：建账户统一在「账户」页进行，记账弹层只负责选择账户；
-                // 一个账户都没有时给出引导文案，避免弹层空白。
+                // 还没有资金账户时的引导与快速创建
                 if (uiState.accounts.isEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "还没有资金账户：先创建账户后，即可在这里选择「${if (isExpense) "支出" else "入账"}账户」",
+                        text = "还没有资金账户：点击下方快速创建，即可在这里选择「${if (isExpense) "支出" else "入账"}账户」",
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showAddAccountSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("快速创建账户", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
@@ -1011,6 +1070,21 @@ fun AddEditRecordScreen(
                 }
             }
         }
+    }
+
+    if (showAddAccountSheet) {
+        val existingTypes = remember(uiState.accounts) {
+            uiState.accounts.map { it.label.ifBlank { "其他" } }.distinct()
+        }
+        AddEditAccountSheet(
+            accountToEdit = null,
+            existingTypes = existingTypes,
+            onDismiss = { showAddAccountSheet = false },
+            onSave = { name, label, iconName, colorHex, balanceCents ->
+                viewModel.createAccountAndSelect(name, label, iconName, colorHex, balanceCents)
+                showAddAccountSheet = false
+            }
+        )
     }
 
     ConfirmDeleteDialog(
