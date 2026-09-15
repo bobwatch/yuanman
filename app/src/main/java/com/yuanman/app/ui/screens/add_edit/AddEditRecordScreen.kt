@@ -72,6 +72,9 @@ import kotlinx.coroutines.launch
 import java.math.RoundingMode
 import java.util.Calendar
 
+/** 分类网格列数：初始定位按整行对齐，与 GridCells.Fixed 必须一致 */
+private const val GRID_COLUMNS = 4
+
 /**
  * 金额字号随表达式长度回落：金额行是单行不换行（换行会把整张卡片撑高、挤歪左侧分类胶囊），
  * 位数多时降字号，保证「¥ 金额」始终完整落在卡片里。
@@ -181,19 +184,38 @@ fun AddEditRecordScreen(
         }
     }
 
-    // 仅在页面初始加载时对齐选中项，用户手动点击分类时绝不触发滚动动画，避免点击时网格移动变形
-    var isGridInitialLayoutDone by remember { mutableStateOf(false) }
+    // 分类网格定位：打开时对齐一次，之后只在「网格视口高度变化」时清理残留像素偏移。
+    //
+    // 为什么需要：底部「快捷备注」行是展开动画，它会改变网格所在视口的高度；视口一变，
+    // 网格就会带出一个约 30dp 的残留滚动偏移，把首行图标裁掉半截（看起来像图标叠在一起）。
+    // 点分类会刷新备注行 → 视口又变一次，所以这个清理必须跟着视口变化一直生效，而不是只在打开时做一次。
+    //
+    // 两条纪律：① 目标行只在打开时锁定，用户中途改选分类不会把网格拽走；
+    //          ② 只在「首行没变、却带着像素偏移」时清零，用户自己滚到别的行绝不干预。
+    var targetRowCache by remember(uiState.type) { mutableStateOf<Int?>(null) }
     LaunchedEffect(uiState.type) {
-        if (!isGridInitialLayoutDone) {
-            val selectedId = uiState.selectedCategory?.id ?: return@LaunchedEffect
-            val isExpense = uiState.type == RecordType.EXPENSE
-            val categories = if (isExpense) uiState.expenseCategories else uiState.incomeCategories
-            val gridState = if (isExpense) expenseGridState else incomeGridState
-            val index = categories.indexOfFirst { it.id == selectedId }
-            if (index > 8) {
-                gridState.scrollToItem(index)
+        val isExpense = uiState.type == RecordType.EXPENSE
+        val gridState = if (isExpense) expenseGridState else incomeGridState
+        var alignedOnce = false
+        var lastViewportHeight = -1
+        snapshotFlow { gridState.layoutInfo.viewportSize.height }.collect { viewportHeight ->
+            if (viewportHeight == lastViewportHeight) return@collect
+            lastViewportHeight = viewportHeight
+            if (targetRowCache == null) {
+                val categories = if (isExpense) uiState.expenseCategories else uiState.incomeCategories
+                val index = categories.indexOfFirst { it.id == uiState.selectedCategory?.id }
+                if (index >= 0) {
+                    targetRowCache = if (index > 8) index - index % GRID_COLUMNS else 0
+                }
             }
-            isGridInitialLayoutDone = true
+            val target = targetRowCache ?: return@collect
+            val isStrayOffset = gridState.firstVisibleItemIndex == target &&
+                gridState.firstVisibleItemScrollOffset != 0
+            val needsInitialAlign = !alignedOnce && gridState.firstVisibleItemIndex != target
+            if (needsInitialAlign || isStrayOffset) {
+                gridState.scrollToItem(target)
+            }
+            alignedOnce = true
         }
     }
 
@@ -428,7 +450,7 @@ fun AddEditRecordScreen(
                 val gridState = if (isExpensePage) expenseGridState else incomeGridState
 
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
+                    columns = GridCells.Fixed(GRID_COLUMNS),
                     state = gridState,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),

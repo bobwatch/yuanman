@@ -43,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -574,7 +575,9 @@ private fun ReconcileAccountCard(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isPending) colors.surface else colors.surfaceVariant.copy(alpha = 0.4f)
+            // 半透明容器色 + 卡片阴影/描边在浅色模式下会露出底层，渲染成「灰框套白块」；
+            // 这里用同视觉的不透明等效色（surface 与 surfaceVariant 按 0.4 混合）
+            containerColor = if (isPending) colors.surface else lerp(colors.surface, colors.surfaceVariant, 0.4f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
         border = BorderStroke(
