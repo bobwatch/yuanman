@@ -64,6 +64,9 @@ captures/
 # Adb sync working dir
 .adb_sync_backup/
 
+# 本地联调截图（adb screencap 产物，不入库）
+.screenshots/
+
 # ZCode session artifacts
 .zcode/
 

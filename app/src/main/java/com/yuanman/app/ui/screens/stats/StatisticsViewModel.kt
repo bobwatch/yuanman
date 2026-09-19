@@ -359,8 +359,19 @@ class StatisticsViewModel(
     }
 
     fun selectWeek(year: Int, week: Int) {
+        // 与翻页口径一致：不允许跳到未来的周
+        val (currentYear, currentWeek) = DateTimeUtils.getCurrentYearWeek()
+        if (year > currentYear || (year == currentYear && week > currentWeek)) return
         _selectedYear.value = year
         _selectedWeek.value = week
+        _selectedCategory.value = null
+    }
+
+    /** 年选择：不允许跳到未来年份（周期翻页同样口径）。 */
+    fun selectYear(year: Int) {
+        val (currentYear, _) = DateTimeUtils.getCurrentYearMonth()
+        if (year > currentYear) return
+        _selectedYear.value = year
         _selectedCategory.value = null
     }
 

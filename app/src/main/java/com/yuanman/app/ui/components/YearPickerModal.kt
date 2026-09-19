@@ -36,9 +36,9 @@ fun YearPickerModal(
     val coroutineScope = rememberCoroutineScope()
     val (currentYear, _) = remember { DateTimeUtils.getCurrentYearMonth() }
 
-    // 向下覆盖 40 年，向上留 1 年余量，保证历史数据年份也可达
+    // 向下覆盖 40 年，保证历史数据年份可达；上限为今年（统计不看未来年份）
     val floorYear = minOf(initialYear, currentYear) - 40
-    val ceilingYear = maxOf(initialYear, currentYear) + 1
+    val ceilingYear = maxOf(initialYear, currentYear)
     val yearCount = ceilingYear - floorYear + 1
     val gridState = rememberLazyGridState()
 
@@ -68,10 +68,9 @@ fun YearPickerModal(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp)
         ) {
-            Text(
-                text = "选择查看年份",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 16.dp)
+            SheetTitle(
+                title = "选择查看年份",
+                modifier = Modifier.padding(bottom = 14.dp)
             )
 
             LazyVerticalGrid(

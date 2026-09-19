@@ -42,8 +42,33 @@ data class SavingPlanUiModel(
     val colorHex: Long,
     val sortOrder: Int,
     val createdAt: Long,
+    val isPinned: Boolean = false,  // 置顶：展示时排在最前，不受创建顺序影响
     val events: List<PlanEventUiModel> = emptyList() // 攒钱/取出流水（升序）
 )
+
+/** 计划展示顺序：置顶优先，其余按 sortOrder（创建顺序）。 */
+fun List<SavingPlanUiModel>.inDisplayOrder(): List<SavingPlanUiModel> =
+    sortedWith(compareByDescending<SavingPlanUiModel> { it.isPinned }.thenBy { it.sortOrder })
+
+/**
+ * 折叠展示时挑选可见计划：先保证「余额低于专款」的计划一定进可见区（风险不能藏起来），
+ * 其余按既有顺序补齐；返回结果仍按既有顺序排列，避免余额波动导致卡片来回重排。
+ */
+fun selectVisiblePlans(
+    plans: List<SavingPlanUiModel>,
+    overdrawnPlanIds: Set<Long>,
+    limit: Int
+): List<SavingPlanUiModel> {
+    if (limit <= 0) return emptyList()
+    if (plans.size <= limit) return plans
+    val prioritized = plans.filter { it.id in overdrawnPlanIds } + plans.filterNot { it.id in overdrawnPlanIds }
+    val chosenIds = prioritized.take(limit).mapTo(HashSet()) { it.id }
+    return plans.filter { it.id in chosenIds }
+}
+
+/** 是否已达成目标（未设上限的计划不算达成）。 */
+fun SavingPlanUiModel.isAchieved(): Boolean =
+    targetAmountCents > 0L && earmarkedCents >= targetAmountCents
 
 enum class PaycheckRuleKind {
     TO_ACCOUNT_FIXED,  // 固定额转入账户
@@ -293,6 +318,7 @@ fun serializeSavingPlans(plans: List<SavingPlanUiModel>): String {
             .put("colorHex", p.colorHex)
             .put("sortOrder", p.sortOrder)
             .put("createdAt", p.createdAt)
+            .put("pinned", p.isPinned)
         if (p.events.isNotEmpty()) {
             obj.put(
                 "events",
@@ -330,6 +356,7 @@ fun parseSavingPlans(json: String?): List<SavingPlanUiModel> {
                 colorHex = o.optLong("colorHex", 0xFF059669L),
                 sortOrder = o.optInt("sortOrder", i + 1),
                 createdAt = o.optLong("createdAt", 0L),
+                isPinned = o.optBoolean("pinned", false),
                 events = parsePlanEvents(o.optJSONArray("events"))
             )
         }

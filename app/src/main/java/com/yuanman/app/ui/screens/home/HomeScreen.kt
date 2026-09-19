@@ -37,7 +37,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,7 +67,6 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToEdit: (Long) -> Unit,
     onNavigateToStatistics: () -> Unit,
-    onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -85,7 +83,7 @@ fun HomeScreen(
     var recordToDelete by remember { mutableStateOf<RecordWithCategory?>(null) }
     var openSwipeItemId by remember { mutableStateOf<Long?>(null) }
 
-    // 首页默认只展示今天的账单，支持按全部/支出/收入快速筛选。
+    // 首页：当前月展示今天的账单，翻到历史月份则展示该月全部账单（按时间倒序）
     val today = Calendar.getInstance()
     val todayDayTimestamp = today.apply {
         set(Calendar.HOUR_OF_DAY, 0)
@@ -93,10 +91,14 @@ fun HomeScreen(
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
-    val todayRecords = if (uiState.selectedYear == today.get(Calendar.YEAR) && uiState.selectedMonth == today.get(Calendar.MONTH) + 1) {
+    val isCurrentMonth = uiState.selectedYear == today.get(Calendar.YEAR) &&
+        uiState.selectedMonth == today.get(Calendar.MONTH) + 1
+    val dayRecords = if (isCurrentMonth) {
         uiState.groupedRecords[todayDayTimestamp].orEmpty()
-    } else emptyList()
-    val visibleRecords = if (selectedFilterType == null) todayRecords else todayRecords.filter {
+    } else {
+        uiState.groupedRecords.values.flatten().sortedByDescending { it.record.recordTime }
+    }
+    val visibleRecords = if (selectedFilterType == null) dayRecords else dayRecords.filter {
         it.record.type == selectedFilterType?.name
     }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -151,6 +153,7 @@ fun HomeScreen(
                     remainingBudgetCents = uiState.remainingBudgetCents,
                     dailyAvailableCents = uiState.dailyAvailableCents,
                     remainingDays = uiState.remainingDays,
+                    isPrivacyMode = uiState.isPrivacyMode,
                     onPrevMonth = { viewModel.previousMonth() },
                     onNextMonth = { viewModel.nextMonth() },
                     canGoNextMonth = canGoNextMonth,
@@ -171,16 +174,25 @@ fun HomeScreen(
                         accounts = uiState.accounts,
                         defaultExpenseAccount = uiState.defaultExpenseAccount,
                         defaultIncomeAccount = uiState.defaultIncomeAccount,
+                        isPrivacyMode = uiState.isPrivacyMode,
                         onTypeChange = { quickEntryType = it },
                         onSetDefaultAccount = { acc, isExp ->
                             viewModel.setDefaultPaymentAccount(acc, isExp)
                         },
-                        onSubmit = { input, type, categoryOverride, accountOverride ->
-                            val saved = viewModel.saveQuickEntry(input, type, categoryOverride, accountOverride)
+                        onSubmit = { input, type, categoryOverride, accountOverride, recordTime ->
+                            val saved = viewModel.saveQuickEntry(
+                                input = input,
+                                type = type,
+                                categoryOverride = categoryOverride,
+                                accountOverride = accountOverride,
+                                timeOverride = recordTime
+                            )
                             if (saved != null) {
                                 val paymentSuffix = saved.paymentMethod?.let { " · $it" }.orEmpty()
+                                // 记到其它日期时在提示里带上时间，避免用户以为没记上
+                                val timeSuffix = if (isToday(saved.recordTime)) "" else " · ${describeQuickEntryTime(saved.recordTime)}"
                                 toast.success(
-                                    "已记下 ${saved.category?.name ?: "账单"} · ¥${saved.amountYuan.toPlainString()}$paymentSuffix"
+                                    "已记下 ${saved.category?.name ?: "账单"} · ¥${saved.amountYuan.toPlainString()}$paymentSuffix$timeSuffix"
                                 )
                                 true
                             } else {
@@ -193,7 +205,7 @@ fun HomeScreen(
                     )
                 }
 
-                // 3. 今日账单
+                // 3. 今日账单（翻到历史月份时展示该月全部账单）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -201,7 +213,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "今日账单",
+                        text = if (isCurrentMonth) "今日账单" else "${uiState.selectedMonth}月账单",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -227,7 +239,11 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             EmptyStateView(
-                                title = if (todayRecords.isEmpty()) "今日暂无账单" else "暂无${if (selectedFilterType == RecordType.EXPENSE) "支出" else "收入"}账单",
+                                title = if (dayRecords.isEmpty()) {
+                                    if (isCurrentMonth) "今日暂无账单" else "${uiState.selectedMonth}月暂无账单"
+                                } else {
+                                    "暂无${if (selectedFilterType == RecordType.EXPENSE) "支出" else "收入"}账单"
+                                },
                                 description = null,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -252,7 +268,8 @@ fun HomeScreen(
                                 BitgetTransactionItem(
                                     item = item,
                                     onClick = { onNavigateToEdit(item.record.id) },
-                                    onLongClick = { activeMenuRecord = item }
+                                    onLongClick = { activeMenuRecord = item },
+                                    isPrivacyMode = uiState.isPrivacyMode
                                 )
                             }
                                 // 条目间距与账单明细页保持一致
@@ -319,9 +336,8 @@ fun HomeScreen(
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "账单详情",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                SheetTitle(
+                    title = "账单详情",
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
@@ -429,9 +445,10 @@ private fun QuickEntryStrip(
     accounts: List<AccountUiModel>,
     defaultExpenseAccount: String,
     defaultIncomeAccount: String,
+    isPrivacyMode: Boolean,
     onTypeChange: (RecordType) -> Unit,
     onSetDefaultAccount: (String, Boolean) -> Unit,
-    onSubmit: (String, RecordType, CategoryEntity?, String?) -> Boolean,
+    onSubmit: (String, RecordType, CategoryEntity?, String?, Long) -> Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -441,6 +458,9 @@ private fun QuickEntryStrip(
     var manualAccount by remember { mutableStateOf<String?>(null) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showAccountPicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    // 用户用滚轮改过的记账时间；为空时跟随文本解析结果
+    var manualTime by remember { mutableStateOf<Long?>(null) }
     val focusManager = LocalFocusManager.current
     val availableCategories = remember(categories, type) {
         categories.filter { it.type == type.name }
@@ -460,6 +480,9 @@ private fun QuickEntryStrip(
         ?: defaultAccountForType.takeIf { it.isNotBlank() }
         ?: if (isExpense) "支出账户" else "入账账户"
     val isManualAccount = manualAccount != null
+    // 记账时间：滚轮改过的手动值优先，否则用文本解析结果（缺省为当前时刻）
+    val effectiveTimeMillis = manualTime ?: preview?.recordTime ?: System.currentTimeMillis()
+    val isManualTime = manualTime != null
     val accent = if (isExpense) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
     val isReady = preview != null
@@ -507,7 +530,10 @@ private fun QuickEntryStrip(
                 BasicTextField(
                     value = text,
                     onValueChange = { newText ->
-                        if (newText.isEmpty()) manualCategory = null
+                        if (newText.isEmpty()) {
+                            manualCategory = null
+                            manualTime = null
+                        }
                         text = newText
                     },
                     modifier = Modifier
@@ -528,10 +554,11 @@ private fun QuickEntryStrip(
                         onDone = {
                             if (isReady) {
                                 val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
-                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                if (onSubmit(text, type, effectiveCategory, submitAccount, effectiveTimeMillis)) {
                                     text = ""
                                     manualCategory = null
                                     manualAccount = null
+                                    manualTime = null
                                 }
                             }
                         }
@@ -543,7 +570,7 @@ private fun QuickEntryStrip(
                         ) {
                             if (text.isEmpty()) {
                                 Text(
-                                    text = "✨ 闪电记账 如: 咖啡15 / 午餐30微信",
+                                    text = "✨ 如: 咖啡15 / 3月5日 电影40",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
                                         fontSize = 13.sp
@@ -557,6 +584,49 @@ private fun QuickEntryStrip(
                     }
                 )
 
+                // 记账时间胶囊：展示解析结果并可点按用滚轮修改（有输入时出现）
+                AnimatedVisibility(
+                    visible = text.isNotEmpty(),
+                    enter = fadeIn() + expandHorizontally(),
+                    exit = fadeOut() + shrinkHorizontally()
+                ) {
+                    Surface(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showTimePicker = true
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isManualTime) accent.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(
+                            0.8.dp,
+                            if (isManualTime) accent.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "记账时间",
+                                tint = if (isManualTime) accent else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = describeQuickEntryTime(effectiveTimeMillis),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+
                 // 3. 清空输入或关闭快捷条
                 if (text.isNotEmpty()) {
                     IconButton(
@@ -564,6 +634,7 @@ private fun QuickEntryStrip(
                             text = ""
                             manualCategory = null
                             manualAccount = null
+                            manualTime = null
                         },
                         modifier = Modifier.size(26.dp)
                     ) {
@@ -688,10 +759,11 @@ private fun QuickEntryStrip(
                         onClick = {
                             if (isReady) {
                                 val submitAccount = effectiveAccount.takeIf { it != "支出账户" && it != "入账账户" }
-                                if (onSubmit(text, type, effectiveCategory, submitAccount)) {
+                                if (onSubmit(text, type, effectiveCategory, submitAccount, effectiveTimeMillis)) {
                                     text = ""
                                     manualCategory = null
                                     manualAccount = null
+                                    manualTime = null
                                 }
                             }
                         },
@@ -744,6 +816,17 @@ private fun QuickEntryStrip(
             )
         }
 
+        if (showTimePicker) {
+            YuanmanDatePickerSheet(
+                initialDateMillis = effectiveTimeMillis,
+                onDateTimeSelected = { millis ->
+                    manualTime = millis
+                    showTimePicker = false
+                },
+                onDismiss = { showTimePicker = false }
+            )
+        }
+
         if (showAccountPicker) {
             QuickAccountPickSheet(
                 accounts = accounts,
@@ -751,6 +834,7 @@ private fun QuickEntryStrip(
                 defaultAccountName = defaultAccountForType,
                 isExpense = isExpense,
                 isManual = isManualAccount,
+                isPrivacyMode = isPrivacyMode,
                 onPick = { chosen ->
                     manualAccount = chosen
                     showAccountPicker = false
@@ -789,9 +873,8 @@ private fun QuickCategoryPickSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "选择分类",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                SheetTitle(
+                    title = "选择分类",
                     modifier = Modifier.weight(1f)
                 )
                 if (isManual) {
@@ -938,6 +1021,7 @@ private fun QuickAccountPickSheet(
     defaultAccountName: String,
     isExpense: Boolean,
     isManual: Boolean,
+    isPrivacyMode: Boolean,
     onPick: (String) -> Unit,
     onSetDefault: (String, Boolean) -> Unit,
     onRestoreAuto: () -> Unit,
@@ -951,7 +1035,7 @@ private fun QuickAccountPickSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 4.dp)
+                .padding(horizontal = SheetHorizontalPadding, vertical = 4.dp)
                 .padding(bottom = 28.dp)
         ) {
             Row(
@@ -959,12 +1043,9 @@ private fun QuickAccountPickSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = titleText,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
+                SheetTitle(
+                    title = titleText,
+                    modifier = Modifier.weight(1f)
                 )
                 if (isManual) {
                     TextButton(
@@ -1058,7 +1139,11 @@ private fun QuickAccountPickSheet(
                                             }
                                         }
                                         Text(
-                                            text = "¥" + MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true),
+                                            text = if (isPrivacyMode) {
+                                                "¥ ••••"
+                                            } else {
+                                                "¥" + MoneyUtils.centsToYuanString(account.balanceCents, withGrouping = true)
+                                            },
                                             fontSize = 10.sp,
                                             color = scheme.outline,
                                             maxLines = 1
@@ -1181,6 +1266,7 @@ private fun FinancialOverviewCard(
     remainingBudgetCents: Long,
     dailyAvailableCents: Long,
     remainingDays: Int,
+    isPrivacyMode: Boolean,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
     canGoNextMonth: Boolean,
@@ -1276,49 +1362,54 @@ private fun FinancialOverviewCard(
                     )
                 }
 
-                // 月份胶囊
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                    // 月份胶囊
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     ) {
-                        IconButton(
-                            onClick = onPrevMonth,
-                            modifier = Modifier.size(22.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronLeft,
-                                contentDescription = "上月",
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
+                            IconButton(
+                                onClick = onPrevMonth,
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronLeft,
+                                    contentDescription = "上月",
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
 
-                        Text(
-                            text = "${year}年${month}月",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { onMonthClick() }
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-
-                        IconButton(
-                            onClick = onNextMonth,
-                            enabled = canGoNextMonth,
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = "下月",
-                                modifier = Modifier.size(15.dp)
+                            Text(
+                                text = "${year}年${month}月",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onMonthClick() }
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                             )
+
+                            IconButton(
+                                onClick = onNextMonth,
+                                enabled = canGoNextMonth,
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = "下月",
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1349,13 +1440,18 @@ private fun FinancialOverviewCard(
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = MoneyUtils.centsToYuanString(totalExpense, withGrouping = true),
+                            text = if (isPrivacyMode) "••••" else MoneyUtils.centsToYuanString(totalExpense, withGrouping = true),
+                            // 行高必须跟着字号收紧：沿用 displayMedium 的 52sp 行高时，行盒下半截是空白，
+                            // 与「¥」共用 Bottom 对齐会被推到数字下方很远。
                             style = MaterialTheme.typography.displayMedium.copy(
                                 fontSize = 25.sp,
+                                lineHeight = 30.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -1372,7 +1468,7 @@ private fun FinancialOverviewCard(
                     )
                     Spacer(modifier = Modifier.height(1.dp))
                     Text(
-                        text = "¥${MoneyUtils.centsToYuanString(totalIncome, withGrouping = true)}",
+                        text = if (isPrivacyMode) "¥ ••••" else "¥${MoneyUtils.centsToYuanString(totalIncome, withGrouping = true)}",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
@@ -1381,7 +1477,11 @@ private fun FinancialOverviewCard(
                     )
                     Spacer(modifier = Modifier.height(1.dp))
                     Text(
-                        text = if (balance >= 0) "结余 +¥${MoneyUtils.centsToYuanString(balance)}" else "结余 -¥${MoneyUtils.centsToYuanString(-balance)}",
+                        text = when {
+                            isPrivacyMode -> "结余 ••••"
+                            balance >= 0 -> "结余 +¥${MoneyUtils.centsToYuanString(balance)}"
+                            else -> "结余 -¥${MoneyUtils.centsToYuanString(-balance)}"
+                        },
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
@@ -1417,7 +1517,7 @@ private fun FinancialOverviewCard(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "月预算 ¥${MoneyUtils.centsToYuanString(monthlyBudget)}",
+                                text = if (isPrivacyMode) "月预算 ¥ ••••" else "月预算 ¥${MoneyUtils.centsToYuanString(monthlyBudget)}",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1431,10 +1531,11 @@ private fun FinancialOverviewCard(
                         }
 
                         Text(
-                            text = if (remainingBudgetCents >= 0) {
-                                "剩余 ¥${MoneyUtils.centsToYuanString(remainingBudgetCents)} · 已用 ${(budgetUsedPercent * 100).toInt()}%"
-                            } else {
-                                "已超支 ¥${MoneyUtils.centsToYuanString(-remainingBudgetCents)}"
+                            text = when {
+                                isPrivacyMode -> "剩余 •••• · 已用 ${(budgetUsedPercent * 100).toInt()}%"
+                                remainingBudgetCents >= 0 ->
+                                    "剩余 ¥${MoneyUtils.centsToYuanString(remainingBudgetCents)} · 已用 ${(budgetUsedPercent * 100).toInt()}%"
+                                else -> "已超支 ¥${MoneyUtils.centsToYuanString(-remainingBudgetCents)}"
                             },
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 12.sp,
@@ -1459,7 +1560,11 @@ private fun FinancialOverviewCard(
                     if (remainingDays > 0 && remainingBudgetCents > 0L) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "本月剩余 $remainingDays 天 · 日均建议支出 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}",
+                            text = if (isPrivacyMode) {
+                                "本月剩余 $remainingDays 天 · 日均建议支出 ¥ ••••"
+                            } else {
+                                "本月剩余 $remainingDays 天 · 日均建议支出 ¥${MoneyUtils.centsToYuanString(dailyAvailableCents)}"
+                            },
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -1503,34 +1608,30 @@ private fun FinancialOverviewCard(
     }
 }
 
-@Composable
-private fun BitgetFilterPill(
-    title: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val haptic = LocalHapticFeedback.current
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            }
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.5.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.5.dp)
-        )
+private fun isToday(timeMillis: Long): Boolean {
+    val target = java.util.Calendar.getInstance().apply { timeInMillis = timeMillis }
+    val now = java.util.Calendar.getInstance()
+    return target.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+        target.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)
+}
+
+/**
+ * 闪电记账时间胶囊文案：今天 / 昨天 / 3月5日 / 2026年3月5日 + 时分。
+ */
+private fun describeQuickEntryTime(timeMillis: Long): String {
+    val target = java.util.Calendar.getInstance().apply { timeInMillis = timeMillis }
+    val now = java.util.Calendar.getInstance()
+    val sameYear = target.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR)
+    val dayDiff = target.get(java.util.Calendar.DAY_OF_YEAR) - now.get(java.util.Calendar.DAY_OF_YEAR)
+    val time = DateTimeUtils.formatTime(timeMillis)
+    // 时间胶囊在输入行里，文案尽量短：今天只显示时分
+    return when {
+        sameYear && dayDiff == 0 -> time
+        sameYear && dayDiff == -1 -> "昨天 $time"
+        sameYear && dayDiff == 1 -> "明天 $time"
+        sameYear -> "${target.get(java.util.Calendar.MONTH) + 1}/${target.get(java.util.Calendar.DAY_OF_MONTH)} $time"
+        else -> "${target.get(java.util.Calendar.YEAR)}/${target.get(java.util.Calendar.MONTH) + 1}/${target.get(java.util.Calendar.DAY_OF_MONTH)} $time"
     }
 }
 
@@ -1542,6 +1643,7 @@ fun BitgetTransactionItem(
     item: RecordWithCategory,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    isPrivacyMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val record = item.record
@@ -1551,9 +1653,13 @@ fun BitgetTransactionItem(
 
     // 行内格式化只随输入变化重算：避免相邻行状态（如滑动开关）变化导致整行重组合时
     // 反复 new BigDecimal / SimpleDateFormat，拖慢长列表滚动。
-    val amountText = remember(record.amount, isExpense) {
-        val yuan = MoneyUtils.centsToYuanString(record.amount)
-        if (isExpense) "-¥$yuan" else "+¥$yuan"
+    val amountText = remember(record.amount, isExpense, isPrivacyMode) {
+        if (isPrivacyMode) {
+            "¥ ••••"
+        } else {
+            val yuan = MoneyUtils.centsToYuanString(record.amount)
+            if (isExpense) "-¥$yuan" else "+¥$yuan"
+        }
     }
     val subtitle = remember(record.remark, record.paymentMethod) {
         listOf(record.remark, record.paymentMethod)

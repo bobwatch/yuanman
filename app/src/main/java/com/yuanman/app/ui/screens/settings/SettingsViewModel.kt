@@ -254,7 +254,33 @@ class SettingsViewModel(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val categories = uiState.value.allCategories
                 val records = uiState.value.allRecords
-                JsonBackupUtils.shareBackupFile(context, categories, records)
+                // 账户/计划等 DataStore 键一并导出，JSON 备份与文档快照的数据范围保持一致
+                val accountData = runCatching {
+                    JsonBackupUtils.parseAccountDataEnvelope(
+                        JsonBackupUtils.collectAccountDataEnvelopeBlocking(context)
+                    )
+                }.getOrDefault(emptyMap())
+                JsonBackupUtils.shareBackupFile(context, categories, records, accountData)
+            }
+        }
+    }
+
+    /** 从用户选中的 JSON 备份文件导入（分类 + 账单 + 账户/计划段）。 */
+    fun importJsonBackupFromUri(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val text = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        input.readBytes().toString(Charsets.UTF_8)
+                    }
+                }
+                if (text.isNullOrBlank()) {
+                    onResult(false, "备份文件内容为空或无法读取")
+                    return@launch
+                }
+                restoreFromJson(text, onResult)
+            } catch (e: Exception) {
+                onResult(false, "读取备份文件失败：${e.message ?: "未知错误"}")
             }
         }
     }

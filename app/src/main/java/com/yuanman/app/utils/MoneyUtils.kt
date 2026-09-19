@@ -30,6 +30,31 @@ object MoneyUtils {
         }
     }
 
+    /** 手输金额回填输入框用：不带千分位与货币符号（如 "12000"、"6666.66"） */
+    fun centsToPlainYuan(cents: Long): String =
+        BigDecimal(cents).divide(BigDecimal(100)).stripTrailingZeros().toPlainString()
+
+    /**
+     * 手输元金额清洗：只保留数字与一个小数点，整数位截到 [maxIntDigits]、小数位截到 2 位。
+     * 供预算、发薪试算等「点金额直接改」的输入框共用。
+     */
+    fun sanitizeYuanInput(raw: String, maxIntDigits: Int = 8): String {
+        val filtered = raw.filter { it.isDigit() || it == '.' }
+        val firstDot = filtered.indexOf('.')
+        val intPart = (if (firstDot >= 0) filtered.substring(0, firstDot) else filtered)
+            .take(maxIntDigits)
+        if (firstDot < 0) return intPart
+        val decPart = filtered.substring(firstDot + 1).filter { it.isDigit() }.take(2)
+        return "$intPart.$decPart"
+    }
+
+    /** 手输元金额 → 分；空串 / 单个小数点 / 非法输入一律按 0 处理 */
+    fun yuanInputToCents(text: String): Long {
+        if (text.isBlank() || text == ".") return 0L
+        val value = text.toBigDecimalOrNull() ?: return 0L
+        return value.multiply(BigDecimal(100)).toLong().coerceAtLeast(0L)
+    }
+
     /**
      * 格式化展示金额，带人民币符号（如 "¥12.34"、"-¥12.34"、"+¥500.00"）
      */

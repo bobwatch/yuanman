@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -48,9 +47,10 @@ import com.yuanman.app.utils.MoneyUtils
  *    总资产行行尾 = 发薪分配 / 账户核对两个入口胶囊（经回调注入，未注入则不渲染）。
  * 2. 待核对提醒横条：作为列表首 item **随内容滚动**（不吸顶）；行尾 (X) 二次确认
  *    「跳过本期核对」后按周期静默（每账户各自周期期末恢复，持久化）。
- * 3. 滚动区 = 攒钱计划区块（区块头右钮「＋ 新建计划」+ 横向小卡行 / 空计划宽幽灵卡，
- *    点击即开新建表单；计划小卡：点击 → 计划详情二级页、长按 → 快捷操作面板
- *    [存一笔/取一笔/编辑/删除]）+ 资金账户区块
+ * 3. 滚动区 = 攒钱计划区块（区块头「攒钱计划 · N」+「＋ 新建计划」；卡区按数量自适应：
+ *    1 个宽卡 / 2~4 个两列网格 / ≥5 个折叠为前 4 个 + 「还有 N 个计划」入口；
+ *    空计划时是宽幽灵卡 + 灵感卡；点击 → 计划详情二级页、长按 → 快捷操作面板
+ *    [存一笔/取一笔/置顶/编辑/删除]）+ 资金账户区块
  *    （区块头「＋ 新建账户」+ 分组账户清单）。
  * 4. 账户行交互：**点击 → 账户详情二级页**（展示对账记录/周期/操作）；**长按 → 账户操作面板**
  *    （转账还款 / 资金对账 / 编辑 / 删除）；负余额行内保留 [还款] 快捷钮。
@@ -65,7 +65,8 @@ fun AccountScreen(
     onOpenPlanDetail: ((planId: Long) -> Unit)? = null,
     onOpenPaycheckRun: (() -> Unit)? = null,
     onOpenAccountReconcile: (() -> Unit)? = null,
-    onOpenAssetPanorama: (() -> Unit)? = null
+    onOpenAssetPanorama: (() -> Unit)? = null,
+    onOpenAllPlans: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -111,6 +112,12 @@ fun AccountScreen(
     }
     // 专款账户余额查询表（计划卡超额判定）
     val accountsById = remember(uiState.accounts) { uiState.accounts.associateBy { it.id } }
+    // 「余额低于专款」的计划：数量多而折叠展示时必须保证它们仍在可见区
+    val overdrawnPlanIds = remember(uiState.plans, accountsById) {
+        uiState.plans
+            .filter { plan -> accountsById[plan.holderAccountId]?.let { planIsOverdrawn(plan, it.balanceCents) } == true }
+            .mapTo(HashSet()) { it.id }
+    }
 
     // ---- 下拉刷新：轻量自绘指示器（保持既有行为）----
     val pullRefreshState = rememberPullToRefreshState(enabled = { !isRefreshing })
@@ -145,6 +152,10 @@ fun AccountScreen(
     }
     val openAssetPanorama: () -> Unit = {
         onOpenAssetPanorama?.invoke()
+    }
+    val openAllPlans: () -> Unit = {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onOpenAllPlans?.invoke()
     }
     // 打开新建计划表单：账户为空时不可建，给弱引导
     val openPlanCreate: () -> Unit = {
@@ -260,7 +271,10 @@ fun AccountScreen(
 
                     // ---- 攒钱计划区块 ----
                     item(key = "plans_header") {
-                        PlansSectionHeader(onNewPlanClick = openPlanCreate)
+                        PlansSectionHeader(
+                            onNewPlanClick = openPlanCreate,
+                            planCount = uiState.plans.size
+                        )
                     }
                     if (uiState.plans.isEmpty()) {
                         // 空计划态：灵感心愿卡片流（与有计划时的横排卡片同规格 152×108dp，0 像素跳版）
@@ -278,28 +292,21 @@ fun AccountScreen(
                             )
                         }
                     } else {
-                        // 计划横排小卡（末尾无「新建」小卡，新建入口收敛到区块头按钮）
+                        // 自适应卡区：1 个宽卡 / 2~4 个两列网格 / ≥5 个折叠 + 「全部计划」入口
                         item(key = "plans_mini_row") {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            PlansAdaptiveGrid(
+                                plans = uiState.plans,
+                                accountsById = accountsById,
+                                overdrawnPlanIds = overdrawnPlanIds,
+                                isPrivacyMode = uiState.isPrivacyMode,
+                                onOpenPlan = { openPlanDetail(it) },
+                                onLongPressPlan = { plan ->
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    planInMenu = plan
+                                },
+                                onOpenAllPlans = { openAllPlans() },
                                 modifier = Modifier.padding(bottom = 6.dp)
-                            ) {
-                                items(uiState.plans, key = { it.id }) { plan ->
-                                    PlanMiniCard(
-                                        plan = plan,
-                                        holderBalanceCents = accountsById[plan.holderAccountId]?.balanceCents,
-                                        isDone = plan.targetAmountCents > 0L &&
-                                            plan.earmarkedCents >= plan.targetAmountCents,
-                                        isPrivacyMode = uiState.isPrivacyMode,
-                                        onClick = { openPlanDetail(plan) },
-                                        onLongClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            planInMenu = plan
-                                        }
-                                    )
-                                }
-                            }
+                            )
                         }
                     }
 
@@ -406,6 +413,7 @@ fun AccountScreen(
                 planFormEdit = targetPlan
                 planFormVisible = true
             },
+            onTogglePin = { viewModel.togglePlanPinned(targetPlan.id) },
             onDelete = { planToDelete = targetPlan },
             onOpenDetail = {
                 planInMenu = null

@@ -35,7 +35,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
+
+/**
+ * 周期快捷档：每周、每 2 周、每月、每季度、每半年、每年。
+ * 核对页右上角下拉菜单与周期 sheet 共用同一份，避免两处档位漂移。
+ */
+val ReconcileCyclePresets = listOf(
+    ReconcileCycle(1, ReconcileCycleUnit.WEEK),
+    ReconcileCycle(2, ReconcileCycleUnit.WEEK),
+    ReconcileCycle(1, ReconcileCycleUnit.MONTH),
+    ReconcileCycle(1, ReconcileCycleUnit.QUARTER),
+    ReconcileCycle(1, ReconcileCycleUnit.HALF_YEAR),
+    ReconcileCycle(1, ReconcileCycleUnit.YEAR)
+)
 
 /**
  * 对账周期选择 sheet（全局默认 / 账户自定义覆盖共用）。
@@ -58,15 +72,7 @@ fun ReconcileCycleSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 快捷档
-    val presets = listOf(
-        ReconcileCycle(1, ReconcileCycleUnit.WEEK),
-        ReconcileCycle(2, ReconcileCycleUnit.WEEK),
-        ReconcileCycle(1, ReconcileCycleUnit.MONTH),
-        ReconcileCycle(1, ReconcileCycleUnit.QUARTER),
-        ReconcileCycle(1, ReconcileCycleUnit.HALF_YEAR),
-        ReconcileCycle(1, ReconcileCycleUnit.YEAR)
-    )
+    val presets = ReconcileCyclePresets
 
     val effective = current ?: globalCycle
     val isWeekMode = effective.unit == ReconcileCycleUnit.WEEK
@@ -145,14 +151,9 @@ fun ReconcileCycleSheet(
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            )
-            Text(
-                text = "超过设定周期仍未对账的账户，会进入「待核对」提醒",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                color = MaterialTheme.colorScheme.outline
+            SheetTitle(
+                title = title,
+                subtitle = "超过设定周期仍未对账的账户，会进入「待核对」提醒"
             )
 
             // 跟随全局（仅账户自定义场景）

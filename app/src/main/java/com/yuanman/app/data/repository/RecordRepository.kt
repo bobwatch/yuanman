@@ -17,6 +17,9 @@ class RecordRepository(
 ) {
     fun getAllRecords(): Flow<List<RecordWithCategory>> = recordDao.getAllRecords()
 
+    /** 账单里出现过的支付方式（去重）：明细页「全部账户」筛选项的数据源。 */
+    fun observeDistinctPaymentMethods(): Flow<List<String>> = recordDao.observeDistinctPaymentMethods()
+
     fun getRecordsByDateRange(startTime: Long, endTime: Long): Flow<List<RecordWithCategory>> {
         return recordDao.getRecordsByDateRange(startTime, endTime)
     }

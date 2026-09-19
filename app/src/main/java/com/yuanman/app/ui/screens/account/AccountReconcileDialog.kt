@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.yuanman.app.ui.components.CategoryIconView
-import com.yuanman.app.ui.theme.ExpenseColorLight
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
 import kotlinx.coroutines.delay
@@ -183,17 +182,18 @@ fun AccountReconcileDialog(
                 } else {
                     val diffStr = MoneyUtils.centsToYuanString(if (diffCents > 0L) diffCents else -diffCents)
                     val hint = if (diffCents > 0L) "实际比账面多出 ¥$diffStr" else "实际比账面缺少 ¥$diffStr"
+                    val diffColor = MaterialTheme.colorScheme.error
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = ExpenseColorLight.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, ExpenseColorLight.copy(alpha = 0.3f)),
+                        color = diffColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, diffColor.copy(alpha = 0.3f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Text(
                                 text = "存在差额: $hint",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = ExpenseColorLight
+                                color = diffColor
                             )
                             Text(
                                 text = "点击下方校正，差额将并入期初基线，保持后续流水自然累计。",

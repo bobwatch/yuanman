@@ -31,8 +31,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.IconPalette
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
@@ -232,6 +235,7 @@ fun PlanQuickActionSheet(
     onDeposit: () -> Unit,
     onWithdraw: () -> Unit,
     onEdit: () -> Unit,
+    onTogglePin: () -> Unit,
     onDelete: () -> Unit,
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier
@@ -283,7 +287,7 @@ fun PlanQuickActionSheet(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
+                        .height(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowDownward,
@@ -299,7 +303,7 @@ fun PlanQuickActionSheet(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
+                        .height(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowUpward,
@@ -326,12 +330,18 @@ fun PlanQuickActionSheet(
                 modifier = Modifier.padding(vertical = 4.dp)
             )
 
-            // ---- 管理入口：编辑 / 删除（与详情页顶栏同款动作，长按场景直达）----
+            // ---- 管理入口：编辑 / 置顶 / 删除（与详情页顶栏同款动作，长按场景直达）----
             PlanQuickActionRow(
                 title = "编辑计划",
                 icon = Icons.Default.Edit,
                 iconTint = scheme.onSurface,
                 onClick = { runAction(onEdit) }
+            )
+            PlanQuickActionRow(
+                title = if (plan.isPinned) "取消置顶" else "置顶计划",
+                icon = Icons.Default.PushPin,
+                iconTint = scheme.onSurface,
+                onClick = { runAction(onTogglePin) }
             )
             PlanQuickActionRow(
                 title = "删除计划",
@@ -556,7 +566,7 @@ fun PlanFormSheet(
         )
     }
     var colorHex by remember(planToEdit, initialColorHex) {
-        mutableStateOf(planToEdit?.colorHex ?: (initialColorHex ?: 0xFF059669L))
+        mutableStateOf(planToEdit?.colorHex ?: (initialColorHex ?: IconPalette.DEFAULT_COLOR))
     }
 
     val isEditing = planToEdit != null
@@ -571,10 +581,7 @@ fun PlanFormSheet(
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = if (isEditing) "编辑计划" else "新建计划",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            SheetTitle(title = if (isEditing) "编辑计划" else "新建计划")
 
             // 计划名称
             OutlinedTextField(
@@ -911,18 +918,9 @@ fun SchemeEditorSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // ---- 标题 + 执行顺序说明 ----
-            Text(
-                text = "发薪分配方案",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                ),
-                color = schemeColors.onSurface
-            )
-            Text(
-                text = "按顺序执行：先规则、后自动清欠、再留存",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                color = schemeColors.outline
+            SheetTitle(
+                title = "发薪分配方案",
+                subtitle = "按顺序执行：先规则、后自动清欠、再留存"
             )
 
             // ---- 剩余自动清欠开关（即改即存）----
@@ -1011,9 +1009,9 @@ fun SchemeEditorSheet(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Outlined.Delete,
                                 contentDescription = "删除规则",
-                                tint = schemeColors.error,
+                                tint = schemeColors.error.copy(alpha = 0.85f),
                                 modifier = Modifier
                                     .size(16.dp)
                                     .clickable {

@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.CategoryIconView
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
@@ -163,14 +164,14 @@ fun AccountActionSheet(
                                 if (isDefaultIncome) {
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFF059669).copy(alpha = 0.12f),
-                                        border = BorderStroke(0.5.dp, Color(0xFF059669).copy(alpha = 0.4f))
+                                        color = scheme.primary.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, scheme.primary.copy(alpha = 0.4f))
                                     ) {
                                         Text(
                                             text = "默认收入",
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF059669),
+                                            color = scheme.primary,
                                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                         )
                                     }
@@ -351,7 +352,7 @@ fun AccountActionSheet(
                         title = "设为默认收入账户",
                         subtitle = "记录收入流水时优先归入此账户",
                         icon = Icons.Default.Star,
-                        iconTint = Color(0xFF059669),
+                        iconTint = scheme.primary,
                         checked = isDefaultIncome,
                         onCheckedChange = { checked ->
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -562,18 +563,9 @@ fun PendingReconcileSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             // ---- 标题区 ----
-            Text(
-                text = "资金对账",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                ),
-                color = scheme.onSurface
-            )
-            Text(
-                text = "选择账户核对实际余额，差额将并入期初基线",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                color = scheme.outline
+            SheetTitle(
+                title = "资金对账",
+                subtitle = "选择账户核对实际余额，差额将并入期初基线"
             )
             Spacer(modifier = Modifier.height(8.dp))
 

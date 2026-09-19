@@ -79,10 +79,9 @@ fun WeekPickerModal(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp)
         ) {
-            Text(
-                text = "选择查看周",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 16.dp)
+            SheetTitle(
+                title = "选择查看周",
+                modifier = Modifier.padding(bottom = 14.dp)
             )
 
             // 年份切换栏

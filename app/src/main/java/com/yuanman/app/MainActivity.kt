@@ -141,19 +141,13 @@ class MainActivity : ComponentActivity() {
                             // 常驻预置分类图标 painter，避免各页面每次进入重建矢量树导致卡顿
                             PrimeIconPainters()
 
-                            LaunchedEffect(pendingWidgetRoute) {
-                                pendingWidgetRoute?.let { route ->
-                                    navController.navigate(route) {
-                                        launchSingleTop = true
-                                    }
-                                    pendingWidgetRoute = null
-                                }
-                            }
-
-                            // 页面导航图
+                            // 页面导航图（桌面微件等外部入口的路由由 NavGraph 内部接收：
+                            // tab 路由切 tab，二级页面压入悬浮栈）
                             YuanmanNavGraph(
                                 navController = navController,
-                                app = app
+                                app = app,
+                                externalRoute = pendingWidgetRoute,
+                                onExternalRouteConsumed = { pendingWidgetRoute = null }
                             )
 
                             // 🌟 全局顶部 Toast 悬浮层 (浮于所有 Sheet 与页面之上，自顶部自然落下)

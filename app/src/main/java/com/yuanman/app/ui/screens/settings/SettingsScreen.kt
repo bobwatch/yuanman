@@ -34,13 +34,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yuanman.app.data.local.DatabaseBackupManager
 import com.yuanman.app.data.model.ThemeMode
 import com.yuanman.app.sync.PeerDevice
+import com.yuanman.app.ui.components.AppHeaderSurface
 import com.yuanman.app.ui.components.BudgetSliderDialog
 import com.yuanman.app.ui.components.ConfirmDeleteDialog
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
 import com.yuanman.app.utils.MoneyUtils
 import com.yuanman.app.utils.UpdateInfo
@@ -76,6 +79,20 @@ fun SettingsScreen(
         }
     }
 
+    val jsonBackupPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importJsonBackupFromUri(context, uri) { success, message ->
+                if (success) {
+                    toast.success(message)
+                } else {
+                    toast.error(message)
+                }
+            }
+        }
+    }
+
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showWifiSyncModal by remember { mutableStateOf(false) }
     // 数据管理底部操作层（导出 / 导入 / 备份与恢复）
@@ -90,6 +107,7 @@ fun SettingsScreen(
     var isBackingUp by remember { mutableStateOf(false) }
     var isRestoringBackup by remember { mutableStateOf(false) }
     var showStorageAccessDialog by remember { mutableStateOf(false) }
+    var showAboutSheet by remember { mutableStateOf(false) }
 
     val backupRestorePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -181,10 +199,27 @@ fun SettingsScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
-            TopAppBar(
-                modifier = Modifier.offset(y = (-4).dp),
-                title = { Text("设置", fontWeight = FontWeight.Bold) }
-            )
+            // 🌟 顶部 Header —— 与首页 FinancialOverviewCard 同款底纹卡视觉（AppHeaderSurface）：
+            // 素面底 + 低对比斜向细纹理 + 主色柔光晕 + 1dp 细描边 + 3dp 柔和投影；贴屏幕顶、
+            // 仅底部 18dp 圆角，纹理会连续铺到状态栏上方。
+            AppHeaderSurface(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "设置",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -392,10 +427,12 @@ fun SettingsScreen(
                 }
             }
 
-            // 🌟 关于应用
+            // 🌟 关于应用（点按打开关于页：应用图标、版本与检查更新）
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { showAboutSheet = true }
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -409,6 +446,12 @@ fun SettingsScreen(
                     text = "版本 v${viewModel.updateManager.currentVersionName} · 纯本地离线隐私保护",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "查看详情 ›",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -513,18 +556,10 @@ fun SettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "主题外观",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "选择应用界面深浅色显示风格",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
+                SheetTitle(
+                    title = "主题外观",
+                    subtitle = "选择应用界面深浅色显示风格"
+                )
 
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -629,16 +664,10 @@ fun SettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = "数据管理",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                Text(
-                    text = "导出、导入、备份与恢复",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(bottom = 6.dp)
+                SheetTitle(
+                    title = "数据管理",
+                    subtitle = "导出、导入、备份与恢复",
+                    modifier = Modifier.padding(top = 6.dp, bottom = 6.dp)
                 )
 
                 SettingsRowItem(
@@ -708,6 +737,29 @@ fun SettingsScreen(
                     }
                 )
 
+                SettingsRowItem(
+                    icon = Icons.Outlined.IosShare,
+                    title = "导出 JSON 备份",
+                    subtitle = "含分类、全部账单、账户与计划的通用备份文件，可分享到微信/邮件或存到网盘",
+                    onClick = {
+                        viewModel.exportJsonBackup(context)
+                        showDataManageSheet = false
+                        toast.info("正在生成 JSON 备份文件…")
+                    }
+                )
+
+                SettingsRowItem(
+                    icon = Icons.Outlined.FileOpen,
+                    title = "导入 JSON 备份",
+                    subtitle = "从 JSON 备份文件合并分类、账单与账户计划（保留本机已有数据）",
+                    onClick = {
+                        jsonBackupPickerLauncher.launch(
+                            arrayOf("application/json", "text/plain", "*/*")
+                        )
+                        showDataManageSheet = false
+                    }
+                )
+
                 Spacer(modifier = Modifier.height(6.dp))
             }
         }
@@ -718,6 +770,17 @@ fun SettingsScreen(
             syncManager = viewModel.syncManager,
             toast = toast,
             onDismiss = { showWifiSyncModal = false }
+        )
+    }
+
+    if (showAboutSheet) {
+        AboutYuanmanSheet(
+            updateManager = viewModel.updateManager,
+            onDismiss = { showAboutSheet = false },
+            onInstallApk = { apkFile ->
+                viewModel.updateManager.installApk(apkFile)
+                toast.info("正在打开安装器…")
+            }
         )
     }
 
@@ -891,6 +954,7 @@ private fun FamilySyncBottomSheet(
     val syncStatus by syncManager.status.collectAsStateWithLifecycle()
     val pendingRequests by syncManager.pendingRequests.collectAsStateWithLifecycle()
     val pendingOutboundDevices by syncManager.pendingOutboundDevices.collectAsStateWithLifecycle()
+    val verificationCode by syncManager.verificationCode.collectAsStateWithLifecycle()
     val primaryColor = MaterialTheme.colorScheme.primary
 
     var knownDeviceNames by remember { mutableStateOf(setOf<String>()) }
@@ -926,9 +990,23 @@ private fun FamilySyncBottomSheet(
             },
             title = { Text("设备同步请求") },
             text = {
-                Text(
-                    "设备「${pendingRequest.deviceName}」正在请求同步账单数据。\n\n来源：${pendingRequest.hostAddress}\n\n请确认是否允许本次同步。"
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "设备「${pendingRequest.deviceName}」正在请求同步账单数据。\n\n来源：${pendingRequest.hostAddress}\n\n请确认是否允许本次同步。"
+                    )
+                    pendingRequest.verificationCode?.let { code ->
+                        Text(
+                            text = "核对码 $code",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "请与对方屏幕上显示的核对码比对；不一致说明连接可能被劫持，请选择拒绝。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
@@ -961,15 +1039,9 @@ private fun FamilySyncBottomSheet(
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "设备同步",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = syncStatus,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
+                SheetTitle(
+                    title = "设备同步",
+                    subtitle = syncStatus
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -977,6 +1049,19 @@ private fun FamilySyncBottomSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                verificationCode?.let { code ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "核对码 $code",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "请与对方屏幕上显示的核对码比对一致再同意；不一致请拒绝本次同步。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
 
             // 🌟 在线设备列表与同步

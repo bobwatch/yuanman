@@ -1,20 +1,31 @@
 package com.yuanman.app.ui.components
 
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+/** sheet 统一左右内边距：全 App 的弹层正文都以此为基准 */
+val SheetHorizontalPadding = 20.dp
+
+/** sheet 统一底部主按钮高度 */
+private val SheetPrimaryButtonHeight = 48.dp
 
 /**
  * Shared bottom-sheet chrome used throughout the app.
@@ -51,5 +62,56 @@ fun YuanmanModalBottomSheet(
                 .navigationBarsPadding(),
             content = content
         )
+    }
+}
+
+/**
+ * sheet 统一标题块：标题 16sp Bold + 可选副标题 11.5sp outline。
+ *
+ * 各 sheet 此前分别用 15/16/20sp 三档标题、11 与 14sp 两档副标题，同一 App 里
+ * 打开不同弹层会有肉眼可见的字号跳变；统一走这里。
+ */
+@Composable
+fun SheetTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+/** sheet 底部主按钮：统一 48dp 高、12dp 圆角、15sp Bold 文案 */
+@Composable
+fun SheetPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(SheetPrimaryButtonHeight)
+    ) {
+        Text(text = text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
     }
 }

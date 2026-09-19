@@ -28,6 +28,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -61,7 +64,8 @@ import kotlinx.coroutines.delay
 /**
  * 账户页「攒钱计划」区块展示组件：
  * - PlansSectionHeader：区块标题头（左侧主色微条 + 标题，右侧「＋ 新建计划」胶囊按钮）。
- * - PlanMiniCard：计划微卡（152 × 108dp，r16，光晕色彩点、分层金额排版、6dp 精致进度条）。
+ * - PlanMiniCard：计划微卡（高 108dp，宽度由调用方决定；r16、光晕色彩点、分层金额排版、6dp 精致进度条）。
+ * - PlansAdaptiveGrid：按计划数量自适应（1 宽卡 / 2~4 两列网格 / ≥5 折叠 + 全部入口）。
  * - PlansEmptyRow：同构空态卡片流（152 × 108dp，与有数据时零跳版切换）：
  *     - 首卡 PlanGhostCreateCard：虚线幽灵卡，点击直接新建；
  *     - 随卡 PlanInspirationCard：灵感心愿卡（旅行、数码、应急等），点击一键带入预设。
@@ -78,6 +82,7 @@ private val OverdrawnWarnColor = Color(0xFFFF9800)
 @Composable
 fun PlansSectionHeader(
     onNewPlanClick: () -> Unit,
+    planCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
@@ -101,7 +106,7 @@ fun PlansSectionHeader(
                     .background(colors.primary)
             )
             Text(
-                text = "攒钱计划",
+                text = if (planCount > 0) "攒钱计划 · $planCount" else "攒钱计划",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp
@@ -148,15 +153,19 @@ fun PlansSectionHeader(
 // -----------------------------------------------------------------------------
 
 /**
- * 计划小卡（横向卡行，152 × 108dp、r16、0.5dp elevation、1dp 细描边）。
+ * 计划小卡（高度 108dp、r16、0.5dp elevation、1dp 细描边；宽度由调用方决定：
+ * 折叠网格传 weight、只有一个计划时传 fillMaxWidth、独立卡行传 width(152dp)）。
  *
  * 视觉层次升级：
  *  - 顶层注入 5% 计划色极微弱光晕，卡片更具专属辨识度；
- *  - 行1：色彩指示灯（带 13dp 柔光外环 + 6.5dp 实体核），计划名称（13sp SemiBold 单行省略），
+ *  - 行1：色彩指示灯（带 13dp 柔光外环 + 6.5dp 实体核），置顶小图钉，计划名称（13sp SemiBold 单行省略），
  *         右侧达标显示「达成」精致微胶囊，未达标显示百分比小字；
  *  - 行2：已攒金额主读数：¥ 币符（12sp）与金额数字（20sp Bold）分层排版；
- *  - 行3：说明行：超额警示（琥珀）> 目标金额 > 未设目标上限；
+ *  - 行3：说明行：超额警示（琥珀）> 目标金额 > 未设目标上限；宽卡改为「专款账户 · 还差多少」；
  *  - 行4：精致进度条（6dp 标尺，倒角圆润裁切，超额/达标平滑过渡）。
+ *
+ * @param wide 宽卡（独占整行）：说明行展示专款账户与距离目标差额；窄卡展示目标金额
+ * @param holderAccountName 专款账户名；仅宽卡使用，为空时退回窄卡文案
  */
 @Composable
 fun PlanMiniCard(
@@ -166,6 +175,8 @@ fun PlanMiniCard(
     isPrivacyMode: Boolean,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    wide: Boolean = false,
+    holderAccountName: String? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
@@ -186,7 +197,6 @@ fun PlanMiniCard(
             }
         ),
         modifier = modifier
-            .width(152.dp)
             .height(108.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
@@ -221,7 +231,9 @@ fun PlanMiniCard(
                     plan = plan,
                     overdrawn = overdrawn,
                     shortfallCents = (plan.earmarkedCents - (holderBalanceCents ?: 0L)).coerceAtLeast(0L),
-                    isPrivacyMode = isPrivacyMode
+                    isPrivacyMode = isPrivacyMode,
+                    wide = wide,
+                    holderAccountName = holderAccountName
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -272,6 +284,16 @@ private fun PlanMiniTitleRow(
             )
         }
         Spacer(modifier = Modifier.width(6.dp))
+
+        if (plan.isPinned) {
+            Icon(
+                imageVector = Icons.Default.PushPin,
+                contentDescription = "已置顶",
+                tint = planColor.copy(alpha = 0.85f),
+                modifier = Modifier.size(11.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+        }
 
         Text(
             text = plan.name,
@@ -329,6 +351,147 @@ private fun PlanMiniTitleRow(
     }
 }
 
+/** 折叠展示的可见计划上限：两列两行；再多交给「全部攒钱计划」页承接。 */
+const val PLAN_GRID_COLLAPSE_LIMIT = 4
+
+/**
+ * 攒钱计划自适应卡区（按计划数量切换形态）：
+ *  - 1 个计划 → 单张宽卡独占整行，说明行展示「专款账户 · 还差多少」；
+ *  - 2~4 个   → 两列网格，全部可见，不再需要横滑；
+ *  - ≥5 个    → 只展示前 4 个（余额低于专款的计划强制进可见区）+ 全宽「查看全部」入口。
+ */
+@Composable
+fun PlansAdaptiveGrid(
+    plans: List<SavingPlanUiModel>,
+    accountsById: Map<Long, AccountUiModel>,
+    overdrawnPlanIds: Set<Long>,
+    isPrivacyMode: Boolean,
+    onOpenPlan: (SavingPlanUiModel) -> Unit,
+    onLongPressPlan: (SavingPlanUiModel) -> Unit,
+    onOpenAllPlans: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (plans.isEmpty()) return
+
+    val visiblePlans = selectVisiblePlans(plans, overdrawnPlanIds, PLAN_GRID_COLLAPSE_LIMIT)
+    val hiddenCount = plans.size - visiblePlans.size
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (visiblePlans.size == 1) {
+            val plan = visiblePlans.first()
+            PlanMiniCard(
+                plan = plan,
+                holderBalanceCents = accountsById[plan.holderAccountId]?.balanceCents,
+                isDone = plan.isAchieved(),
+                isPrivacyMode = isPrivacyMode,
+                wide = true,
+                holderAccountName = accountsById[plan.holderAccountId]?.name,
+                onClick = { onOpenPlan(plan) },
+                onLongClick = { onLongPressPlan(plan) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                visiblePlans.chunked(2).forEach { rowPlans ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        rowPlans.forEach { plan ->
+                            PlanMiniCard(
+                                plan = plan,
+                                holderBalanceCents = accountsById[plan.holderAccountId]?.balanceCents,
+                                isDone = plan.isAchieved(),
+                                isPrivacyMode = isPrivacyMode,
+                                onClick = { onOpenPlan(plan) },
+                                onLongClick = { onLongPressPlan(plan) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // 奇数个计划时补一个占位，保证最后一张卡保持半宽
+                        if (rowPlans.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hiddenCount > 0) {
+            PlansAllEntryRow(
+                hiddenCount = hiddenCount,
+                warnCount = overdrawnPlanIds.size,
+                onClick = onOpenAllPlans,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)
+            )
+        }
+    }
+}
+
+/** 「查看全部 N 个计划」入口：与网格同宽，风险计划数在副行以琥珀提示。 */
+@Composable
+private fun PlansAllEntryRow(
+    hiddenCount: Int,
+    warnCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = colors.surface,
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.38f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Savings,
+                contentDescription = null,
+                tint = colors.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "还有 $hiddenCount 个计划",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = colors.onSurface,
+                    maxLines = 1
+                )
+                Text(
+                    text = if (warnCount > 0) {
+                        "查看全部 · $warnCount 个计划余额低于专款"
+                    } else {
+                        "查看全部计划，可长按置顶"
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = if (warnCount > 0) OverdrawnWarnColor else colors.outline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = colors.outline,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
 /** 小卡进度比例（达标封顶 1f） */
 private fun progressFractionFor(plan: SavingPlanUiModel): Float {
     if (plan.targetAmountCents <= 0L) return 0f
@@ -350,22 +513,34 @@ private fun PlanMiniCaptionRow(
     overdrawn: Boolean,
     shortfallCents: Long,
     isPrivacyMode: Boolean,
+    wide: Boolean = false,
+    holderAccountName: String? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
     val hasTarget = plan.targetAmountCents > 0L
+    val mask = if (isPrivacyMode) "••••" else null
 
     val text: String
     val textColor: Color
     when {
         overdrawn -> {
-            val shortfallStr = if (isPrivacyMode) "••••" else MoneyUtils.centsToCompactYuan(shortfallCents)
-            text = "低于专款 ¥$shortfallStr"
+            text = "低于专款 ¥${mask ?: MoneyUtils.centsToCompactYuan(shortfallCents)}"
             textColor = OverdrawnWarnColor
         }
+        // 宽卡：把整行让给「专款账户 + 距离目标差额」，比重复展示目标金额更有用
+        wide && holderAccountName != null -> {
+            val remaining = (plan.targetAmountCents - plan.earmarkedCents).coerceAtLeast(0L)
+            val tail = when {
+                !hasTarget -> "无上限"
+                remaining <= 0L -> "已达成"
+                else -> "还差 ¥${mask ?: MoneyUtils.centsToCompactYuan(remaining)}"
+            }
+            text = "专款 $holderAccountName · $tail"
+            textColor = colors.onSurfaceVariant.copy(alpha = 0.75f)
+        }
         hasTarget -> {
-            val targetStr = if (isPrivacyMode) "••••" else MoneyUtils.centsToCompactYuan(plan.targetAmountCents)
-            text = "目标 ¥$targetStr"
+            text = "目标 ¥${mask ?: MoneyUtils.centsToCompactYuan(plan.targetAmountCents)}"
             textColor = colors.onSurfaceVariant.copy(alpha = 0.75f)
         }
         else -> {

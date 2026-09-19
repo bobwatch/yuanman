@@ -21,7 +21,9 @@ data class UpdateInfo(
     val releaseTitle: String,
     val releaseNotes: String,
     val apkUrl: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    /** 发布方提供的 SHA-256 旁文件地址（`app-release.apk.sha256`）；缺失时只校验包名与签名。 */
+    val sha256Url: String? = null
 )
 
 sealed class UpdateState {
@@ -50,6 +52,9 @@ class UpdateManager(
 
     private val _showUpdatePrompt = MutableStateFlow(false)
     val showUpdatePrompt: StateFlow<Boolean> = _showUpdatePrompt.asStateFlow()
+
+    /** 已通过校验的安装包摘要（按文件路径缓存），供打开安装器前复核使用。 */
+    private val verifiedDigests = mutableMapOf<String, String>()
 
     val currentVersionName: String
         get() = try {
@@ -84,9 +89,11 @@ class UpdateManager(
                             LAST_SEEN_VERSION,
                             null
                         )
-                        // 检查本地是否已经下载过该版本的 APK
+                        // 检查本地是否已经下载过该版本的 APK（命中也要重新校验，避免缓存被替换）
                         val cachedApk = File(context.cacheDir, cacheFileName(info.versionName))
-                        if (cachedApk.exists() && cachedApk.length() > 0 && (info.sizeBytes == 0L || cachedApk.length() == info.sizeBytes)) {
+                        val sizeMatches = cachedApk.exists() && cachedApk.length() > 0 &&
+                            (info.sizeBytes == 0L || cachedApk.length() == info.sizeBytes)
+                        if (sizeMatches && verificationFailure(info, cachedApk) == null) {
                             _updateState.value = UpdateState.ReadyToInstall(info, cachedApk)
                         } else {
                             _updateState.value = UpdateState.Available(info)
@@ -166,34 +173,18 @@ class UpdateManager(
                 val destFile = File(context.cacheDir, cacheFileName(info.versionName))
                 val partialFile = File(context.cacheDir, "${cacheFileName(info.versionName)}.part")
 
-                val conn = URL(info.apkUrl).openConnection() as HttpURLConnection
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 30_000
-                conn.setRequestProperty("User-Agent", "yuanman-android")
+                val conn = openConnection(info.apkUrl)
 
-                // 支持 GitHub Release 302 重定向
-                conn.instanceFollowRedirects = true
-                var realConn = conn
-                if (conn.responseCode == HttpURLConnection.HTTP_MOVED_TEMP || conn.responseCode == HttpURLConnection.HTTP_MOVED_PERM || conn.responseCode == 307 || conn.responseCode == 308) {
-                    val redirectUrl = conn.getHeaderField("Location")
-                    if (!redirectUrl.isNullOrBlank()) {
-                        realConn = URL(redirectUrl).openConnection() as HttpURLConnection
-                        realConn.connectTimeout = 15_000
-                        realConn.readTimeout = 30_000
-                        realConn.setRequestProperty("User-Agent", "yuanman-android")
-                    }
-                }
-
-                if (realConn.responseCode != HttpURLConnection.HTTP_OK) {
-                    _updateState.value = UpdateState.Error("下载失败 (HTTP ${realConn.responseCode})")
+                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                    _updateState.value = UpdateState.Error("下载失败 (HTTP ${conn.responseCode})")
                     return@launch
                 }
 
-                val totalLength = if (realConn.contentLengthLong > 0) realConn.contentLengthLong else info.sizeBytes
+                val totalLength = if (conn.contentLengthLong > 0) conn.contentLengthLong else info.sizeBytes
                 var downloaded = 0L
 
                 partialFile.delete()
-                realConn.inputStream.use { input ->
+                conn.inputStream.use { input ->
                     partialFile.outputStream().use { output ->
                         val buffer = ByteArray(64 * 1024)
                         var read: Int
@@ -208,8 +199,14 @@ class UpdateManager(
 
                 destFile.delete()
                 if (partialFile.renameTo(destFile)) {
-                    _updateState.value = UpdateState.ReadyToInstall(info, destFile)
-                    _showUpdatePrompt.value = true
+                    val failure = verificationFailure(info, destFile)
+                    if (failure == null) {
+                        _updateState.value = UpdateState.ReadyToInstall(info, destFile)
+                        _showUpdatePrompt.value = true
+                    } else {
+                        destFile.delete()
+                        _updateState.value = UpdateState.Error(failure)
+                    }
                 } else {
                     _updateState.value = UpdateState.Error("重命名安装包失败")
                 }
@@ -224,6 +221,16 @@ class UpdateManager(
         try {
             if (!apkFile.exists()) {
                 _updateState.value = UpdateState.Error("安装包文件不存在，请重新下载")
+                return
+            }
+
+            // 打开安装器前复核一次：摘要（若已取得）+ 包名 + 签名
+            val failure = when (val result = ApkVerifier.verify(context, apkFile, verifiedDigests[apkFile.absolutePath])) {
+                is ApkVerificationResult.Passed -> null
+                is ApkVerificationResult.Failed -> result.message
+            }
+            if (failure != null) {
+                _updateState.value = UpdateState.Error(failure)
                 return
             }
 
@@ -247,6 +254,67 @@ class UpdateManager(
         }
     }
 
+    /**
+     * 校验安装包，返回 null 表示通过、否则返回失败原因。
+     * 发布方提供 `.sha256` 时必须取到并比对，取不到就阻止安装——宁可让用户手动下载，
+     * 也不能在无法校验的情况下把包交给系统安装器。
+     */
+    private fun verificationFailure(info: UpdateInfo, apkFile: File): String? {
+        val expectedDigest = try {
+            fetchExpectedDigest(info)
+        } catch (e: Exception) {
+            return "无法获取官方校验摘要（${e.message ?: "网络异常"}），已阻止安装"
+        }
+        return when (val result = ApkVerifier.verify(context, apkFile, expectedDigest)) {
+            is ApkVerificationResult.Passed -> {
+                expectedDigest?.let { verifiedDigests[apkFile.absolutePath] = it }
+                null
+            }
+            is ApkVerificationResult.Failed -> result.message
+        }
+    }
+
+    /** 拉取发布方提供的 SHA-256 摘要；未提供摘要文件时返回 null。 */
+    private fun fetchExpectedDigest(info: UpdateInfo): String? {
+        val sha256Url = info.sha256Url ?: return null
+        val conn = openConnection(sha256Url)
+        try {
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("HTTP ${conn.responseCode}")
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            return ApkVerifier.parseDigestFile(body)
+                ?: throw IllegalStateException("摘要文件格式无法解析")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** 打开连接并跟随 GitHub Release 的 302/307/308 重定向。 */
+    private fun openConnection(url: String): HttpURLConnection {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 15_000
+        conn.readTimeout = 30_000
+        conn.setRequestProperty("User-Agent", "yuanman-android")
+        conn.instanceFollowRedirects = true
+        if (conn.responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+            conn.responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+            conn.responseCode == 307 ||
+            conn.responseCode == 308
+        ) {
+            val redirectUrl = conn.getHeaderField("Location")
+            if (!redirectUrl.isNullOrBlank()) {
+                conn.disconnect()
+                val redirected = URL(redirectUrl).openConnection() as HttpURLConnection
+                redirected.connectTimeout = 15_000
+                redirected.readTimeout = 30_000
+                redirected.setRequestProperty("User-Agent", "yuanman-android")
+                return redirected
+            }
+        }
+        return conn
+    }
+
     private fun parseRelease(jsonString: String): UpdateInfo? {
         return try {
             val json = JSONObject(jsonString)
@@ -257,14 +325,17 @@ class UpdateManager(
             val assets = json.optJSONArray("assets") ?: return null
             var apkUrl: String? = null
             var sizeBytes = 0L
+            var sha256Url: String? = null
 
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val name = asset.optString("name", "")
-                if (name.endsWith(".apk", ignoreCase = true)) {
-                    apkUrl = asset.optString("browser_download_url")
+                val url = asset.optString("browser_download_url")
+                if (apkUrl == null && name.endsWith(".apk", ignoreCase = true)) {
+                    apkUrl = url
                     sizeBytes = asset.optLong("size", 0L)
-                    break
+                } else if (sha256Url == null && name.endsWith(".sha256", ignoreCase = true)) {
+                    sha256Url = url
                 }
             }
 
@@ -276,7 +347,8 @@ class UpdateManager(
                 releaseTitle = json.optString("name", "v$versionName"),
                 releaseNotes = json.optString("body", "").trim(),
                 apkUrl = apkUrl,
-                sizeBytes = sizeBytes
+                sizeBytes = sizeBytes,
+                sha256Url = sha256Url
             )
         } catch (e: Exception) {
             null

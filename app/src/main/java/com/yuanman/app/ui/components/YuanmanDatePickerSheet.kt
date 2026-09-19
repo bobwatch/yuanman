@@ -137,7 +137,7 @@ fun YuanmanDatePickerSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 6.dp)
+                .padding(horizontal = SheetHorizontalPadding, vertical = 6.dp)
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -147,11 +147,7 @@ fun YuanmanDatePickerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (isDateTimeMode) "选择记账时间" else "选择日期",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                SheetTitle(title = if (isDateTimeMode) "选择记账时间" else "选择日期")
 
                 TextButton(
                     onClick = onDismiss,

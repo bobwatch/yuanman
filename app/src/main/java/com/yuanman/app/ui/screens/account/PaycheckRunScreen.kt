@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Shield
@@ -65,6 +67,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,11 +75,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -84,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.ui.components.CategoryIconView
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.EmptyStateView
 import com.yuanman.app.ui.components.LocalToastHostState
 import com.yuanman.app.ui.components.YuanmanModalBottomSheet
@@ -92,14 +102,10 @@ import com.yuanman.app.utils.MoneyUtils
 import java.math.BigDecimal
 
 /**
- * 发薪分配 全新重构界面（v0.0.5）
+ * 发薪分配 二级页。
  *
- * 现代化薪资智能分流控制台：
- *  1. 全景动线看板 (Hero Pipeline Card)：直观展示「工资到账 ➔ 规则分流 ➔ 智能清欠 ➔ 留存开销」全自动化链路；
- *  2. 动态发薪模拟测算器 (Paycheck Simulator)：可交互模拟任意薪资金额，动态显示多色分流比例条与留存试算；
- *  3. 立体步进式规则卡片群 (Step Pipeline Rule Cards)：按序展示分流步骤、目标账户/计划徽章与金额比例，支持快捷调整；
- *  4. 时间轴分账履历 (Timeline Execution Logs)：以时间轴节点清晰记录历次分账详情与卡内留存；
- *  5. 快速手动补分入口 (Manual Fallback)：为未自动分账的收入提供一键手动触发。
+ * 四段：自动分账开关与动线、分账试算、分配规则清单、执行记录；末尾是手动补分入口。
+ * 引擎语义见 [planPaycheckActions]。
  */
 @Composable
 fun PaycheckRunScreen(
@@ -137,19 +143,12 @@ fun PaycheckRunScreen(
             TopAppBar(
                 modifier = Modifier.offset(y = (-4).dp),
                 title = {
-                    Column {
-                        Text(
-                            text = "发薪分配方案",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "薪资到账智能分流与自动储蓄",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = colors.outline
-                        )
-                    }
+                    Text(
+                        text = "发薪分配方案",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -201,6 +200,7 @@ fun PaycheckRunScreen(
                         plans = plans,
                         scheme = scheme,
                         isPrivacyMode = privacy,
+                        autoEnabled = uiState.paycheckAutoEnabled,
                         onConfigScheme = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showSchemeEdit = true
@@ -211,6 +211,7 @@ fun PaycheckRunScreen(
                     // ---- 3. 立体步进式分流规则链路 (Rules Pipeline) ----
                     PaycheckRulesPipelineSection(
                         scheme = scheme,
+                        enabled = uiState.paycheckAutoEnabled,
                         accountsById = accounts.associateBy { it.id },
                         plansById = plans.associateBy { it.id },
                         onEdit = {
@@ -267,7 +268,79 @@ fun PaycheckRunScreen(
 }
 
 // ---------------------------------------------------------------------------
-// 1. 全景动线看板组件 (Hero Pipeline Card)
+// 0. 共用：可横滑芯片行 / 图例
+// ---------------------------------------------------------------------------
+
+/** 四个区块标题统一字号，避免「卡片内标题」与「卡片外标题」两套层级 */
+private val SECTION_TITLE_SIZE = 14.sp
+
+/** 规则本次未生效的警示琥珀 —— 与项目其余警示位同值 */
+private val WARN_AMBER = Color(0xFFFF9800)
+
+/**
+ * 可横滑的芯片行。
+ *
+ * 行内只放芯片，标签一律由调用方摆在行外——否则横滑会把标签一起推走，只剩残缺笔画。
+ * 行尾在未滑到末端时叠一层与卡片底色同色的渐隐，提示「后面还有内容可滑」。
+ */
+@Composable
+private fun ScrollableChipRow(
+    fadeColor: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    val scrollState = rememberScrollState()
+    val canScrollForward by remember {
+        derivedStateOf { scrollState.value < scrollState.maxValue }
+    }
+    Box(
+        modifier = modifier.drawWithContent {
+            drawContent()
+            if (canScrollForward) {
+                val fadeWidth = 32.dp.toPx()
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(fadeColor.copy(alpha = 0f), fadeColor),
+                        startX = size.width - fadeWidth,
+                        endX = size.width
+                    )
+                )
+            }
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(scrollState),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
+}
+
+/** 占比条图例：圆点颜色与对应分段一致 */
+@Composable
+private fun BarLegend(color: Color, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 1. 自动分账开关 + 动线看板
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -326,10 +399,10 @@ private fun PaycheckHeroBanner(
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "薪资智能分流引擎",
+                                text = "自动分账",
                                 style = MaterialTheme.typography.titleSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
+                                    fontSize = SECTION_TITLE_SIZE
                                 ),
                                 color = colors.onSurface
                             )
@@ -337,7 +410,7 @@ private fun PaycheckHeroBanner(
                             // Status Dot
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (enabled) Color(0xFF10B981).copy(alpha = 0.15f) else colors.outlineVariant.copy(alpha = 0.5f)
+                                color = if (enabled) colors.primaryContainer else colors.surfaceVariant
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -347,21 +420,21 @@ private fun PaycheckHeroBanner(
                                         modifier = Modifier
                                             .size(6.dp)
                                             .clip(CircleShape)
-                                            .background(if (enabled) Color(0xFF10B981) else colors.outline)
+                                            .background(if (enabled) colors.primary else colors.outline)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (enabled) "运行中" else "已暂停",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (enabled) Color(0xFF059669) else colors.outline
+                                        color = if (enabled) colors.onPrimaryContainer else colors.outline
                                     )
                                 }
                             }
                         }
 
                         Text(
-                            text = if (enabled) "记账保存「工资」后将自动按规则划转" else "已关闭自动分账，可在此手动试算与补分",
+                            text = if (enabled) "保存「工资」收入后，按规则自动划转" else "已关闭自动分账，可手动试算与补分",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = colors.outline,
                             maxLines = 1,
@@ -373,8 +446,12 @@ private fun PaycheckHeroBanner(
                         checked = enabled,
                         onCheckedChange = onToggle,
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.primary,
-                            checkedTrackColor = colors.primaryContainer
+                            checkedThumbColor = colors.onPrimary,
+                            checkedTrackColor = colors.primary,
+                            checkedBorderColor = colors.primary,
+                            uncheckedThumbColor = colors.outline,
+                            uncheckedTrackColor = colors.surfaceVariant,
+                            uncheckedBorderColor = colors.outline
                         )
                     )
                 }
@@ -383,6 +460,7 @@ private fun PaycheckHeroBanner(
 
                 // Pipeline Flow Diagram
                 PaycheckPipelineDiagram(
+                    enabled = enabled,
                     ruleCount = ruleCount,
                     autoClearDebts = autoClearDebts
                 )
@@ -391,17 +469,25 @@ private fun PaycheckHeroBanner(
     }
 }
 
-/** 动线流程节点图示 */
+/** 资金流向节点图示 */
 @Composable
 private fun PaycheckPipelineDiagram(
+    enabled: Boolean,
     ruleCount: Int,
     autoClearDebts: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
 
+    // 总开关关闭时整条动线都不会跑：整体降透明度，并把两处描述运行状态的副标题改成「已暂停」，
+    // 否则暂停后仍写「N步执行」「结余清零」，是在陈述不成立的事实。
+    // 配色一律取主题语义色（secondary 蓝 / tertiary 靛），深浅色模式下自动跟随。
+    val ruleColor = if (enabled && ruleCount > 0) colors.secondary else colors.outline
+    val clearColor = if (enabled && autoClearDebts) colors.tertiary else colors.outline
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.62f)
             .clip(RoundedCornerShape(14.dp))
             .background(colors.surface.copy(alpha = 0.85f))
             .padding(horizontal = 10.dp, vertical = 12.dp),
@@ -427,8 +513,12 @@ private fun PaycheckPipelineDiagram(
         PipelineNodeItem(
             icon = Icons.Default.Tune,
             title = "规则分流",
-            subtitle = if (ruleCount > 0) "${ruleCount}步执行" else "未配置",
-            color = if (ruleCount > 0) Color(0xFF0284C7) else colors.outline
+            subtitle = when {
+                !enabled -> "已暂停"
+                ruleCount > 0 -> "${ruleCount}步执行"
+                else -> "未配置"
+            },
+            color = ruleColor
         )
 
         Icon(
@@ -438,12 +528,16 @@ private fun PaycheckPipelineDiagram(
             modifier = Modifier.size(14.dp)
         )
 
-        // Node 3: 智能清欠
+        // Node 3: 结余清欠
         PipelineNodeItem(
             icon = Icons.Default.Shield,
-            title = "智能清欠",
-            subtitle = if (autoClearDebts) "结余清零" else "未开启",
-            color = if (autoClearDebts) Color(0xFF8B5CF6) else colors.outline
+            title = "结余清欠",
+            subtitle = when {
+                !enabled -> "已暂停"
+                autoClearDebts -> "结余清零"
+                else -> "未开启"
+            },
+            color = clearColor
         )
 
         Icon(
@@ -457,8 +551,8 @@ private fun PaycheckPipelineDiagram(
         PipelineNodeItem(
             icon = Icons.Default.Savings,
             title = "卡内留存",
-            subtitle = "日常开销",
-            color = Color(0xFF10B981)
+            subtitle = "留在卡内",
+            color = colors.primary
         )
     }
 }
@@ -505,7 +599,7 @@ private fun PipelineNodeItem(
 }
 
 // ---------------------------------------------------------------------------
-// 2. 交互式发薪测算模拟器 (Paycheck Simulator)
+// 2. 分账试算
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -514,19 +608,57 @@ private fun PaycheckSimulatorCard(
     plans: List<SavingPlanUiModel>,
     scheme: PaycheckSchemeUiModel,
     isPrivacyMode: Boolean,
+    autoEnabled: Boolean,
     onConfigScheme: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    var simSalaryYuan by remember { mutableLongStateOf(12000L) }
-    val presetAmounts = listOf(8000L, 12000L, 16000L, 25000L)
+    // 薪资：给一个常见数额起步，点金额可改成任意值（预设档位覆盖不了真实到手金额）
+    var simSalaryCents by remember { mutableLongStateOf(1_200_000L) }
+    var isEditingSalary by remember { mutableStateOf(false) }
+    var salaryInput by remember { mutableStateOf("") }
+    val salaryFocusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
-    val simSalaryCents = simSalaryYuan * 100L
+    fun finishSalaryEditing() {
+        isEditingSalary = false
+        keyboard?.hide()
+        focusManager.clearFocus()
+    }
+
+    LaunchedEffect(isEditingSalary) {
+        if (isEditingSalary) {
+            salaryFocusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+
+
+    // 转账户类规则的目标账户：工资若「入账」到这些账户，规则会被判自转跳过。
+    val ruleTargetAccountIds = remember(scheme.rules) {
+        scheme.rules
+            .filter {
+                it.kind == PaycheckRuleKind.TO_ACCOUNT_FIXED ||
+                    it.kind == PaycheckRuleKind.TO_ACCOUNT_PCT
+            }
+            .map { it.targetId }
+            .toSet()
+    }
+
+    // 默认入账账户：优先挑「有余额且不是规则目标」的账户，避免一进页面就撞上自转跳过。
+    val defaultSourceAccount = remember(accounts, ruleTargetAccountIds) {
+        accounts.firstOrNull { it.balanceCents > 0L && it.id !in ruleTargetAccountIds }
+            ?: accounts.firstOrNull { it.balanceCents > 0L }
+            ?: accounts.first()
+    }
+
+    var simSourceId by remember { mutableLongStateOf(defaultSourceAccount.id) }
+    val simSourceAccount = accounts.firstOrNull { it.id == simSourceId } ?: defaultSourceAccount
 
     // 测算逻辑：创建虚拟充足源账户，使规则得以完整模拟
-    val simSource = remember(accounts, simSalaryCents) {
-        val firstAcc = accounts.firstOrNull { it.balanceCents > 0 } ?: accounts.first()
-        firstAcc.copy(balanceCents = simSalaryCents * 3)
+    val simSource = remember(simSourceAccount, simSalaryCents) {
+        simSourceAccount.copy(balanceCents = simSalaryCents * 3)
     }
 
     val simAccounts = remember(accounts, simSource) {
@@ -546,7 +678,15 @@ private fun PaycheckSimulatorCard(
     val allocatedCents = simResult.totalAllocatedCents
     val remainingCents = simResult.remainingCents
     val allocatedPct = if (simSalaryCents > 0) (allocatedCents * 100f / simSalaryCents).coerceIn(0f, 100f) else 0f
-    val remainingPct = (100f - allocatedPct).coerceIn(0f, 100f)
+    // 色条按展示用的整数百分比绘制，避免出现「图例写 0%、条上却有一丝细缝」
+    val allocatedPctInt = allocatedPct.toInt()
+    val remainingPctInt = 100 - allocatedPctInt
+
+    // 金额为 0 且带 note 的步骤 = 因约束没生效，原因必须露出来，否则「0 条规则生效」无从解释。
+    val skippedSteps = simResult.steps.filter {
+        it.kind != PaycheckStepKind.REMAIN && it.amountCents <= 0L && !it.note.isNullOrBlank()
+    }
+    val hasSelfTransferSkip = skippedSteps.any { it.note == "自转跳过" }
 
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -564,128 +704,179 @@ private fun PaycheckSimulatorCard(
             // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "发薪动态测算器",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        ),
-                        color = colors.onSurface
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = colors.primaryContainer.copy(alpha = 0.6f)
-                ) {
-                    Text(
-                        text = "实时试算",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // Quick Preset Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "假设薪资:",
-                    fontSize = 11.5.sp,
-                    color = colors.outline,
-                    modifier = Modifier.padding(end = 2.dp)
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp)
                 )
-                presetAmounts.forEach { amt ->
-                    val isSelected = simSalaryYuan == amt
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { simSalaryYuan = amt },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = colors.primary,
-                            selectedLabelColor = colors.onPrimary,
-                            containerColor = colors.surfaceVariant.copy(alpha = 0.45f),
-                            labelColor = colors.onSurfaceVariant
-                        ),
-                        border = null,
-                        label = {
-                            Text(
-                                text = "¥" + MoneyUtils.centsToCompactYuan(amt * 100L),
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                    )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "分账试算",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = SECTION_TITLE_SIZE
+                    ),
+                    color = colors.onSurface
+                )
+            }
+
+            if (!autoEnabled) {
+                Text(
+                    text = "自动分账已关闭，以下是手动补分时的试算结果",
+                    fontSize = 10.sp,
+                    color = colors.outline
+                )
+            }
+
+            // 入账账户：试算用的来源账户，换成规则目标账户会触发「自转跳过」
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "入账账户",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.outline
+                )
+                ScrollableChipRow(fadeColor = colors.surface) {
+                    accounts.forEach { acc ->
+                        val isPicked = acc.id == simSourceAccount.id
+                        FilterChip(
+                            selected = isPicked,
+                            onClick = { simSourceId = acc.id },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = colors.primary,
+                                selectedLabelColor = colors.onPrimary,
+                                containerColor = colors.surfaceVariant.copy(alpha = 0.45f),
+                                labelColor = colors.onSurfaceVariant
+                            ),
+                            border = null,
+                            label = {
+                                Text(
+                                    text = acc.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isPicked) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
-            // Multi-segment Allocation Progress Bar
+            // 薪资
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        if (allocatedPct > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(allocatedPct)
-                                    .fillMaxHeight()
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(Color(0xFF0284C7), colors.primary)
-                                        )
-                                    )
+                    Text(
+                        text = "薪资",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.outline
+                    )
+                    if (isEditingSalary) {
+                        TextButton(onClick = { finishSalaryEditing() }) {
+                            Text(
+                                text = "完成",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
                             )
                         }
-                        if (remainingPct > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(remainingPct)
-                                    .fillMaxHeight()
-                                    .background(Color(0xFF10B981).copy(alpha = 0.75f))
-                            )
+                    } else {
+                        Surface(
+                            onClick = {
+                                salaryInput = MoneyUtils.centsToPlainYuan(simSalaryCents)
+                                isEditingSalary = true
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.primary.copy(alpha = 0.1f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "¥" + MoneyUtils.centsToCompactYuan(simSalaryCents),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.primary
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "自定义薪资",
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
                 }
+                if (isEditingSalary) {
+                    OutlinedTextField(
+                        value = salaryInput,
+                        onValueChange = { raw ->
+                            val cleaned = MoneyUtils.sanitizeYuanInput(raw)
+                            salaryInput = cleaned
+                            simSalaryCents = MoneyUtils.yuanInputToCents(cleaned)
+                        },
+                        placeholder = { Text("到手金额 (元)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(salaryFocusRequester)
+                    )
+                }
+            }
 
-                // Bar Labels
+            // 分流占比条：划转段取主色、留存段取中性灰，图例圆点与段同色
+            val remainBarColor = colors.outline.copy(alpha = 0.45f)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp)),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    if (allocatedPctInt > 0) {
+                        Box(
+                            modifier = Modifier
+                                .weight(allocatedPctInt.toFloat())
+                                .fillMaxHeight()
+                                .background(colors.primary)
+                        )
+                    }
+                    if (remainingPctInt > 0) {
+                        Box(
+                            modifier = Modifier
+                                .weight(remainingPctInt.toFloat())
+                                .fillMaxHeight()
+                                .background(remainBarColor)
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "自动划转/储蓄 ${allocatedPct.toInt()}%",
-                        fontSize = 10.sp,
+                    BarLegend(
                         color = colors.primary,
-                        fontWeight = FontWeight.Medium
+                        text = "划转 $allocatedPctInt%"
                     )
-                    Text(
-                        text = "工资卡留存日常 ${remainingPct.toInt()}%",
-                        fontSize = 10.sp,
-                        color = Color(0xFF059669),
-                        fontWeight = FontWeight.Medium
+                    BarLegend(
+                        color = remainBarColor,
+                        text = "留存 $remainingPctInt%"
                     )
                 }
             }
@@ -704,7 +895,7 @@ private fun PaycheckSimulatorCard(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "计划分流总额",
+                            text = "划转合计",
                             fontSize = 10.5.sp,
                             color = colors.outline,
                             fontWeight = FontWeight.Medium
@@ -720,7 +911,7 @@ private fun PaycheckSimulatorCard(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "${simResult.steps.count { it.kind != PaycheckStepKind.REMAIN && it.amountCents > 0 }} 项规则生效",
+                            text = "${simResult.steps.count { it.kind != PaycheckStepKind.REMAIN && it.amountCents > 0 }} 条规则生效",
                             fontSize = 9.5.sp,
                             color = colors.outline
                         )
@@ -730,13 +921,13 @@ private fun PaycheckSimulatorCard(
                 // Metric 2: Remaining
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF10B981).copy(alpha = 0.1f),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.2f)),
+                    color = colors.primaryContainer.copy(alpha = 0.55f),
+                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.22f)),
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "卡内留存可用",
+                            text = "留存可用",
                             fontSize = 10.5.sp,
                             color = colors.outline,
                             fontWeight = FontWeight.Medium
@@ -746,16 +937,62 @@ private fun PaycheckSimulatorCard(
                             text = if (isPrivacyMode) PRIVACY_MASK else "¥" + MoneyUtils.centsToYuanString(remainingCents, withGrouping = true),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669),
+                            color = colors.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "作为本月安全开销",
+                            text = "留在工资卡",
                             fontSize = 9.5.sp,
                             color = colors.outline
                         )
+                    }
+                }
+            }
+
+            // 未生效的规则必须把原因说出来：只显示「0 条规则生效」而藏起 note,
+            // 用户会以为自己的规则丢失了。
+            if (skippedSteps.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = WARN_AMBER.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, WARN_AMBER.copy(alpha = 0.28f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = WARN_AMBER,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "${skippedSteps.size} 条规则本次未生效",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = WARN_AMBER
+                            )
+                        }
+                        skippedSteps.forEach { step ->
+                            Text(
+                                text = "· ${step.caption}：${step.note}",
+                                fontSize = 10.sp,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                        if (hasSelfTransferSkip) {
+                            Text(
+                                text = "换一个「入账账户」即可让该规则生效",
+                                fontSize = 10.sp,
+                                color = WARN_AMBER
+                            )
+                        }
                     }
                 }
             }
@@ -780,7 +1017,7 @@ private fun PaycheckSimulatorCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "当前未设规则，点此配置分流规则测算效果",
+                            text = "还没有规则，点此添加",
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.primary
@@ -793,12 +1030,13 @@ private fun PaycheckSimulatorCard(
 }
 
 // ---------------------------------------------------------------------------
-// 3. 立体步进式分流规则链路 (Rules Pipeline)
+// 3. 分配规则清单
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun PaycheckRulesPipelineSection(
     scheme: PaycheckSchemeUiModel,
+    enabled: Boolean,
     accountsById: Map<Long, AccountUiModel>,
     plansById: Map<Long, SavingPlanUiModel>,
     onEdit: () -> Unit,
@@ -815,11 +1053,18 @@ private fun PaycheckRulesPipelineSection(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "执行规则链路",
+                    text = "分配规则",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp
+                        fontSize = SECTION_TITLE_SIZE
                     ),
                     color = colors.onSurface
                 )
@@ -835,6 +1080,22 @@ private fun PaycheckRulesPipelineSection(
                         color = colors.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                     )
+                }
+                // 「N 步」是配置事实，但总开关关闭时必须说明它不会自动跑
+                if (!enabled) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = colors.outlineVariant.copy(alpha = 0.5f)
+                    ) {
+                        Text(
+                            text = "已暂停",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.outline,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
                 }
             }
 
@@ -875,7 +1136,7 @@ private fun PaycheckRulesPipelineSection(
             }
 
             // 守护兜底规则：自动清欠
-            PaycheckSafeguardCard(autoClearDebts = scheme.autoClearDebts)
+            PaycheckSafeguardCard(autoClearDebts = scheme.autoClearDebts, enabled = enabled)
         } else {
             // 空状态引导卡
             Card(
@@ -907,12 +1168,12 @@ private fun PaycheckRulesPipelineSection(
                         )
                     }
                     Text(
-                        text = "尚未建立发薪分配规则",
+                        text = "还没有分配规则",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.5.sp),
                         color = colors.onSurface
                     )
                     Text(
-                        text = "设置规则后，工资入账将按设定次序自动转入储蓄卡、投入心愿计划，助你井井有条地管好每一分钱。",
+                        text = "设置后，工资入账会按顺序自动划转到对应账户或攒钱计划。",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = colors.outline,
                         textAlign = TextAlign.Center
@@ -923,7 +1184,7 @@ private fun PaycheckRulesPipelineSection(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                     ) {
-                        Text(text = "立即添加第一条分流规则", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(text = "添加规则", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
@@ -931,7 +1192,7 @@ private fun PaycheckRulesPipelineSection(
     }
 }
 
-/** 单步规则卡片：立体化展示 */
+/** 单条规则卡片 */
 @Composable
 private fun PaycheckStepCard(
     stepIndex: Int,
@@ -1017,7 +1278,7 @@ private fun PaycheckStepCard(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (isToAccount) "资金账户" else "攒钱目标计划",
+                    text = if (isToAccount) "转入账户" else "攒钱目标计划",
                     fontSize = 10.sp,
                     color = colors.outline
                 )
@@ -1029,13 +1290,13 @@ private fun PaycheckStepCard(
             Column(horizontalAlignment = Alignment.End) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isPct) Color(0xFF0284C7).copy(alpha = 0.12f) else colors.primary.copy(alpha = 0.12f)
+                    color = if (isPct) colors.secondaryContainer else colors.primary.copy(alpha = 0.12f)
                 ) {
                     Text(
                         text = amountHighlight,
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isPct) Color(0xFF0284C7) else colors.primary,
+                        color = if (isPct) colors.onSecondaryContainer else colors.primary,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
                 }
@@ -1050,18 +1311,32 @@ private fun PaycheckStepCard(
     }
 }
 
-/** 智能清欠守护卡片 */
+/** 结余清欠卡片 */
 @Composable
-private fun PaycheckSafeguardCard(autoClearDebts: Boolean) {
+private fun PaycheckSafeguardCard(autoClearDebts: Boolean, enabled: Boolean) {
     val colors = MaterialTheme.colorScheme
+    // 总开关关闭时清欠同样不会执行，卡片不该继续显示「已守护」
+    val active = enabled && autoClearDebts
+
+    val badgeText = when {
+        !enabled -> "已暂停"
+        autoClearDebts -> "已守护"
+        else -> "已停用"
+    }
+    val description = when {
+        !enabled -> "总开关已关闭，规则执行后不会自动清欠"
+        autoClearDebts -> "规则执行后如有结余，自动填平信用卡等负余额账户"
+        else -> "结余清欠已关闭，剩余金额将全部留存工资账户"
+    }
+
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (autoClearDebts) Color(0xFF8B5CF6).copy(alpha = 0.06f) else colors.surface
+            containerColor = if (active) colors.tertiaryContainer.copy(alpha = 0.45f) else colors.surface
         ),
         border = BorderStroke(
             1.dp,
-            if (autoClearDebts) Color(0xFF8B5CF6).copy(alpha = 0.25f) else colors.outlineVariant.copy(alpha = 0.35f)
+            if (active) colors.tertiary.copy(alpha = 0.28f) else colors.outlineVariant.copy(alpha = 0.35f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -1075,13 +1350,13 @@ private fun PaycheckSafeguardCard(autoClearDebts: Boolean) {
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(if (autoClearDebts) Color(0xFF8B5CF6).copy(alpha = 0.14f) else colors.surfaceVariant),
+                    .background(if (active) colors.tertiary.copy(alpha = 0.14f) else colors.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Shield,
                     contentDescription = null,
-                    tint = if (autoClearDebts) Color(0xFF8B5CF6) else colors.outline,
+                    tint = if (active) colors.tertiary else colors.outline,
                     modifier = Modifier.size(17.dp)
                 )
             }
@@ -1090,29 +1365,31 @@ private fun PaycheckSafeguardCard(autoClearDebts: Boolean) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "兜底守护 · 智能清欠",
+                    text = "结余清欠",
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = colors.onSurface
                 )
                 Text(
-                    text = if (autoClearDebts) "规则执行后如有结余，自动填平信用卡等负余额账户" else "结余清欠已关闭，剩余金额将全部留存工资账户",
+                    text = description,
                     fontSize = 10.sp,
                     color = colors.outline,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
+
             Surface(
                 shape = RoundedCornerShape(6.dp),
-                color = if (autoClearDebts) Color(0xFF8B5CF6).copy(alpha = 0.15f) else colors.surfaceVariant
+                color = if (active) colors.tertiary.copy(alpha = 0.16f) else colors.surfaceVariant
             ) {
                 Text(
-                    text = if (autoClearDebts) "已守护" else "已停用",
+                    text = badgeText,
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (autoClearDebts) Color(0xFF7C3AED) else colors.outline,
+                    color = if (active) colors.tertiary else colors.outline,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
@@ -1121,7 +1398,7 @@ private fun PaycheckSafeguardCard(autoClearDebts: Boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. 时间轴分账执行履历 (Timeline History)
+// 4. 执行记录
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -1147,19 +1424,22 @@ private fun PaycheckTimelineHistorySection(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "分账执行履历",
+                    text = "执行记录",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp
+                        fontSize = SECTION_TITLE_SIZE
                     ),
                     color = colors.onSurface
                 )
             }
-            Text(
-                text = if (history.isEmpty()) "暂无记录" else "共 ${history.size} 次",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                color = colors.outline
-            )
+            // 空态说明交给下方卡片，避免同一件事在标题行和卡片里各说一遍
+            if (history.isNotEmpty()) {
+                Text(
+                    text = "共 ${history.size} 次",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = colors.outline
+                )
+            }
         }
 
         if (history.isEmpty()) {
@@ -1177,14 +1457,14 @@ private fun PaycheckTimelineHistorySection(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "尚未有分账执行记录",
+                        text = "还没有执行记录",
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "保存「工资」类入账或在下方手动补分后，完整执行痕迹将在此处呈现",
+                        text = "保存「工资」收入或手动补分后，记录会显示在这里",
                         fontSize = 10.5.sp,
                         color = colors.outline,
                         textAlign = TextAlign.Center
@@ -1205,7 +1485,7 @@ private fun PaycheckTimelineHistorySection(
     }
 }
 
-/** 时间轴单条记录卡片 */
+/** 单条执行记录卡片 */
 @Composable
 private fun PaycheckTimelineCard(
     run: PaycheckLastRunUiModel,
@@ -1244,7 +1524,7 @@ private fun PaycheckTimelineCard(
                 modifier = Modifier
                     .size(10.dp)
                     .clip(CircleShape)
-                    .background(if (run.auto) Color(0xFF10B981) else Color(0xFF0284C7))
+                    .background(if (run.auto) colors.primary else colors.secondary)
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -1264,13 +1544,13 @@ private fun PaycheckTimelineCard(
 
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (run.auto) Color(0xFF10B981).copy(alpha = 0.12f) else colors.surfaceVariant
+                        color = if (run.auto) colors.primaryContainer else colors.surfaceVariant
                     ) {
                         Text(
                             text = if (run.auto) "自动执行" else "手动补分",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (run.auto) Color(0xFF059669) else colors.onSurfaceVariant,
+                            color = if (run.auto) colors.onPrimaryContainer else colors.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -1287,7 +1567,7 @@ private fun PaycheckTimelineCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "${run.actionCount ?: 0} 笔分流动作$remainText",
+                        text = "${run.actionCount ?: 0} 笔划转$remainText",
                         fontSize = 11.5.sp,
                         color = colors.outline,
                         maxLines = 1,
@@ -1319,27 +1599,41 @@ private fun PaycheckManualEntryCard(
 ) {
     val colors = MaterialTheme.colorScheme
 
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.4f)),
-        modifier = modifier.height(50.dp)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.SwapHoriz,
-                contentDescription = null,
-                tint = colors.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "手动补分（处理未自动分账的工资）",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.5.sp,
-                color = colors.primary
-            )
+        OutlinedButton(
+            onClick = onClick,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.4f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.SwapHoriz,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "手动补分",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.5.sp,
+                    color = colors.primary
+                )
+            }
         }
+        Text(
+            text = "用于没被自动分账的工资：选一笔本月工资或手填金额，按当前规则执行一次",
+            fontSize = 10.5.sp,
+            color = colors.outline,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1406,20 +1700,15 @@ private fun PaycheckManualSheet(
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = "手动补分",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            )
-            Text(
-                text = "按当前分配规则执行一次；用于没被自动分账的工资（未匹配账户 / 自动开关关闭期间）。",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                color = colors.outline
+            SheetTitle(
+                title = "手动补分",
+                subtitle = "按当前规则执行一次，用于没被自动分账的工资。"
             )
 
             // ---- 待处理工资（本月未自动分账）----
             if (candidates.isEmpty()) {
                 Text(
-                    text = "本月没有待处理的工资入账（都已自动分账，或本月还没有工资记录）",
+                    text = "本月没有待处理的工资",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = colors.outline,
                     modifier = Modifier.padding(vertical = 2.dp)

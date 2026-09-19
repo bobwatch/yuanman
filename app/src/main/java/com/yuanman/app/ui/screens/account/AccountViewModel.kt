@@ -222,7 +222,7 @@ class AccountViewModel(
         }
 
         // ---- 计划/方案解析 + 本月工资类收入候选 + 专款派生（v0.0.4.5：候选仅「工资/薪」类收入）----
-        val plans = parseSavingPlans(plansJson).sortedBy { it.sortOrder }
+        val plans = parseSavingPlans(plansJson).inDisplayOrder()
         val scheme = parsePaycheckScheme(schemeJson)
         val lastRun = parsePaycheckLastRun(lastRunJson)
         val appliedIncomeRecordIds = parseAppliedIncomeIds(appliedIncomeIdsJson)
@@ -544,6 +544,17 @@ class AccountViewModel(
                 targetAmountCents = plan.targetAmountCents.coerceAtLeast(0L),
                 earmarkedCents = earmarked
             )
+            persistPlans(plans)
+        }
+    }
+
+    /** 置顶 / 取消置顶：置顶的计划排在展示区最前，不受创建顺序影响。 */
+    fun togglePlanPinned(planId: Long) {
+        viewModelScope.launch {
+            val plans = uiState.value.plans.toMutableList()
+            val index = plans.indexOfFirst { it.id == planId }
+            if (index < 0) return@launch
+            plans[index] = plans[index].copy(isPinned = !plans[index].isPinned)
             persistPlans(plans)
         }
     }

@@ -92,7 +92,6 @@ fun AddEditRecordScreen(
     viewModel: AddEditRecordViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAddCategory: ((RecordType) -> Unit)? = null,
-    onNavigateToCategoryManage: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -515,7 +514,7 @@ fun AddEditRecordScreen(
                     }
 
                     // 末尾便捷「+ 自定义」新增分类入口
-                    if (onNavigateToAddCategory != null || onNavigateToCategoryManage != null) {
+                    if (onNavigateToAddCategory != null) {
                         item(key = "manage_category_item_${page}") {
                             val pageType = if (page == 0) RecordType.EXPENSE else RecordType.INCOME
                             Column(
@@ -525,11 +524,7 @@ fun AddEditRecordScreen(
                                     .clickable {
                                         keyboardController?.hide()
                                         focusManager.clearFocus()
-                                        if (onNavigateToAddCategory != null) {
-                                            onNavigateToAddCategory(pageType)
-                                        } else {
-                                            onNavigateToCategoryManage?.invoke()
-                                        }
+                                        onNavigateToAddCategory(pageType)
                                     }
                                     .padding(vertical = 4.dp)
                             ) {

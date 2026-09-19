@@ -5,6 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Base64
+import com.yuanman.app.BuildConfig
 import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.utils.JsonBackupUtils
@@ -22,14 +23,22 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.KeyFactory
+import java.security.KeyPair
+import java.security.KeyPairGenerator
 import java.security.MessageDigest
+import java.security.PrivateKey
 import java.security.SecureRandom
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
+import java.security.spec.X509EncodedKeySpec
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
+import javax.crypto.KeyAgreement
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -48,8 +57,34 @@ data class PeerDevice(
 data class PendingSyncRequest(
     val id: String,
     val deviceName: String,
-    val hostAddress: String
+    val hostAddress: String,
+    /** 双方由 ECDH 共享密钥派生的 6 位核对码：与对方屏幕一致才继续，用于排除中间人。 */
+    val verificationCode: String? = null
 )
+
+/**
+ * 6 位核对码（纯函数，便于单测）：双方用相同的 ECDH 共享密钥与排序后的设备号计算结果一致。
+ * 中间人分别与两端协商出不同密钥时，两端显示的核对码不同，用户核对即可发现。
+ */
+internal fun computeVerificationCode(
+    sharedSecret: ByteArray,
+    localDeviceId: String,
+    peerDeviceId: String
+): String {
+    val orderedIds = if (localDeviceId <= peerDeviceId) {
+        "$localDeviceId|$peerDeviceId"
+    } else {
+        "$peerDeviceId|$localDeviceId"
+    }
+    val digest = MessageDigest.getInstance("SHA-256").digest(
+        "yuanman-sync-v4|code|$orderedIds".toByteArray(Charsets.UTF_8) + sharedSecret
+    )
+    val value = ((digest[0].toInt() and 0xFF).toLong() shl 24) or
+        ((digest[1].toInt() and 0xFF).toLong() shl 16) or
+        ((digest[2].toInt() and 0xFF).toLong() shl 8) or
+        (digest[3].toInt() and 0xFF).toLong()
+    return (value % 1_000_000L).toString().padStart(6, '0')
+}
 
 class FamilySyncManager(
     context: Context,
@@ -84,6 +119,11 @@ class FamilySyncManager(
 
     private val _pendingOutboundDevices = MutableStateFlow<Set<String>>(emptySet())
     val pendingOutboundDevices: StateFlow<Set<String>> = _pendingOutboundDevices.asStateFlow()
+
+    private val _verificationCode = MutableStateFlow<String?>(null)
+
+    /** 当前同步会话的 6 位核对码（与对方屏幕应显示同一个值）；无会话时为 null。 */
+    val verificationCode: StateFlow<String?> = _verificationCode.asStateFlow()
 
     private val _events = MutableSharedFlow<SyncEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<SyncEvent> = _events.asSharedFlow()
@@ -343,8 +383,9 @@ class FamilySyncManager(
             val writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
             val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
 
-            // 1. 握手交换
+            // 1. 握手交换（附带临时 ECDH 公钥，用于协商只存在于两端内存中的会话密钥）
             val localNonce = ByteArray(NONCE_BYTES).also(SecureRandom()::nextBytes)
+            val ephemeralKeyPair = generateEphemeralKeyPair()
             val localName = ownServiceName.ifBlank { SERVICE_NAME_PREFIX + deviceId.take(6) }
             val hello = JSONObject()
                 .put("protocol", PROTOCOL_VERSION)
@@ -352,6 +393,7 @@ class FamilySyncManager(
                 .put("deviceId", deviceId)
                 .put("deviceName", localName)
                 .put("nonce", Base64.encodeToString(localNonce, Base64.NO_WRAP))
+                .put("ecdh", Base64.encodeToString(ephemeralKeyPair.public.encoded, Base64.NO_WRAP))
             writer.write(hello.toString())
             writer.newLine()
             writer.flush()
@@ -363,10 +405,23 @@ class FamilySyncManager(
                 peerHello.optInt("syncFormat", 0) != SYNC_FORMAT_VERSION ||
                 peerId == deviceId
             ) {
-                throw IOException("同步协议不匹配，请将两台设备都升级到 v0.0.4")
+                throw IOException("同步协议不匹配，请将两台设备都升级到最新版本（本机 v${BuildConfig.VERSION_NAME}）")
             }
             val peerNonce = Base64.decode(peerHello.getString("nonce"), Base64.NO_WRAP)
             val peerName = peerHello.optString("deviceName", peerId.take(6))
+
+            // 临时 ECDH：共享密钥只存在于两端内存，握手报文即使被监听也无法复算出会话密钥。
+            val sharedSecret = try {
+                ecdhSharedSecret(
+                    ephemeralKeyPair.private,
+                    Base64.decode(peerHello.getString("ecdh"), Base64.NO_WRAP)
+                )
+            } catch (e: Exception) {
+                throw IOException("同步握手失败，请确认两台设备均已升级到最新版本后重试")
+            }
+            val sessionKey = deriveSessionKey(sharedSecret, localNonce, peerNonce, peerId)
+            val code = computeVerificationCode(sharedSecret, deviceId, peerId)
+            _verificationCode.value = code
 
             // 2. 双向确认：连接方先发出同步请求，接收方弹窗确认后才会继续传输数据。
             if (incoming) {
@@ -380,7 +435,8 @@ class FamilySyncManager(
                 val request = PendingSyncRequest(
                     id = requestId,
                     deviceName = requestJson.optString("deviceName", peerName),
-                    hostAddress = s.inetAddress.hostAddress ?: "unknown"
+                    hostAddress = s.inetAddress.hostAddress ?: "unknown",
+                    verificationCode = code
                 )
                 val accepted = awaitIncomingApproval(request)
                 writer.write(
@@ -418,7 +474,6 @@ class FamilySyncManager(
             }
 
             s.soTimeout = IO_TIMEOUT_MS
-            val sessionKey = deriveSessionKey(localNonce, peerNonce, peerId)
 
             // 3. 双向认证：确认通过后双方使用临时会话密钥完成加密握手。
             val auth = JSONObject()
@@ -498,6 +553,7 @@ class FamilySyncManager(
             }
         } finally {
             activeSockets.remove(socket)
+            _verificationCode.value = null
         }
     }
 
@@ -528,7 +584,30 @@ class FamilySyncManager(
         }
     }
 
+    private fun generateEphemeralKeyPair(): KeyPair {
+        val generator = KeyPairGenerator.getInstance("EC")
+        generator.initialize(ECGenParameterSpec(EC_CURVE))
+        return generator.generateKeyPair()
+    }
+
+    private fun ecdhSharedSecret(privateKey: PrivateKey, peerPublicKeyEncoded: ByteArray): ByteArray {
+        val peerPublicKey = KeyFactory.getInstance("EC")
+            .generatePublic(X509EncodedKeySpec(peerPublicKeyEncoded))
+        require(
+            peerPublicKey is ECPublicKey && peerPublicKey.params.curve.field.fieldSize == EC_FIELD_BITS
+        ) { "对端公钥不是 P-256" }
+        val agreement = KeyAgreement.getInstance("ECDH")
+        agreement.init(privateKey)
+        agreement.doPhase(peerPublicKey, true)
+        return agreement.generateSecret()
+    }
+
+    /**
+     * 会话密钥 = PBKDF2(ECDH 共享密钥, salt = 版本 | 双方 nonce 顺序拼接 | 双方 deviceId 顺序拼接)。
+     * 口令不再是固定字符串：共享密钥由临时 ECDH 协商、只存在于两端内存，nonce 与设备号只做绑定。
+     */
     private fun deriveSessionKey(
+        sharedSecret: ByteArray,
         localNonce: ByteArray,
         peerNonce: ByteArray,
         peerId: String
@@ -538,11 +617,9 @@ class FamilySyncManager(
         val ordered = if (first <= second) "$first|$second" else "$second|$first"
         val orderedIds = if (deviceId <= peerId) "$deviceId|$peerId" else "$peerId|$deviceId"
         val salt = MessageDigest.getInstance("SHA-256")
-            .digest("yuanman-sync-v3|$ordered|$orderedIds".toByteArray(Charsets.UTF_8))
-        // 会话只会在双方设备互相确认同意后建立（见上面 sync_request / sync_decision），
-        // 密钥仍由双方 deviceId + 随机 nonce 按序派生，保证每次同步会话独立。
+            .digest("$KEY_DERIVATION_CONTEXT|$ordered|$orderedIds".toByteArray(Charsets.UTF_8))
         val spec = PBEKeySpec(
-            "approved-session".toCharArray(),
+            Base64.encodeToString(sharedSecret, Base64.NO_WRAP).toCharArray(),
             salt,
             PBKDF2_ITERATIONS,
             KEY_BITS
@@ -622,9 +699,12 @@ class FamilySyncManager(
         private const val KEY_SENT_VERSIONS_PREFIX = "sent_versions_"
         private const val SERVICE_TYPE = "_yuanman_sync._tcp."
         private const val SERVICE_NAME_PREFIX = "YM-"
-        private const val PROTOCOL_VERSION = 3
+        private const val PROTOCOL_VERSION = 4
         private const val SYNC_FORMAT_VERSION = 2
         private const val NONCE_BYTES = 16
+        private const val EC_CURVE = "secp256r1"
+        private const val EC_FIELD_BITS = 256
+        private const val KEY_DERIVATION_CONTEXT = "yuanman-sync-v4"
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
         private const val PBKDF2_ITERATIONS = 120_000

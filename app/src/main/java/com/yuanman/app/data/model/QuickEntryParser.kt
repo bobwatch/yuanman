@@ -11,7 +11,13 @@ data class QuickEntryResult(
     val category: CategoryEntity?,
     val paymentMethod: String? = null,
     val confidence: Float = 0f,
-    val alternatives: List<CategoryEntity> = emptyList()
+    val alternatives: List<CategoryEntity> = emptyList(),
+    /** 解析出的记账时间（缺省字段按「今年/本月/今日/00:00」补全；没写日期时间时为当前时刻）。 */
+    val recordTime: Long = System.currentTimeMillis(),
+    /** 用户是否显式写了日期或时间。 */
+    val hasExplicitTime: Boolean = false,
+    /** 命中的日期时间原文（用于界面提示），未命中为 null。 */
+    val timeText: String? = null
 )
 
 /** Parses compact entries such as "奶茶 18" or "18元 午餐". */
@@ -46,16 +52,26 @@ object QuickEntryParser {
     fun parse(
         input: String,
         categories: List<CategoryEntity>,
-        learningRules: List<QuickEntryLearningEntity> = emptyList()
+        learningRules: List<QuickEntryLearningEntity> = emptyList(),
+        now: java.util.Calendar = java.util.Calendar.getInstance()
     ): QuickEntryResult? {
         val text = input.trim()
-        val amountMatch = amountPattern.findAll(text).lastOrNull() ?: return null
+        // 先把日期时间片段挑出来：既要随记录保存，也要从金额与备注里剔除，
+        // 否则「咖啡 15 3:30」会把 30 当金额、「3/5 电影 40」会把日期写进备注。
+        val time = QuickEntryTimeParser.find(text, now)
+        val timeRanges = time?.ranges.orEmpty()
+        val maskedForAmount = maskRanges(text, timeRanges)
+        val amountMatch = amountPattern.findAll(maskedForAmount).lastOrNull() ?: return null
         val amount = runCatching {
             BigDecimal(amountMatch.groupValues[1].replace(',', '.'))
         }.getOrNull() ?: return null
         if (amount <= BigDecimal.ZERO) return null
 
-        val rawDescription = text.removeRange(amountMatch.range)
+        // 备注要同时剔除日期时间与金额两段：显式建列表，避免 List<IntRange> + IntRange 走 Iterable 重载
+        val descriptionRanges = ArrayList<IntRange>(timeRanges.size + 1)
+        descriptionRanges.addAll(timeRanges)
+        descriptionRanges.add(amountMatch.range)
+        val rawDescription = maskRanges(text, descriptionRanges)
             .replace(Regex("(?i)[¥￥$]"), "")
             .replace(Regex("(?i)块钱|块|元|圆|快|rmb"), "")
             .replace(Regex("[：:，,、\\-]"), " ")
@@ -80,8 +96,23 @@ object QuickEntryParser {
             category = match?.first,
             paymentMethod = paymentMatch?.displayName,
             confidence = match?.second ?: 0f,
-            alternatives = match?.third.orEmpty()
+            alternatives = match?.third.orEmpty(),
+            recordTime = time?.timeMillis ?: System.currentTimeMillis(),
+            hasExplicitTime = time?.isExplicit == true,
+            timeText = time?.matchedText
         )
+    }
+
+    /** 用空格替换给定区间：保持字符下标不变，便于继续复用同一套匹配位置。 */
+    private fun maskRanges(text: String, ranges: List<IntRange>): String {
+        if (ranges.isEmpty()) return text
+        val chars = text.toCharArray()
+        ranges.forEach { range ->
+            for (index in range) {
+                if (index in chars.indices) chars[index] = ' '
+            }
+        }
+        return String(chars)
     }
 
     private val PRECOMPUTED_ALIASES: Map<String, List<String>> by lazy {

@@ -5,12 +5,14 @@ package com.yuanman.app.ui.screens.account
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Schedule
@@ -28,6 +32,9 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -98,6 +105,9 @@ fun AccountReconcileScreen(
 
     var accountToReconcile by remember { mutableStateOf<AccountUiModel?>(null) }
     var showCycleSheet by remember { mutableStateOf(false) }
+    var cycleMenuExpanded by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    val globalCycle = uiState.globalReconcileCycle
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -122,6 +132,96 @@ fun AccountReconcileScreen(
                             contentDescription = "返回"
                         )
                     }
+                },
+                actions = {
+                    // 对账周期：右上角下拉直选常用档位，需要精细步进时再进「自定义」sheet
+                    Box {
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                cycleMenuExpanded = true
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 9.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = globalCycle.label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = colors.onSurface,
+                                    maxLines = 1
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "选择对账周期",
+                                    tint = colors.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = cycleMenuExpanded,
+                            onDismissRequest = { cycleMenuExpanded = false }
+                        ) {
+                            Text(
+                                text = "对账周期",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = colors.outline,
+                                modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp)
+                            )
+                            ReconcileCyclePresets.forEach { preset ->
+                                val selected = globalCycle.count == preset.count &&
+                                    globalCycle.unit == preset.unit
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = preset.label,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (selected) colors.primary else colors.onSurface
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (selected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        cycleMenuExpanded = false
+                                        viewModel.setGlobalReconcileCycle(preset)
+                                    }
+                                )
+                            }
+                            HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.5f))
+                            DropdownMenuItem(
+                                text = { Text(text = "自定义…", fontSize = 14.sp) },
+                                onClick = {
+                                    cycleMenuExpanded = false
+                                    showCycleSheet = true
+                                }
+                            )
+                        }
+                    }
                 }
             )
         }
@@ -137,15 +237,6 @@ fun AccountReconcileScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // 全局周期设置与账户无关，空态下也允许预置（后续新建账户即生效）
-                    GlobalCycleBar(
-                        cycleLabel = uiState.globalReconcileCycle.label,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            showCycleSheet = true
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
                     EmptyStateView(
                         title = "暂无资金账户",
                         description = "创建微信、支付宝、储蓄卡等账户后，即可按周期核对实际余额",
@@ -182,15 +273,6 @@ fun AccountReconcileScreen(
                         .padding(top = 6.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // ---- 轻量周期行（设置入口收敛为一行，非核心动作不再占卡）----
-                    GlobalCycleBar(
-                        cycleLabel = uiState.globalReconcileCycle.label,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            showCycleSheet = true
-                        }
-                    )
-
                     if (pendingSorted.isNotEmpty()) {
                         // ---- 聚合横幅：本期要核什么、涉及多少账面，一眼可见 ----
                         ReconcileTodoBand(
@@ -297,67 +379,6 @@ fun AccountReconcileScreen(
 // ---------------------------------------------------------------------------
 // 周期设置行 / 聚合横幅 / 分组头 / 账户行
 // ---------------------------------------------------------------------------
-
-/**
- * 全局对账周期设置行（轻量单行）：「对账周期」+ 当前档位 + ›。
- * 说明文字已裁掉：默认档位语义在横幅/展开清单里自明，覆盖规则入口在账户详情页。
- */
-@Composable
-private fun GlobalCycleBar(
-    cycleLabel: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = MaterialTheme.colorScheme
-
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = colors.surfaceVariant.copy(alpha = 0.45f),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Schedule,
-                contentDescription = null,
-                tint = colors.primary,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "对账周期",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp
-                ),
-                color = colors.onSurfaceVariant,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = cycleLabel,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = colors.primary,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = "设置对账周期",
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
-}
 
 /**
  * 待核对聚合横幅：琥珀大字「X 个账户待核对」+ 账面合计与唯一一句操作引导。

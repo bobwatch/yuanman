@@ -472,9 +472,14 @@ object JsonBackupUtils {
     private fun JSONObject.optionalLong(name: String): Long? =
         if (has(name) && !isNull(name)) getLong(name) else null
 
-    fun shareBackupFile(context: Context, categories: List<CategoryEntity>, records: List<RecordWithCategory>) {
+    fun shareBackupFile(
+        context: Context,
+        categories: List<CategoryEntity>,
+        records: List<RecordWithCategory>,
+        accountData: Map<String, String> = emptyMap()
+    ) {
         try {
-            val jsonContent = exportToJsonString(categories, records)
+            val jsonContent = exportToJsonString(categories, records, accountData)
             val exportDir = File(context.cacheDir, "backups").apply {
                 if (!exists()) mkdirs()
             }

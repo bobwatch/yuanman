@@ -194,17 +194,19 @@ fun CustomKeypad(
             "CLEAR" -> {
                 onExpressionChange("")
             }
-
-            "=" -> {
-                val result = KeypadEngine.evaluateExpression(current)
-                if (result != null && result > BigDecimal.ZERO) {
-                    onExpressionChange(KeypadEngine.formatDecimal(result))
-                }
-            }
         }
     }
 
     val hasOperator = expression.contains("+") || expression.contains("-")
+
+    /** 保存前结算未完成的算式（如 "12+8"），使用者不需要先按等号。 */
+    fun settlePendingExpression() {
+        if (!hasOperator) return
+        val result = KeypadEngine.evaluateExpression(expression)
+        if (result != null && result > BigDecimal.ZERO) {
+            onExpressionChange(KeypadEngine.formatDecimal(result))
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -218,7 +220,7 @@ fun CustomKeypad(
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Row 1: 7, 8, 9, +
+            // Row 1: 7, 8, 9, 删除（长按清空）——删除键放最上面，减少误触
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -226,28 +228,6 @@ fun CustomKeypad(
                 KeypadButton("7", Modifier.weight(1f)) { handleKeyPress("7") }
                 KeypadButton("8", Modifier.weight(1f)) { handleKeyPress("8") }
                 KeypadButton("9", Modifier.weight(1f)) { handleKeyPress("9") }
-                KeypadOpButton("+", Modifier.weight(1f)) { handleKeyPress("+") }
-            }
-
-            // Row 2: 4, 5, 6, -
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                KeypadButton("4", Modifier.weight(1f)) { handleKeyPress("4") }
-                KeypadButton("5", Modifier.weight(1f)) { handleKeyPress("5") }
-                KeypadButton("6", Modifier.weight(1f)) { handleKeyPress("6") }
-                KeypadOpButton("-", Modifier.weight(1f)) { handleKeyPress("-") }
-            }
-
-            // Row 3: 1, 2, 3, Delete (长按清空)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                KeypadButton("1", Modifier.weight(1f)) { handleKeyPress("1") }
-                KeypadButton("2", Modifier.weight(1f)) { handleKeyPress("2") }
-                KeypadButton("3", Modifier.weight(1f)) { handleKeyPress("3") }
                 KeypadDeleteButton(
                     modifier = Modifier.weight(1f),
                     onClick = { handleKeyPress("DELETE") },
@@ -255,7 +235,29 @@ fun CustomKeypad(
                 )
             }
 
-            // Row 4: ., 0, 再记一笔/00, 完成/=
+            // Row 2: 4, 5, 6, +（紧挨删除键下方）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                KeypadButton("4", Modifier.weight(1f)) { handleKeyPress("4") }
+                KeypadButton("5", Modifier.weight(1f)) { handleKeyPress("5") }
+                KeypadButton("6", Modifier.weight(1f)) { handleKeyPress("6") }
+                KeypadOpButton("+", Modifier.weight(1f)) { handleKeyPress("+") }
+            }
+
+            // Row 3: 1, 2, 3, -
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                KeypadButton("1", Modifier.weight(1f)) { handleKeyPress("1") }
+                KeypadButton("2", Modifier.weight(1f)) { handleKeyPress("2") }
+                KeypadButton("3", Modifier.weight(1f)) { handleKeyPress("3") }
+                KeypadOpButton("-", Modifier.weight(1f)) { handleKeyPress("-") }
+            }
+
+            // Row 4: ., 0, 再记一笔/00, 完成（保存时自动结算算式，无需先按等号）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -271,12 +273,7 @@ fun CustomKeypad(
                         modifier = Modifier.weight(1.1f),
                         onClick = {
                             performHaptic()
-                            if (hasOperator) {
-                                val result = KeypadEngine.evaluateExpression(expression)
-                                if (result != null && result > BigDecimal.ZERO) {
-                                    onExpressionChange(KeypadEngine.formatDecimal(result))
-                                }
-                            }
+                            settlePendingExpression()
                             onSaveAndContinue()
                         }
                     )
@@ -289,25 +286,17 @@ fun CustomKeypad(
                     }
                 }
 
-                // 主动作按键：如果有算式运算符，则为 "="；否则为 "完成"
-                if (hasOperator) {
-                    KeypadActionButton(
-                        text = "=",
-                        isPrimary = true,
-                        modifier = Modifier.weight(1.1f),
-                        onClick = { handleKeyPress("=") }
-                    )
-                } else {
-                    KeypadActionButton(
-                        text = if (isEditMode) "修改" else "完成",
-                        isPrimary = true,
-                        modifier = Modifier.weight(1.1f),
-                        onClick = {
-                            performHaptic()
-                            onComplete()
-                        }
-                    )
-                }
+                // 主动作按键恒为「完成 / 修改」：有算式时保存前自动算出结果
+                KeypadActionButton(
+                    text = if (isEditMode) "修改" else "完成",
+                    isPrimary = true,
+                    modifier = Modifier.weight(1.1f),
+                    onClick = {
+                        performHaptic()
+                        settlePendingExpression()
+                        onComplete()
+                    }
+                )
             }
         }
     }

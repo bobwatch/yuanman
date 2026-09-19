@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import com.yuanman.app.utils.FileDigest
 import com.yuanman.app.utils.JsonBackupUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -402,6 +403,18 @@ object DatabaseBackupManager {
 
         if (dbCandidate == null && accountsCandidate == null && prefsCandidate == null) {
             return@withContext Result.failure(Exception("文档/Yuanman 目录中未找到有效的数据库备份"))
+        }
+
+        // 完整性清单：新备份会随快照一起发布清单，恢复前逐项比对摘要；
+        // 老备份没有清单时按原有 SQLite 校验恢复，行为不变。
+        val manifest = readSharedBackupManifest(appContext)
+        if (manifest != null) {
+            val mismatch = verifySnapshotsAgainstManifest(manifest, dbCandidate, prefsCandidate, accountsCandidate)
+            if (mismatch != null) {
+                return@withContext Result.failure(
+                    Exception("备份完整性校验失败（$mismatch），已停止恢复，现有数据未改动")
+                )
+            }
         }
 
         var dbRestored = false
@@ -1000,31 +1013,170 @@ object DatabaseBackupManager {
             ""
         }
         synchronized(backupLock) {
+            var stagedDb: File? = null
+            var stagedPreferences: File? = null
             try {
                 val dbFile = context.getDatabasePath(DB_NAME)
                 if (!dbFile.exists() || dbFile.length() == 0L) return@withContext false
                 if (!checkpointDatabase(dbFile) || !isDatabaseUsable(dbFile)) return@withContext false
 
-                var dbOk = createSharedBackup(context, dbFile)
+                // 摘要按「发布源」计算：先把已 checkpoint 的数据库与偏好复制成本进程私有的不可变副本，
+                // 再从副本发布。这样清单里记录的字节与公共目录里的字节必然一致，
+                // 不会因为备份过程中数据继续写入而在恢复时误报摘要不符。
+                stagedDb = File(context.cacheDir, "$SHARED_BACKUP_NAME.manifest-stage").also {
+                    it.delete()
+                    copyFile(dbFile, it)
+                }
                 val preferencesFile = getLocalPreferencesFile(context)
-                if (preferencesFile.isFile && !createSharedPreferencesBackup(context, preferencesFile)) {
+                stagedPreferences = if (preferencesFile.isFile) {
+                    File(context.cacheDir, "$SHARED_PREFERENCES_NAME.manifest-stage").also {
+                        it.delete()
+                        copyFile(preferencesFile, it)
+                    }
+                } else null
+
+                // 开始覆盖公共目录前先清掉上一版清单：万一本次备份中途失败，
+                // 不会留下"旧清单 + 新快照"的组合导致恢复时摘要必然不符。
+                removeSharedManifest(context)
+
+                val dbOk = createSharedBackup(context, stagedDb)
+                val prefsOk = stagedPreferences?.let { createSharedPreferencesBackup(context, it) }
+                if (stagedPreferences != null && prefsOk != true) {
                     Log.w(TAG, "Manual preferences snapshot failed.")
                 }
 
                 // 账户/计划 JSON 快照与数据库成对发布（恢复时逐键写回 DataStore）
-                if (accountDataJson.isNotBlank() && !createSharedAccountsBackup(context, accountDataJson)) {
+                val accountsOk = accountDataJson.isNotBlank() && createSharedAccountsBackup(context, accountDataJson)
+                if (accountDataJson.isNotBlank() && !accountsOk) {
                     Log.w(TAG, "Manual accounts snapshot failed.")
                 }
 
                 if (dbOk) {
+                    // 完整性清单最后发布：清单存在即代表它覆盖了同目录下的这批快照
+                    publishBackupManifest(
+                        context = context,
+                        dbSource = stagedDb,
+                        preferencesSource = stagedPreferences?.takeIf { prefsOk == true },
+                        accountsJson = accountDataJson.takeIf { accountsOk }
+                    )
                     Log.i(TAG, "Manual uninstall-safe backup completed.")
                 }
                 dbOk
             } catch (e: Exception) {
                 Log.e(TAG, "Manual backup failed: ${e.message}", e)
                 false
+            } finally {
+                stagedDb?.delete()
+                stagedPreferences?.delete()
             }
         }
+    }
+
+    /**
+     * 发布完整性清单（记录已发布快照的 SHA-256），供 [restoreFromDocuments] 恢复前逐项校验。
+     * 返回是否发布成功；发布失败不影响备份本身，只是这次备份没有清单保护。
+     */
+    private fun publishBackupManifest(
+        context: Context,
+        dbSource: File,
+        preferencesSource: File?,
+        accountsJson: String?
+    ): Boolean {
+        val digests = mutableMapOf<String, String>()
+        runCatching { digests[BackupManifest.GROUP_DATABASE] = FileDigest.sha256Hex(dbSource) }
+            .onFailure { Log.w(TAG, "Manifest digest failed for database: ${it.message}") }
+        preferencesSource?.let { file ->
+            runCatching { digests[BackupManifest.GROUP_PREFERENCES] = FileDigest.sha256Hex(file) }
+                .onFailure { Log.w(TAG, "Manifest digest failed for preferences: ${it.message}") }
+        }
+        accountsJson?.let { json ->
+            runCatching {
+                digests[BackupManifest.GROUP_ACCOUNTS] = FileDigest.sha256Hex(json.toByteArray(Charsets.UTF_8))
+            }.onFailure { Log.w(TAG, "Manifest digest failed for accounts: ${it.message}") }
+        }
+        if (digests.isEmpty()) return false
+        return createSharedManifestFile(context, BackupManifest.encode(System.currentTimeMillis(), digests))
+    }
+
+    private fun createSharedManifestFile(context: Context, jsonContent: String): Boolean {
+        val source = File(context.cacheDir, "${BackupManifest.FILE_NAME}.tmp")
+        return try {
+            source.delete()
+            source.writeText(jsonContent, Charsets.UTF_8)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                createMediaStoreSnapshot(
+                    context = context,
+                    source = source,
+                    displayName = BackupManifest.FILE_NAME,
+                    filePrefix = BackupManifest.FILE_PREFIX,
+                    tempPrefix = ".${BackupManifest.FILE_PREFIX}_",
+                    mimeType = "application/json"
+                )
+            } else {
+                val destination = legacySharedFilePath(BackupManifest.FILE_NAME) ?: return false
+                copyFileReplacing(source, destination)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Backup manifest publish failed: ${e.message}", e)
+            false
+        } finally {
+            source.delete()
+        }
+    }
+
+    /** 删除公共目录中已有的完整性清单（新备份开始前调用）。 */
+    private fun removeSharedManifest(context: Context) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                querySharedFileUris(context, BackupManifest.FILE_PREFIX).forEach { uri ->
+                    deleteMediaStoreRowAndFile(resolver, uri)
+                }
+            } else {
+                legacySharedFilePath(BackupManifest.FILE_NAME)?.delete()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to clear previous backup manifest: ${e.message}")
+        }
+    }
+
+    private fun readSharedBackupManifest(context: Context): BackupManifest? {
+        val candidate = listPublicSnapshotFiles(context, BackupManifest.FILE_PREFIX)
+            .firstOrNull { it.name.endsWith(".json") && it.length() in 1..MAX_ACCOUNTS_SNAPSHOT_SIZE }
+            ?: return null
+        return try {
+            BackupManifest.decode(candidate.readText(Charsets.UTF_8))
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to read backup manifest: ${e.message}")
+            null
+        }
+    }
+
+    /** 逐项比对清单摘要；返回 null 表示全部一致，否则返回不一致项的描述。 */
+    private fun verifySnapshotsAgainstManifest(
+        manifest: BackupManifest,
+        dbCandidate: File?,
+        preferencesCandidate: File?,
+        accountsCandidate: File?
+    ): String? {
+        val candidates = listOf(
+            BackupManifest.GROUP_DATABASE to dbCandidate,
+            BackupManifest.GROUP_PREFERENCES to preferencesCandidate,
+            BackupManifest.GROUP_ACCOUNTS to accountsCandidate
+        )
+        for ((group, file) in candidates) {
+            if (file == null) continue
+            val expected = manifest.digests[group] ?: continue
+            val actual = try {
+                FileDigest.sha256Hex(file)
+            } catch (e: Exception) {
+                return "$group 快照无法读取"
+            }
+            if (!FileDigest.matches(expected, actual)) {
+                return "$group 快照摘要不一致"
+            }
+        }
+        return null
     }
 
     private fun legacySharedFilePath(fileName: String): File? {

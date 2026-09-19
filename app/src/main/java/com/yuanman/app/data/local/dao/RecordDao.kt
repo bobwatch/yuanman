@@ -11,6 +11,14 @@ interface RecordDao {
     @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     fun getAllRecords(): Flow<List<RecordWithCategory>>
 
+    /**
+     * 账单里出现过的支付方式（去重）。
+     * 明细页「全部账户」筛选用它把历史写法（如「微信支付」）归到对应资金账户，
+     * 与账户详情页共用同一套匹配口径。
+     */
+    @Query("SELECT DISTINCT paymentMethod FROM records WHERE deletedAt IS NULL AND paymentMethod != ''")
+    fun observeDistinctPaymentMethods(): Flow<List<String>>
+
     @Transaction
     @Query("SELECT * FROM records WHERE deletedAt IS NULL ORDER BY recordTime DESC, id DESC")
     suspend fun getAllRecordsDirect(): List<RecordWithCategory>

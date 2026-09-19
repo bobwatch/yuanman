@@ -10,6 +10,7 @@ import com.yuanman.app.data.local.entity.RecordWithCategory
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
+import com.yuanman.app.ui.screens.account.parseAccountsJson
 import com.yuanman.app.data.repository.RecordRepository
 import com.yuanman.app.utils.DateTimeUtils
 import com.yuanman.app.utils.MoneyUtils
@@ -41,6 +42,8 @@ data class RecordListUiState(
     val selectedType: RecordType? = null,
     val selectedCategoryIds: Set<Long> = emptySet(),
     val selectedPaymentMethods: Set<String> = emptySet(),
+    /** 「全部账户」筛选项：资金账户 → 命中它的支付方式（账单只存方式字符串，沿用账户页匹配口径）。 */
+    val accountFilters: AccountFilterOptions = AccountFilterOptions(),
     val sortOrder: RecordSortOrder = RecordSortOrder.TIME_DESC,
     val searchQuery: String = "",
     val availableCategories: List<CategoryEntity> = emptyList(),
@@ -132,6 +135,17 @@ class RecordListViewModel(
 
     val allCategories: StateFlow<List<CategoryEntity>> = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * 「全部账户」筛选项：资金账户（DataStore） × 账单里出现过的支付方式（Room）。
+     * 账单表没有账户外键，归类沿用账户页同一套匹配函数，两处口径一致。
+     */
+    private val accountFiltersFlow: Flow<AccountFilterOptions> = combine(
+        preferencesRepository.accountsData,
+        recordRepository.observeDistinctPaymentMethods()
+    ) { accountsJson, methods ->
+        buildAccountFilterOptions(parseAccountsJson(accountsJson), methods)
+    }
 
     // 搜索词通道分离：
     // - 输入框展示用即时值（uiFiltersFlow），保证逐字跟手；
@@ -335,8 +349,14 @@ class RecordListViewModel(
     ) { filters, records, summary, categories ->
         FourCombine(filters, records, summary, categories)
     }.combine(
-        combine(preferencesRepository.privacyMode, _hasMore, _isLoadingMore, _isLoading) { privacy, hasMore, isLoadingMore, isLoading ->
-            FourFlags(privacy, hasMore, isLoadingMore, isLoading)
+        combine(
+            preferencesRepository.privacyMode,
+            _hasMore,
+            _isLoadingMore,
+            _isLoading,
+            accountFiltersFlow
+        ) { privacy, hasMore, isLoadingMore, isLoading, accountFilters ->
+            ListFlags(privacy, hasMore, isLoadingMore, isLoading, accountFilters)
         }
     ) { part1, part2 ->
         val filters = part1.filters
@@ -348,6 +368,7 @@ class RecordListViewModel(
         val hasMore = part2.hasMore
         val isLoadingMore = part2.isLoadingMore
         val isLoading = part2.isLoading
+        val accountFilters = part2.accountFilters
 
         // 按自然日分组 (截取当天 00:00:00 毫秒戳)
         val grouped = records.groupBy { item ->
@@ -383,6 +404,7 @@ class RecordListViewModel(
             selectedType = filters.type,
             selectedCategoryIds = filters.categoryIds,
             selectedPaymentMethods = filters.paymentMethods,
+            accountFilters = accountFilters,
             sortOrder = filters.sortOrder,
             searchQuery = filters.query,
             availableCategories = categories,
@@ -467,11 +489,29 @@ class RecordListViewModel(
         selectMonth(ny, nm)
     }
 
+    /** 「全部账户」：清空账户筛选。 */
+    fun clearAccountFilter() {
+        _selectedPaymentMethods.value = emptySet()
+    }
+
+    /**
+     * 账户筛选：把该账户命中的支付方式整组加入或移出筛选（多个账户可叠加）。
+     * 用整组而非单个方式，是因为同一账户在历史账单里可能有多种写法（如「微信」与「微信支付」）。
+     */
+    fun toggleAccountFilter(methods: Collection<String>) {
+        if (methods.isEmpty()) return
+        val current = _selectedPaymentMethods.value
+        _selectedPaymentMethods.value = if (current.containsAll(methods)) {
+            current - methods.toSet()
+        } else {
+            current + methods
+        }
+    }
+
     fun selectType(type: RecordType?) {
         _selectedType.value = type
         _selectedCategoryIds.value = emptySet()
-        // 支出和收入的支付方式集合不同，切换类型时清除旧的支付方式筛选。
-        _selectedPaymentMethods.value = emptySet()
+        // 账户筛选不随收支类型清空：账户在两个方向上都是同一批，保留选择更符合预期。
     }
 
     fun selectCategory(categoryId: Long?) {
@@ -480,16 +520,6 @@ class RecordListViewModel(
         } else {
             _selectedCategoryIds.value = _selectedCategoryIds.value.toMutableSet().apply {
                 if (!add(categoryId)) remove(categoryId)
-            }
-        }
-    }
-
-    fun selectPaymentMethod(method: String?) {
-        if (method == null) {
-            _selectedPaymentMethods.value = emptySet()
-        } else {
-            _selectedPaymentMethods.value = _selectedPaymentMethods.value.toMutableSet().apply {
-                if (!add(method)) remove(method)
             }
         }
     }
@@ -524,6 +554,15 @@ class RecordListViewModel(
         }
     }
 
+    /** 撤销删除：软删记录回到列表，与首页删除的撤销口径一致。 */
+    fun undoDeleteRecord(recordWithCategory: RecordWithCategory) {
+        viewModelScope.launch {
+            recordRepository.restoreRecord(recordWithCategory.record.id)
+            _loadedRecords.value = (_loadedRecords.value + recordWithCategory)
+                .sortedByDescending { it.record.recordTime }
+        }
+    }
+
     private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
     private data class FourCombine(
         val filters: FilterParams,
@@ -531,6 +570,14 @@ class RecordListViewModel(
         val summary: RecordFilterSummary,
         val categories: List<CategoryEntity>
     )
+    private data class ListFlags(
+        val privacy: Boolean,
+        val hasMore: Boolean,
+        val isLoadingMore: Boolean,
+        val isLoading: Boolean,
+        val accountFilters: AccountFilterOptions
+    )
+
     private data class FourFlags(
         val privacy: Boolean,
         val hasMore: Boolean,

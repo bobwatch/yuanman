@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.IconPalette
+import com.yuanman.app.ui.components.SheetTitle
 import com.yuanman.app.ui.components.AccountIconHelper
 import com.yuanman.app.ui.components.BrandAccountIcon
 import com.yuanman.app.ui.components.BrandAccountIcons
@@ -114,10 +114,7 @@ fun AddEditAccountSheet(
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = if (accountToEdit == null) "新建账户" else "编辑账户",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            SheetTitle(title = if (accountToEdit == null) "新建账户" else "编辑账户")
 
             // 账户名称
             OutlinedTextField(
@@ -429,10 +426,7 @@ fun QuickTransferSheet(
                 .padding(horizontal = 20.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = "资金转账 / 信用卡还款",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            SheetTitle(title = "资金转账 / 信用卡还款")
 
             // 转出账户选择
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -532,7 +526,6 @@ fun QuickTransferSheet(
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)

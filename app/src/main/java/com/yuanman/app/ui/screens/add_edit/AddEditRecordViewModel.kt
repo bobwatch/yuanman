@@ -8,7 +8,6 @@ import com.yuanman.app.data.local.entity.RecordEntity
 import com.yuanman.app.data.local.entity.QuickEntryLearningEntity
 import com.yuanman.app.data.model.CategoryIconHelper
 import com.yuanman.app.data.model.PaymentMethod
-import com.yuanman.app.data.model.QuickEntryParser
 import com.yuanman.app.data.model.RecordType
 import com.yuanman.app.data.repository.CategoryRepository
 import com.yuanman.app.data.repository.PreferencesRepository
@@ -418,29 +417,6 @@ class AddEditRecordViewModel(
 
     fun clearFeedbackMessage() {
         _uiState.update { it.copy(savedFeedbackMessage = null) }
-    }
-
-    fun saveQuickEntry(input: String) {
-        val state = _uiState.value
-        val parsed = QuickEntryParser.parse(input, state.availableCategories, state.quickEntryLearningRules)
-        if (parsed == null) {
-            _uiState.update { it.copy(errorMessage = "请输入类似“奶茶 18”的内容") }
-            return
-        }
-        val category = parsed.category ?: state.selectedCategory ?: state.availableCategories.firstOrNull()
-        if (category == null) {
-            _uiState.update { it.copy(errorMessage = "未能识别分类，请先选择分类") }
-            return
-        }
-        _uiState.update {
-            it.copy(
-                expression = parsed.amountYuan.toPlainString(),
-                selectedCategory = category,
-                remark = parsed.remark,
-                paymentMethod = parsed.paymentMethod ?: it.paymentMethod
-            )
-        }
-        saveRecord()
     }
 
     fun saveRecord(continueNext: Boolean = false) {

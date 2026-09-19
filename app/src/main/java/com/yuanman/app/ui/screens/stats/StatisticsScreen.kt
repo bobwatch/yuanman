@@ -41,6 +41,8 @@ fun StatisticsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showMonthPicker by remember { mutableStateOf(false) }
+    var showWeekPicker by remember { mutableStateOf(false) }
+    var showYearPicker by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
 
     // 周期翻页只允许回看：以当前自然周/月/年为上限（统计不涉及未来）
@@ -114,8 +116,11 @@ fun StatisticsScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        if (uiState.periodMode == StatisticsPeriod.MONTH) {
-                                            showMonthPicker = true
+                                        // 三种周期都能直接跳周期，而不是只能一期期翻
+                                        when (uiState.periodMode) {
+                                            StatisticsPeriod.WEEK -> showWeekPicker = true
+                                            StatisticsPeriod.MONTH -> showMonthPicker = true
+                                            StatisticsPeriod.YEAR -> showYearPicker = true
                                         }
                                     }
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -301,6 +306,7 @@ fun StatisticsScreen(
                     KeyInsightCard(
                         insight = uiState.smartInsight,
                         expenseDiffPercent = uiState.expenseDiffPercent,
+                        incomeDiffPercent = uiState.incomeDiffPercent,
                         period = uiState.periodMode
                     )
                 }
@@ -395,19 +401,43 @@ fun StatisticsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val isIncomeView = uiState.selectedType == RecordType.INCOME
                                 Text(
-                                    text = when (uiState.periodMode) {
-                                        StatisticsPeriod.WEEK -> "7天支出走势"
-                                        StatisticsPeriod.MONTH -> "每日支出走势"
-                                        StatisticsPeriod.YEAR -> "12个月支出走势"
+                                    text = if (isIncomeView) {
+                                        when (uiState.periodMode) {
+                                            StatisticsPeriod.WEEK -> "7天收入走势"
+                                            StatisticsPeriod.MONTH -> "每日收入走势"
+                                            StatisticsPeriod.YEAR -> "12个月收入走势"
+                                        }
+                                    } else {
+                                        when (uiState.periodMode) {
+                                            StatisticsPeriod.WEEK -> "7天支出走势"
+                                            StatisticsPeriod.MONTH -> "每日支出走势"
+                                            StatisticsPeriod.YEAR -> "12个月支出走势"
+                                        }
                                     },
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
 
                                 Text(
-                                    text = when (uiState.periodMode) {
-                                        StatisticsPeriod.WEEK, StatisticsPeriod.MONTH -> "日均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
-                                        StatisticsPeriod.YEAR -> "月均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
+                                    text = if (isIncomeView) {
+                                        val avgIncome = when (uiState.periodMode) {
+                                            StatisticsPeriod.WEEK -> uiState.summary.totalIncome / 7
+                                            StatisticsPeriod.MONTH -> {
+                                                val days = uiState.dailyTrends.count { it.day > 0 }.coerceAtLeast(1)
+                                                uiState.summary.totalIncome / days
+                                            }
+                                            StatisticsPeriod.YEAR -> uiState.summary.totalIncome / 12
+                                        }
+                                        when (uiState.periodMode) {
+                                            StatisticsPeriod.YEAR -> "月均 ¥${MoneyUtils.centsToYuanString(avgIncome)}"
+                                            else -> "日均 ¥${MoneyUtils.centsToYuanString(avgIncome)}"
+                                        }
+                                    } else {
+                                        when (uiState.periodMode) {
+                                            StatisticsPeriod.WEEK, StatisticsPeriod.MONTH -> "日均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
+                                            StatisticsPeriod.YEAR -> "月均 ¥${MoneyUtils.centsToYuanString(uiState.summary.avgDailyExpense)}"
+                                        }
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
@@ -416,10 +446,21 @@ fun StatisticsScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            BarTrendChart(
-                                items = uiState.dailyTrends,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            if (uiState.selectedType == RecordType.INCOME) {
+                                BarTrendChart(
+                                    items = uiState.dailyTrends,
+                                    valueOf = { it.incomeAmount },
+                                    valueColor = MaterialTheme.colorScheme.primary,
+                                    barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    emptyText = "本周期暂无收入明细",
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                BarTrendChart(
+                                    items = uiState.dailyTrends,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
@@ -482,6 +523,27 @@ fun StatisticsScreen(
             showMonthPicker = false
         },
         onDismiss = { showMonthPicker = false }
+    )
+
+    WeekPickerModal(
+        visible = showWeekPicker,
+        initialYear = uiState.selectedYear,
+        initialWeek = uiState.selectedWeek,
+        onWeekSelected = { year, week ->
+            viewModel.selectWeek(year, week)
+            showWeekPicker = false
+        },
+        onDismiss = { showWeekPicker = false }
+    )
+
+    YearPickerModal(
+        visible = showYearPicker,
+        initialYear = uiState.selectedYear,
+        onYearSelected = { year ->
+            viewModel.selectYear(year)
+            showYearPicker = false
+        },
+        onDismiss = { showYearPicker = false }
     )
 
     if (showBudgetDialog) {
@@ -691,6 +753,7 @@ private fun BudgetMetric(
 private fun KeyInsightCard(
     insight: String,
     expenseDiffPercent: Float?,
+    incomeDiffPercent: Float?,
     period: StatisticsPeriod
 ) {
     val comparison = expenseDiffPercent?.let {
@@ -701,6 +764,15 @@ private fun KeyInsightCard(
             StatisticsPeriod.YEAR -> "去年"
         }
         "较$label$direction ${String.format(java.util.Locale.CHINA, "%.1f%%", kotlin.math.abs(it) * 100)}"
+    }
+    val incomeComparison = incomeDiffPercent?.let {
+        val direction = if (it >= 0f) "增加" else "减少"
+        val label = when (period) {
+            StatisticsPeriod.WEEK -> "上周"
+            StatisticsPeriod.MONTH -> "上月总收入"
+            StatisticsPeriod.YEAR -> "去年"
+        }
+        "收入较$label$direction ${String.format(java.util.Locale.CHINA, "%.1f%%", kotlin.math.abs(it) * 100)}"
     }
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -727,6 +799,14 @@ private fun KeyInsightCard(
                             text = comparison,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (incomeComparison != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = incomeComparison,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

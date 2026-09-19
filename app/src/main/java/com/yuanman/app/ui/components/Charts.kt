@@ -372,7 +372,10 @@ private fun DonutLegend(
 }
 
 /**
- * 每日支出趋势柱状图 (带有Y轴数值参考刻度、参考基准线与平滑交互)
+ * 每日收支趋势柱状图 (带有Y轴数值参考刻度、参考基准线与平滑交互)
+ *
+ * 取值维度由 [valueOf] 决定：默认画支出，收入视图传 `{ it.incomeAmount }`，
+ * 峰值/选中值/柱高/空态文案随之切换。
  */
 @Composable
 fun BarTrendChart(
@@ -380,7 +383,10 @@ fun BarTrendChart(
     modifier: Modifier = Modifier,
     height: Dp = 190.dp,
     barColor: Color = MaterialTheme.colorScheme.primary,
-    selectedBarColor: Color = MaterialTheme.colorScheme.tertiary
+    selectedBarColor: Color = MaterialTheme.colorScheme.tertiary,
+    valueOf: (DailyTrendItem) -> Long = { it.expenseAmount },
+    valueColor: Color = MaterialTheme.colorScheme.error,
+    emptyText: String = "本月暂无每日消费明细"
 ) {
     if (items.isEmpty()) {
         Box(
@@ -390,7 +396,7 @@ fun BarTrendChart(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "本月暂无每日消费明细",
+                text = emptyText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline
             )
@@ -399,7 +405,7 @@ fun BarTrendChart(
     }
 
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
-    val actualPeak = remember(items) { items.maxOfOrNull { it.expenseAmount } ?: 0L }
+    val actualPeak = remember(items, valueOf) { items.maxOfOrNull { valueOf(it) } ?: 0L }
     val maxExpense = remember(actualPeak) { niceChartMaximum(actualPeak) }
     val animatedProgress = remember { Animatable(0f) }
 
@@ -429,16 +435,17 @@ fun BarTrendChart(
             ) {
                 if (selectedIndex != null && selectedIndex!! in items.indices) {
                     val selected = items[selectedIndex!!]
+                    val selectedValue = valueOf(selected)
                     Text(
                         text = "📅 ${selected.dateFormatted}",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "¥${MoneyUtils.centsToYuanString(selected.expenseAmount, withGrouping = true)}",
+                        text = "¥${MoneyUtils.centsToYuanString(selectedValue, withGrouping = true)}",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = if (selected.expenseAmount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                            color = if (selectedValue > 0) valueColor else MaterialTheme.colorScheme.outline
                         )
                     )
                 } else {
@@ -543,16 +550,17 @@ fun BarTrendChart(
                 // 4. 绘制每日柱体
                 items.forEachIndexed { i, item ->
                     val x = i * (barWidth + barGap)
-                    val barHeight = (item.expenseAmount.toFloat() / maxExpense) * (maxHeight - 4.dp.toPx()) * animatedProgress.value
+                    val itemValue = valueOf(item)
+                    val barHeight = (itemValue.toFloat() / maxExpense) * (maxHeight - 4.dp.toPx()) * animatedProgress.value
                     val isSelected = selectedIndex == i
 
                     val color = when {
                         isSelected -> selectedBarColor
-                        item.expenseAmount > 0L -> defaultBarColor
+                        itemValue > 0L -> defaultBarColor
                         else -> gridLineColor.copy(alpha = 0.15f)
                     }
 
-                    val currentHeight = if (barHeight < 3.dp.toPx() && item.expenseAmount > 0L) 4.dp.toPx() else barHeight
+                    val currentHeight = if (barHeight < 3.dp.toPx() && itemValue > 0L) 4.dp.toPx() else barHeight
 
                     drawRoundRect(
                         color = color,

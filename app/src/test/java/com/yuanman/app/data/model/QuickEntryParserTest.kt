@@ -177,8 +177,7 @@ class QuickEntryParserTest {
     }
 
     @Test
-    fun exposesSystemLearningPhrasesForSettings() {
-        val category = CategoryEntity(
+    fun exposesSystemLearningPhrasesForSettings() {        val category = CategoryEntity(
             id = 1L,
             name = "餐饮美食",
             type = RecordType.EXPENSE.name,
@@ -191,5 +190,48 @@ class QuickEntryParserTest {
         assertTrue(phrases.contains("咖啡店"))
         assertTrue(phrases.contains("下午茶"))
         assertTrue(phrases.all { it.length >= 2 })
+    }
+
+    @Test
+    fun parsesDateTimeOutOfRemarkAndAmount() {
+        val categories = listOf(
+            CategoryEntity(id = 1L, name = "文化休闲", type = RecordType.EXPENSE.name, iconName = "movie", colorHex = 1L)
+        )
+        val now = java.util.Calendar.getInstance().apply {
+            set(2026, java.util.Calendar.SEPTEMBER, 18, 15, 42, 7)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+
+        // 日期不能进备注，也不能被当成金额
+        val withDate = QuickEntryParser.parse("3/5 电影 40", categories, emptyList(), now)
+        assertEquals("电影", withDate?.remark)
+        assertEquals("40", withDate?.amountYuan?.toPlainString())
+        assertEquals(true, withDate?.hasExplicitTime)
+        val dateCal = java.util.Calendar.getInstance().apply { timeInMillis = withDate!!.recordTime }
+        assertEquals(2026, dateCal.get(java.util.Calendar.YEAR))
+        assertEquals(3, dateCal.get(java.util.Calendar.MONTH) + 1)
+        assertEquals(5, dateCal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(0, dateCal.get(java.util.Calendar.HOUR_OF_DAY))
+
+        // "3:30" 的分钟不能被当成金额
+        val withTime = QuickEntryParser.parse("咖啡 15 3:30", categories, emptyList(), now)
+        assertEquals("咖啡", withTime?.remark)
+        assertEquals("15", withTime?.amountYuan?.toPlainString())
+        val timeCal = java.util.Calendar.getInstance().apply { timeInMillis = withTime!!.recordTime }
+        assertEquals(3, timeCal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(30, timeCal.get(java.util.Calendar.MINUTE))
+    }
+
+    @Test
+    fun plainEntryKeepsCurrentMoment() {
+        val categories = listOf(
+            CategoryEntity(id = 1L, name = "餐饮美食", type = RecordType.EXPENSE.name, iconName = "food", colorHex = 1L)
+        )
+        val before = System.currentTimeMillis()
+        val result = QuickEntryParser.parse("奶茶 18", categories)
+        val after = System.currentTimeMillis()
+
+        assertEquals(false, result?.hasExplicitTime)
+        assertTrue((result?.recordTime ?: 0L) in before..after)
     }
 }

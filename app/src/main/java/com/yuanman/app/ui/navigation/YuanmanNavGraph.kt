@@ -45,6 +45,7 @@ import com.yuanman.app.ui.screens.account.AccountDetailScreen
 import com.yuanman.app.ui.screens.account.AccountReconcileScreen
 import com.yuanman.app.ui.screens.account.AccountScreen
 import com.yuanman.app.ui.screens.account.AccountViewModel
+import com.yuanman.app.ui.screens.account.AllPlansScreen
 import com.yuanman.app.ui.screens.account.PaycheckRunScreen
 import com.yuanman.app.ui.screens.account.PlanDetailScreen
 import com.yuanman.app.ui.screens.add_edit.AddEditRecordScreen
@@ -104,6 +105,9 @@ sealed class SecondaryScreen {
 
     /** 攒钱计划详情（计划小卡点击进入；攒钱/取出记录与计划编辑） */
     data class PlanDetail(val planId: Long) : SecondaryScreen()
+
+    /** 全部攒钱计划（账户页卡区折叠后的承接页：浏览 + 置顶，动作仍在详情页） */
+    object AllPlans : SecondaryScreen()
     object QuickRecordSettings : SecondaryScreen()
 }
 
@@ -114,10 +118,40 @@ private val TAB_ROUTES = listOf(
     Screen.Settings.route
 )
 
+/**
+ * 把外部入口（桌面微件等）带进来的路由字符串解析成二级页目标。
+ * 例：`add_edit_record?recordId=0&type=EXPENSE&categoryId=0` → [SecondaryScreen.AddEditRecord]。
+ * 无法识别时返回 null，调用方直接忽略，避免外部传入未知路由打断启动。
+ */
+fun parseExternalRoute(route: String): SecondaryScreen? {
+    val params = route.substringAfter('?', "")
+        .split('&')
+        .mapNotNull { pair ->
+            val key = pair.substringBefore('=', "")
+            if (key.isBlank()) null else key to pair.substringAfter('=', "")
+        }
+        .toMap()
+    return when (route.substringBefore('?')) {
+        Screen.AddEditRecord.route.substringBefore('?') -> SecondaryScreen.AddEditRecord(
+            recordId = params["recordId"]?.toLongOrNull() ?: 0L,
+            type = params["type"]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { RecordType.fromString(it) },
+            categoryId = params["categoryId"]?.toLongOrNull() ?: 0L
+        )
+        Screen.Statistics.route -> SecondaryScreen.Statistics
+        Screen.AssetPanorama.route -> SecondaryScreen.AssetPanorama
+        Screen.CategoryManage.route -> SecondaryScreen.CategoryManage
+        else -> null
+    }
+}
+
 @Composable
 fun YuanmanNavGraph(
     navController: NavHostController,
     app: YuanmanApplication,
+    externalRoute: String? = null,
+    onExternalRouteConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -133,30 +167,17 @@ fun YuanmanNavGraph(
 
     val isAtRoot = secondaryStack.isEmpty()
 
-    // 监听从外部（如快捷微件 Widget）通过 navController.navigate 传入的二级路由
-    LaunchedEffect(navBackStackEntry) {
-        val route = navBackStackEntry?.destination?.route ?: return@LaunchedEffect
-        if (route.startsWith("add_edit_record") || route.startsWith("statistics") || route.startsWith("category_manage") || route.startsWith("asset_panorama")) {
-            when {
-                route.startsWith("add_edit_record") -> {
-                    val recordId = navBackStackEntry?.arguments?.getLong("recordId") ?: 0L
-                    val typeStr = navBackStackEntry?.arguments?.getString("type") ?: ""
-                    val categoryId = navBackStackEntry?.arguments?.getLong("categoryId") ?: 0L
-                    val type = if (typeStr.isNotBlank()) RecordType.fromString(typeStr) else null
-                    secondaryStack.add(SecondaryScreen.AddEditRecord(recordId, type, categoryId))
-                }
-                route.startsWith("statistics") -> {
-                    secondaryStack.add(SecondaryScreen.Statistics)
-                }
-                route.startsWith("asset_panorama") -> {
-                    secondaryStack.add(SecondaryScreen.AssetPanorama)
-                }
-                route.startsWith("category_manage") -> {
-                    secondaryStack.add(SecondaryScreen.CategoryManage)
-                }
-            }
-            navController.popBackStack()
+    // 外部入口（桌面微件等）传入的路由：tab 路由交给 NavHost 切换，二级页面直接压入悬浮栈。
+    // NavHost 只注册了 4 个 tab 目的地（二级页由二级栈渲染），所以二级路由不能再走
+    // navController.navigate —— 找不到目的地会抛 IllegalArgumentException 导致启动崩溃。
+    LaunchedEffect(externalRoute) {
+        val route = externalRoute ?: return@LaunchedEffect
+        if (route in TAB_ROUTES) {
+            navController.navigate(route) { launchSingleTop = true }
+        } else {
+            parseExternalRoute(route)?.let { secondaryStack.add(it) }
         }
+        onExternalRouteConsumed()
     }
 
     val context = LocalContext.current
@@ -349,6 +370,9 @@ fun YuanmanNavGraph(
                         },
                         onOpenAssetPanorama = {
                             secondaryStack.add(SecondaryScreen.AssetPanorama)
+                        },
+                        onOpenAllPlans = {
+                            secondaryStack.add(SecondaryScreen.AllPlans)
                         }
                     )
                 }
@@ -629,6 +653,22 @@ fun YuanmanNavGraph(
                                     viewModel = planDetailViewModel,
                                     planId = screen.planId,
                                     onBack = requestBack
+                                )
+                            }
+
+                            is SecondaryScreen.AllPlans -> {
+                                val allPlansViewModel: AccountViewModel = viewModel(
+                                    factory = AccountViewModel.Factory(
+                                        preferencesRepository = app.preferencesRepository,
+                                        recordRepository = app.recordRepository
+                                    )
+                                )
+                                AllPlansScreen(
+                                    viewModel = allPlansViewModel,
+                                    onBack = requestBack,
+                                    onOpenPlanDetail = { planId ->
+                                        secondaryStack.add(SecondaryScreen.PlanDetail(planId))
+                                    }
                                 )
                             }
 

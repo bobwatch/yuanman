@@ -84,7 +84,6 @@ class HomeViewModel(
     private val _selectedMonth = MutableStateFlow(currentYearMonth.second)
     private val _refreshToken = MutableStateFlow(0)
     private val _isRefreshing = MutableStateFlow(false)
-    private val _affirmationIndex = MutableStateFlow(0)
     private val _currentAffirmation = MutableStateFlow(WarmAffirmationsHelper.getAffirmationForCurrentTime())
 
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -285,18 +284,6 @@ class HomeViewModel(
         selectMonth(ny, nm)
     }
 
-    fun togglePrivacy() {
-        viewModelScope.launch {
-            preferencesRepository.togglePrivacyMode()
-        }
-    }
-
-    fun nextAffirmation() {
-        val (next, index) = WarmAffirmationsHelper.getRandomAffirmation(_affirmationIndex.value)
-        _affirmationIndex.value = index
-        _currentAffirmation.value = next
-    }
-
     fun copyRecord(record: RecordEntity) {
         viewModelScope.launch {
             val duplicate = record.copy(
@@ -313,12 +300,16 @@ class HomeViewModel(
 
     /**
      * Saves a compact entry directly from Home and returns the parsed preview for immediate UI feedback.
+     *
+     * @param timeOverride 用户在闪电记账里用滚轮改过的记账时间；为空时用文本解析出的时间
+     *   （没写日期时间则是当前时刻）。
      */
     fun saveQuickEntry(
         input: String,
         type: RecordType,
         categoryOverride: CategoryEntity? = null,
-        accountOverride: String? = null
+        accountOverride: String? = null,
+        timeOverride: Long? = null
     ): QuickEntryResult? {
         val categories = uiState.value.quickEntryCategories.filter { it.type == type.name }
         val parsed = QuickEntryParser.parse(input, categories, uiState.value.quickEntryLearningRules) ?: return null
@@ -348,7 +339,7 @@ class HomeViewModel(
                     type = type.name,
                     amount = amountCents,
                     categoryId = category.id,
-                    recordTime = System.currentTimeMillis(),
+                    recordTime = timeOverride ?: parsed.recordTime,
                     remark = parsed.remark,
                     paymentMethod = effectivePaymentMethod
                 )
@@ -364,7 +355,11 @@ class HomeViewModel(
             }
             categoryRepository.learnQuickEntry(type, parsed.remark, category.syncId)
         }
-        return parsed.copy(category = category, paymentMethod = accountOverride ?: parsed.paymentMethod)
+        return parsed.copy(
+            category = category,
+            paymentMethod = accountOverride ?: parsed.paymentMethod,
+            recordTime = timeOverride ?: parsed.recordTime
+        )
     }
 
     fun setDefaultPaymentAccount(accountName: String, isExpense: Boolean) {
